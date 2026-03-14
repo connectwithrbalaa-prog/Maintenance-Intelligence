@@ -79,3 +79,47 @@ The wrapper outputs a single JSON line from `mi-runner rca-test`, which includes
 - CLI export:
   - mi-runner export-bad-actors --limit 50
   - Writes to outputs/reports/bad_actors_<YYYY-MM-DD>.json
+
+## Configuration (Environment Matrix)
+
+Core:
+- MI_ENV (default: dev)
+- MI_LOG_LEVEL (default: INFO)
+
+Kafka / Postgres:
+- KAFKA_BOOTSTRAP_SERVERS (default: kafka:9092)
+- POSTGRES_DB (default: maintenance)
+- POSTGRES_USER (default: postgres)
+- POSTGRES_PASSWORD (default: postgres)
+- POSTGRES_HOST (default: timescaledb)
+
+GenAI:
+- OPENAI_API_KEY (required for live GenAI RCA)
+- MI_GENAI_MODEL (default: gpt-4.1)
+- MI_GENAI_TIMEOUT_S (default: 25)
+
+Outputs / Logs:
+- MI_RUN_SUMMARY_DIR (default: outputs)
+- MI_CRON_LOG_DIR (default: logs)
+
+Copy .env.example to .env and set values as needed.
+
+## Dev Quickstart
+
+- make dev-install
+- make migrate
+- make api
+- In separate terminals:
+  - make run-sim
+  - make run-ingest
+  - make run-rca
+  - make run-wo
+
+Testing:
+- make test
+
+Utilities:
+- mi-runner rca --event-id E123
+- mi-runner rca-test
+- mi-runner export-bad-actors --limit 50
+- scripts/cron_rca_test.sh (cron-friendly)
