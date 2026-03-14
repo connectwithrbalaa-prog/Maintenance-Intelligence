@@ -34,11 +34,14 @@ def rca_agent(kafka_bootstrap: str = None):
 
         if gateway:
             g = gateway.call_rca(evt, ctx)
-            rationale = g.get("text", "No output")
-            model_meta = {"name": "openai", "version": g.get("model_version"), "tokens": g.get("tokens"), "latency_ms": g.get("latency_ms")}
+            structured = g.get("structured") or {}
+            rationale = "
+".join(structured.get("hypothesis", [])[:4]) or g.get("text", "No output")
+            model_meta = {"name": "openai", "version": g.get("model_version"), "tokens": g.get("tokens"), "latency_ms": g.get("latency_ms"), "confidence": structured.get("confidence", 0.5)}
         else:
-            rationale = "Stub RCA (no OPENAI_API_KEY). Replace with GenAI output once key is set."
-            model_meta = {"name": "openai", "version": "unset", "tokens": None, "latency_ms": None}
+            structured = {"title":"RCA Draft","hypothesis":[rationale],"evidence_ids":[],"immediate_actions":[],"pm_suggestions":[],"confidence":0.3}
+            rationale = rationale
+            model_meta = {"name": "openai", "version": "unset", "tokens": None, "latency_ms": None, "confidence": structured.get("confidence", 0.3)}
 
         rec_id = str(uuid.uuid4())
         doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
@@ -51,9 +54,9 @@ def rca_agent(kafka_bootstrap: str = None):
             "recommendation": {
                 "id": rec_id,
                 "asset_id": evt.get("asset_id"),
-                "title": f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}",
+                "title": (structured.get("title") or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"),
                 "rationale": rationale,
-                "evidence": [evt.get("event_id", "")] + doc_chunk_ids,
+                "evidence": [evt.get("event_id", "")] + list(set(doc_chunk_ids + (structured.get("evidence_ids") or []))),
                 "model": model_meta,
                 "immutable": True,
             },

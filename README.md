@@ -136,3 +136,10 @@ Utilities:
 Notes:
 - Requires OPENAI_API_KEY
 - Embedding model can be set via MI_EMBED_MODEL (default: text-embedding-3-large)
+
+## Structured RCA Output
+
+- Gateway returns strict JSON with:
+  - title, hypothesis[], evidence_ids[], immediate_actions[], pm_suggestions[], confidence (0..1)
+- rca_agent uses structured fields to set recommendation title/rationale/evidence and carries confidence in model metadata.
+- Run summaries include the structured payload for traceability.
