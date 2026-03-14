@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException
+import json
+import uuid
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-import uuid, psycopg2
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.api.auth import require_role
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.api.metrics import REGISTRY
+from maintenance_intelligence.multitenancy import TenantContext
 from prometheus_client import Counter
 
 router = APIRouter(prefix="/api/v1/rca", tags=["rca"])
@@ -17,9 +21,10 @@ class FeedbackPayload(BaseModel):
     changes: Optional[Dict[str, Any]] = None
     reason: Optional[str] = None
     user_id: Optional[str] = None
+    asset_id: Optional[str] = None
 
 @router.post("/feedback")
-def submit_feedback(p: FeedbackPayload):
+def submit_feedback(p: FeedbackPayload, access: TenantContext = Depends(require_role("operator"))):
     if p.action not in ("accept","reject","edited"):
         raise HTTPException(status_code=400, detail="Invalid action")
     s = Settings()
@@ -32,7 +37,7 @@ def submit_feedback(p: FeedbackPayload):
                 INSERT INTO rca_feedback(id, run_id, recommendation_id, org_id, asset_id, action, changes, reason, user_id)
                 VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
                 """,
-                (fid, p.run_id, p.recommendation_id, None, None, p.action, (p.changes and __import__("json").dumps(p.changes)) or None, p.reason, p.user_id)
+                (fid, p.run_id, p.recommendation_id, access.org_id, p.asset_id, p.action, json.dumps(p.changes) if p.changes else None, p.reason, p.user_id)
             )
         try:
             feedback_total.labels(action=p.action).inc()

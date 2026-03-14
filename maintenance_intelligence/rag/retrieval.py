@@ -15,16 +15,16 @@ class HybridRetriever:
         self.bm25_weight = bm25_weight
 
     def retrieve(self, query: str, asset_id: Optional[str] = None, limit: int = 10,
-                 token_budget: int = 4000) -> List[Dict[str, Any]]:
+                 token_budget: int = 4000, org_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Retrieve relevant chunks using hybrid BM25 + vector search.
         Returns top chunks within token budget.
         """
         # Get vector results
-        vector_results = self._vector_search(query, asset_id, limit * 2)
+        vector_results = self._vector_search(query, asset_id, limit * 2, org_id=org_id)
 
         # Get BM25 results
-        bm25_results = self._bm25_search(query, asset_id, limit * 2)
+        bm25_results = self._bm25_search(query, asset_id, limit * 2, org_id=org_id)
 
         # Combine scores
         combined = self._combine_scores(vector_results, bm25_results)
@@ -33,7 +33,7 @@ class HybridRetriever:
         combined.sort(key=lambda x: x['score'], reverse=True)
         return self._apply_token_budget(combined, token_budget)
 
-    def _vector_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _vector_search(self, query: str, asset_id: Optional[str], limit: int, org_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Vector similarity search using pgvector."""
         try:
             from maintenance_intelligence.genai.gateway import GenAIGateway
@@ -47,18 +47,18 @@ class HybridRetriever:
                     cur.execute("""
                         SELECT chunk_id, title, content, embedding <=> %s::vector as distance
                         FROM doc_chunks
-                        WHERE asset_id = %s AND embedding IS NOT NULL
+                        WHERE asset_id = %s AND (%s IS NULL OR org_id = %s) AND embedding IS NOT NULL
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s
-                    """, (embedding, asset_id, embedding, limit))
+                    """, (embedding, asset_id, org_id, org_id, embedding, limit))
                 else:
                     cur.execute("""
                         SELECT chunk_id, title, content, embedding <=> %s::vector as distance
                         FROM doc_chunks
-                        WHERE embedding IS NOT NULL
+                        WHERE (%s IS NULL OR org_id = %s) AND embedding IS NOT NULL
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s
-                    """, (embedding, embedding, limit))
+                    """, (embedding, org_id, org_id, embedding, limit))
 
                 results = cur.fetchall()
                 return [{
@@ -71,7 +71,7 @@ class HybridRetriever:
             # Fallback to BM25 only if vector search fails
             return []
 
-    def _bm25_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _bm25_search(self, query: str, asset_id: Optional[str], limit: int, org_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """BM25 text search."""
         # Tokenize query
         query_terms = self._tokenize(query)
@@ -80,9 +80,12 @@ class HybridRetriever:
         with conn, conn.cursor() as cur:
             # Get all documents
             if asset_id:
-                cur.execute("SELECT chunk_id, title, content FROM doc_chunks WHERE asset_id = %s", (asset_id,))
+                cur.execute(
+                    "SELECT chunk_id, title, content FROM doc_chunks WHERE asset_id = %s AND (%s IS NULL OR org_id = %s)",
+                    (asset_id, org_id, org_id),
+                )
             else:
-                cur.execute("SELECT chunk_id, title, content FROM doc_chunks")
+                cur.execute("SELECT chunk_id, title, content FROM doc_chunks WHERE (%s IS NULL OR org_id = %s)", (org_id, org_id))
 
             docs = cur.fetchall()
 

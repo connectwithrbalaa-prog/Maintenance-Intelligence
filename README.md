@@ -151,3 +151,21 @@ Notes:
 - API / CSV include:
   - per_asset_acceptance: rate, accepts, total
   - per_asset_ttr: average TTR seconds by asset
+
+## Multi-Tenant and RBAC
+
+- `MI_MULTI_TENANT=true` enables org-aware query scoping for outcomes, feedback, bad-actors, context assembly, and RAG document retrieval.
+- `MI_AUTH_MODE=none|api_key` controls request auth. In `api_key` mode, send `X-API-Key` and configure `MI_API_KEYS` as JSON: `{"key-1":{"org_id":"org-a","role":"viewer"}}`.
+- Roles:
+  - `viewer`: read scoped reports and signals
+  - `operator`: viewer permissions plus RCA trigger and feedback submission
+  - `admin`: full access in the current stub
+- Kafka topic strategy:
+  - `MI_KAFKA_TENANT_MODE=message`: keep shared topics and filter by `org_id` in the consumer
+  - `MI_KAFKA_TENANT_MODE=namespaced`: publish and consume `canonical.{org_id}.*` topics for single-org worker deployments
+- Single-tenant deployment:
+  - leave `MI_MULTI_TENANT=false` and `MI_AUTH_MODE=none`
+- Multi-tenant deployment:
+  - enable `MI_MULTI_TENANT=true`
+  - provision per-org API keys via `MI_API_KEYS`
+  - run workers with the org selected by `MI_DEFAULT_ORG` when using namespaced Kafka topics

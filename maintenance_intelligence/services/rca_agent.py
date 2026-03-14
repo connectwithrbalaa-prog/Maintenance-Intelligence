@@ -2,6 +2,7 @@ import os, json, uuid, datetime as dt, signal, sys
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
@@ -10,10 +11,10 @@ import backoff
 from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
-def create_kafka_consumer(kafka_bootstrap: str):
+def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
     return KafkaConsumer(
-        "canonical.event.raised",
+        *consumer_topics(["canonical.event.raised"], settings, org_id=settings.default_org),
         bootstrap_servers=kafka_bootstrap,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         group_id="agent-rca",
@@ -34,9 +35,9 @@ def create_kafka_producer(kafka_bootstrap: str):
     )
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
-def send_recommendation(producer, recommendation):
+def send_recommendation(producer, recommendation, settings: Settings):
     """Send recommendation with retry logic."""
-    producer.send("canonical.recommendation.created", recommendation)
+    producer.send(scoped_topic("canonical.recommendation.created", settings, recommendation.get("org_id")), recommendation)
     producer.flush()
 
 def rca_agent(kafka_bootstrap: str = None):
@@ -60,7 +61,7 @@ def rca_agent(kafka_bootstrap: str = None):
     prod = None
 
     try:
-        cons = create_kafka_consumer(kafka_bootstrap)
+        cons = create_kafka_consumer(kafka_bootstrap, settings)
         prod = create_kafka_producer(kafka_bootstrap)
 
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -72,6 +73,8 @@ def rca_agent(kafka_bootstrap: str = None):
                 break
 
             evt = msg.value
+            if not event_in_scope(evt.get("org_id"), settings, org_id=settings.default_org):
+                continue
             if evt.get("kind") not in ("alarm", "anomaly"):
                 continue
 
@@ -80,7 +83,7 @@ def rca_agent(kafka_bootstrap: str = None):
 
             try:
                 # Assemble MVP context
-                ctx = get_event_context(evt, settings)
+                ctx = get_event_context(evt, settings, org_id=evt.get("org_id"))
 
                 if gateway:
                     g = gateway.call_rca(evt, ctx)
@@ -117,7 +120,7 @@ def rca_agent(kafka_bootstrap: str = None):
                     },
                 }
 
-                send_recommendation(prod, out)
+                send_recommendation(prod, out, settings)
 
                 run_id = out["event_id"]
                 write_run_summary(getattr(settings, "run_summary_dir", "outputs"), run_id, {

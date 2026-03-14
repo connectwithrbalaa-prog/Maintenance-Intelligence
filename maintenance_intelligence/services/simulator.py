@@ -3,6 +3,8 @@ from kafka import KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
 import backoff
+from maintenance_intelligence.multitenancy import scoped_topic
+from maintenance_intelligence.runner.config import Settings
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_producer(kafka_bootstrap: str):
@@ -16,14 +18,15 @@ def create_kafka_producer(kafka_bootstrap: str):
     )
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
-def send_event(producer, topic, event):
+def send_event(producer, topic, event, settings: Settings):
     """Send event with retry logic."""
-    future = producer.send(topic, event)
+    future = producer.send(scoped_topic(topic, settings, event.get("org_id")), event)
     producer.flush()  # Wait for send to complete
     return future
 
 def simulator(kafka_bootstrap: str):
     logger.info({"event": "simulator.start", "kafka_bootstrap": kafka_bootstrap})
+    settings = Settings()
 
     # Graceful shutdown handling
     shutdown_requested = False
@@ -60,7 +63,7 @@ def simulator(kafka_bootstrap: str):
                 }
 
                 try:
-                    send_event(prod, "canonical.event.raised", evt)
+                    send_event(prod, "canonical.event.raised", evt, settings)
                     logger.debug({"event": "simulator.sent", "asset_id": a, "event_id": evt["event_id"]})
                 except Exception as e:
                     logger.error({"event": "simulator.send_failed", "asset_id": a, "error": str(e)})
