@@ -7,6 +7,7 @@ from maintenance_intelligence.api.health import router as health_router
 from maintenance_intelligence.api.metrics import router as metrics_router
 from maintenance_intelligence.api.otel import init_tracing
 from maintenance_intelligence.api.outcomes import router as outcomes_router
+from maintenance_intelligence.api.portal import router as portal_router
 from maintenance_intelligence.api.pm_advisor import router as pm_advisor_router
 from maintenance_intelligence.api.prompts import router as prompts_router
 from maintenance_intelligence.api.reports import router as reports_router
@@ -25,6 +26,7 @@ app.include_router(outcomes_router)
 app.include_router(metrics_router)
 app.include_router(prompts_router)
 app.include_router(pm_advisor_router)
+app.include_router(portal_router)
 settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")

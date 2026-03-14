@@ -191,6 +191,14 @@ Notes:
   - `POST /playbooks/search` returns stub playbook matches for planner review.
   - `GET /pm/proposals` lists scoped proposal drafts.
   - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
+- Thin portal preview:
+  - `GET /portal/pm-approvals` serves a single-page planner review UI backed by the PM proposal endpoints.
+  - Role visibility in the page is intentionally a local dev stub stored in browser local storage; backend auth remains API-driven.
+- Manual check:
+  - Create a PM proposal through the advisor API.
+  - Open `/portal/pm-approvals` and verify the draft renders.
+  - Switch the local role stub to `viewer` and confirm approve actions are disabled.
+  - Switch back to `operator`, approve a proposal, and confirm the CMS handoff reference is shown.
 - Schema:
   - Alembic revision `005_pm_change_proposals`
   - SQL fallback migration `008_pm_change_proposals.sql`
