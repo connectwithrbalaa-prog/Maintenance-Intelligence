@@ -169,3 +169,9 @@ Notes:
   - enable `MI_MULTI_TENANT=true`
   - provision per-org API keys via `MI_API_KEYS`
   - run workers with the org selected by `MI_DEFAULT_ORG` when using namespaced Kafka topics
+
+## Signals Tenant Isolation
+
+- `signals` and `signal_rollups` now carry `org_id` for end-to-end tenant isolation in the context path.
+- Signal ingestion writes `org_id` from the incoming event, falls back to `lineage.org_id`, and then to `MI_DEFAULT_ORG`.
+- The SQL migration backfills existing `signals.org_id` from stored metadata where available; historical rollups without source org metadata may remain null until recomputed.

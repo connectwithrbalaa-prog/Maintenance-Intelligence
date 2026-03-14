@@ -12,6 +12,11 @@ import backoff
 
 logger = get_logger(__name__)
 
+
+def _resolve_signal_org_id(evt: dict, settings: Settings) -> str:
+    lineage = evt.get("lineage") if isinstance(evt.get("lineage"), dict) else {}
+    return evt.get("org_id") or lineage.get("org_id") or settings.default_org
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
@@ -88,6 +93,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
 
             try:
                 asset_id = evt.get("asset_id")
+                org_id = _resolve_signal_org_id(evt, settings)
                 details = evt.get("details", {})
 
                 # Extract signals from details (assume vibration, temperature, etc.)
@@ -104,20 +110,20 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                     # Insert signal
                     with conn.cursor() as cur:
                         cur.execute("""
-                            INSERT INTO signals (signal_id, asset_id, signal_type, timestamp, value, unit, metadata)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO signals (signal_id, org_id, asset_id, signal_type, timestamp, value, unit, metadata)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (signal_id) DO NOTHING
-                        """, (signal_id, asset_id, signal_type, evt["occurred_at"], value, unit,
-                              {"event_id": evt["event_id"], "source": "event"}))
+                        """, (signal_id, org_id, asset_id, signal_type, evt["occurred_at"], value, unit,
+                              {"event_id": evt["event_id"], "source": "event", "org_id": org_id}))
 
                     # Update recent values for anomaly detection
-                    key = (asset_id, signal_type)
+                    key = (org_id, asset_id, signal_type)
                     recent_values[key].append(value)
                     if len(recent_values[key]) > 100:  # Keep last 100 values
                         recent_values[key].pop(0)
 
                     # Compute rollups every 5 minutes (in real system, use cron or scheduler)
-                    _compute_rollups(conn, asset_id, signal_type)
+                    _compute_rollups(conn, org_id, asset_id, signal_type)
 
                     # Detect anomalies
                     anomaly_flags = _detect_anomalies(recent_values[key], value, details.get("threshold"))
@@ -127,7 +133,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                             "event_type": "signal.anomaly.detected",
                             "event_id": f"anomaly-{signal_id}",
                             "occurred_at": dt.datetime.utcnow().isoformat() + "Z",
-                            "org_id": evt["org_id"],
+                            "org_id": org_id,
                             "asset_id": asset_id,
                             "kind": "anomaly",
                             "severity": "medium",
@@ -163,7 +169,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
 
     logger.info({"event": "signals_processor.exit"})
 
-def _compute_rollups(conn, asset_id: str, signal_type: str):
+def _compute_rollups(conn, org_id: str, asset_id: str, signal_type: str):
     """Compute 1h, 6h, 24h rollups for the last period."""
     now = dt.datetime.utcnow()
     periods = [
@@ -178,9 +184,9 @@ def _compute_rollups(conn, asset_id: str, signal_type: str):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT value FROM signals
-                WHERE asset_id = %s AND signal_type = %s AND timestamp >= %s
+                WHERE org_id = %s AND asset_id = %s AND signal_type = %s AND timestamp >= %s
                 ORDER BY timestamp
-            """, (asset_id, signal_type, start_time))
+            """, (org_id, asset_id, signal_type, start_time))
 
             values = [row["value"] for row in cur.fetchall()]
             if not values:
@@ -201,17 +207,18 @@ def _compute_rollups(conn, asset_id: str, signal_type: str):
             rollup_id = f"{asset_id}-{signal_type}-{period_name}-{now.isoformat()}"
 
             cur.execute("""
-                INSERT INTO signal_rollups (rollup_id, asset_id, signal_type, period, start_time, end_time,
+                INSERT INTO signal_rollups (rollup_id, org_id, asset_id, signal_type, period, start_time, end_time,
                                            mean_value, min_value, max_value, count, anomaly_flags)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (rollup_id) DO UPDATE SET
+                    org_id = EXCLUDED.org_id,
                     mean_value = EXCLUDED.mean_value,
                     min_value = EXCLUDED.min_value,
                     max_value = EXCLUDED.max_value,
                     count = EXCLUDED.count,
                     anomaly_flags = EXCLUDED.anomaly_flags
-            """, (rollup_id, asset_id, signal_type, period_name, start_time, now,
-                  mean_val, min_val, max_val, count, json.dumps(anomaly_flags)))
+            """, (rollup_id, org_id, asset_id, signal_type, period_name, start_time, now,
+                  mean_val, min_val, max_val, count, json.dumps({**anomaly_flags, "org_id": org_id})))
 
 def _detect_anomalies(recent_values: list, current_value: float, threshold: float = None) -> dict:
     """Simple anomaly detection using z-score and threshold."""
