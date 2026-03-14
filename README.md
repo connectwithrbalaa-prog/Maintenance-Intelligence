@@ -70,3 +70,12 @@ If your OpenClaw runner can execute shell commands directly, schedule:
 and tail `logs/cron_rca_test.log`.
 
 The wrapper outputs a single JSON line from `mi-runner rca-test`, which includes the event_id and run_id. The full run summary is stored at `outputs/YYYY-MM-DD/<run_id>.json`.
+
+## Bad Actor Dashboard (Seed)
+
+- API: GET /api/v1/reports/bad-actors?limit=20
+  - Score = events_90d + 2*workorders_90d
+  - Includes latest_severity and last_event_at (when available)
+- CLI export:
+  - mi-runner export-bad-actors --limit 50
+  - Writes to outputs/reports/bad_actors_<YYYY-MM-DD>.json
