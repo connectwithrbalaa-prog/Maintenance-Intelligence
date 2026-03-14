@@ -1,6 +1,10 @@
+import csv
+import datetime as dt
+import io
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException, Query, Response
-from typing import Dict, Any, List
-import io, csv, datetime as dt
 import psycopg2
 from maintenance_intelligence.runner.config import Settings
 
@@ -20,6 +24,171 @@ def with_pg(dsn: str):
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
 
+
+def _parse_timestamp(value: Any) -> Optional[dt.datetime]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, dt.datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    try:
+        return dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _resolution_timestamp(metadata: Any) -> Optional[dt.datetime]:
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return _parse_timestamp(metadata.get("resolved_at")) or _parse_timestamp(metadata.get("created_at"))
+
+
+def _evidence_event_id(metadata: Any) -> Optional[str]:
+    metadata = metadata if isinstance(metadata, dict) else {}
+    value = metadata.get("evidence_event_id")
+    if not isinstance(value, str):
+        return None
+    for candidate in value.split(","):
+        cleaned = candidate.strip()
+        if cleaned:
+            return cleaned
+    return None
+
+
+def _find_ttr_event(
+    workorder: Dict[str, Any],
+    exact_events: Dict[str, Dict[str, Any]],
+    asset_events: Dict[str, List[Dict[str, Any]]],
+    fallback_window_h: int,
+) -> Optional[Dict[str, Any]]:
+    evidence_event_id = _evidence_event_id(workorder.get("metadata"))
+    if evidence_event_id:
+        return exact_events.get(evidence_event_id)
+
+    wo_ts = workorder.get("wo_ts")
+    asset_id = workorder.get("asset_id")
+    if not wo_ts or not asset_id:
+        return None
+
+    best_event: Optional[Dict[str, Any]] = None
+    best_delta: Optional[dt.timedelta] = None
+    max_delta = dt.timedelta(hours=fallback_window_h)
+    for event in asset_events.get(asset_id, []):
+        occurred_at = event.get("occurred_at")
+        if not occurred_at:
+            continue
+        delta = abs(wo_ts - occurred_at)
+        if delta > max_delta:
+            continue
+        if best_delta is None or delta < best_delta:
+            best_event = event
+            best_delta = delta
+    return best_event
+
+
+def _build_ttr_measurements(
+    workorders: List[Dict[str, Any]],
+    events: List[Dict[str, Any]],
+    fallback_window_h: int,
+) -> List[Dict[str, Any]]:
+    exact_events = {event["event_id"]: event for event in events if event.get("event_id")}
+    asset_events: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for event in events:
+        asset_id = event.get("asset_id")
+        if asset_id:
+            asset_events[asset_id].append(event)
+
+    measurements: List[Dict[str, Any]] = []
+    for workorder in workorders:
+        wo_ts = _resolution_timestamp(workorder.get("metadata"))
+        if not wo_ts:
+            continue
+
+        match = _find_ttr_event(
+            {**workorder, "wo_ts": wo_ts},
+            exact_events=exact_events,
+            asset_events=asset_events,
+            fallback_window_h=fallback_window_h,
+        )
+        if not match or not match.get("occurred_at"):
+            continue
+
+        delta_s = (wo_ts - match["occurred_at"]).total_seconds()
+        if delta_s < 0:
+            continue
+
+        measurements.append(
+            {
+                "wo_id": workorder.get("wo_id"),
+                "asset_id": workorder.get("asset_id"),
+                "event_id": match.get("event_id"),
+                "ttr_seconds": delta_s,
+            }
+        )
+    return measurements
+
+
+def _fetch_workorders_for_ttr(cur, window: int) -> List[Dict[str, Any]]:
+    cur.execute(
+        f"""
+            SELECT wo_id, asset_id, metadata
+            FROM workorders
+            WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+            ORDER BY COALESCE((metadata->>'created_at')::timestamptz, NOW()) DESC
+            LIMIT 500
+        """
+    )
+    return [
+        {"wo_id": row[0], "asset_id": row[1], "metadata": row[2] or {}}
+        for row in (cur.fetchall() or [])
+    ]
+
+
+def _fetch_candidate_events(cur, workorders: List[Dict[str, Any]], fallback_window_h: int) -> List[Dict[str, Any]]:
+    evidence_event_ids = []
+    asset_ids = set()
+    workorder_timestamps = []
+
+    for workorder in workorders:
+        metadata = workorder.get("metadata") or {}
+        evidence_event_id = _evidence_event_id(metadata)
+        if evidence_event_id:
+            evidence_event_ids.append(evidence_event_id)
+        asset_id = workorder.get("asset_id")
+        if asset_id:
+            asset_ids.add(asset_id)
+        wo_ts = _resolution_timestamp(metadata)
+        if wo_ts:
+            workorder_timestamps.append(wo_ts)
+
+    if not evidence_event_ids and (not asset_ids or not workorder_timestamps):
+        return []
+
+    where_clauses = []
+    params: List[Any] = []
+    if evidence_event_ids:
+        where_clauses.append("event_id = ANY(%s)")
+        params.append(evidence_event_ids)
+    if asset_ids and workorder_timestamps:
+        min_ts = min(workorder_timestamps) - dt.timedelta(hours=fallback_window_h)
+        max_ts = max(workorder_timestamps) + dt.timedelta(hours=fallback_window_h)
+        where_clauses.append("(asset_id = ANY(%s) AND occurred_at BETWEEN %s AND %s)")
+        params.extend([sorted(asset_ids), min_ts, max_ts])
+
+    cur.execute(
+        f"""
+            SELECT event_id, asset_id, occurred_at
+            FROM events
+            WHERE {' OR '.join(where_clauses)}
+        """,
+        tuple(params),
+    )
+    return [
+        {"event_id": row[0], "asset_id": row[1], "occurred_at": row[2]}
+        for row in (cur.fetchall() or [])
+    ]
+
 @router.get("/rca-outcomes")
 def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
     if window > 365:
@@ -31,6 +200,7 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     try:
         out: Dict[str, Any] = {}
+        fallback_window_h = max(1, int(getattr(s, "ttr_fallback_window_h", 24) or 24))
         with conn, conn.cursor() as cur:
             # Feedback counts by action (accept/reject/edited)
             cur.execute(f"""
@@ -45,27 +215,6 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
             out["acceptance_rate"] = (accept / total) if total > 0 else None
 
             cur.execute(f"""
-                SELECT w.wo_id,
-                       COALESCE((w.metadata->>'resolved_at')::timestamptz, (w.metadata->>'created_at')::timestamptz) AS wo_ts,
-                       e.occurred_at AS rec_ts,
-                       w.asset_id
-                FROM workorders w
-                JOIN events e
-                  ON e.event_id = ANY(string_to_array(COALESCE(w.metadata->>'evidence_event_id', ''), ','))
-                  OR e.asset_id = w.asset_id
-                WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
-                LIMIT 500
-            """)
-            ttrs: List[float] = []
-            for row in cur.fetchall() or []:
-                wo_ts, rec_ts = row[1], row[2]
-                if wo_ts and rec_ts:
-                    delta = (wo_ts - rec_ts).total_seconds()
-                    if delta >= 0:
-                        ttrs.append(delta)
-            out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
-
-            cur.execute(f"""
                 SELECT w.asset_id, COUNT(*) AS n
                 FROM workorders w
                 WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
@@ -74,6 +223,16 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 LIMIT 10
             """)
             out["top_assets_by_wo_volume"] = [{"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r]
+
+            try:
+                workorders = _fetch_workorders_for_ttr(cur, window)
+                candidate_events = _fetch_candidate_events(cur, workorders, fallback_window_h)
+                ttr_rows = _build_ttr_measurements(workorders, candidate_events, fallback_window_h)
+            except Exception:
+                ttr_rows = []
+
+            ttrs = [row["ttr_seconds"] for row in ttr_rows]
+            out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
 
         try:
             with conn, conn.cursor() as cur2:
@@ -98,31 +257,24 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
         except Exception:
             out["per_asset_acceptance"] = None
 
-        try:
-            with conn, conn.cursor() as cur3:
-                cur3.execute(f"""
-                    SELECT w.asset_id,
-                           AVG(
-                               EXTRACT(
-                                   EPOCH FROM (
-                                       COALESCE((w.metadata->>'resolved_at')::timestamptz, (w.metadata->>'created_at')::timestamptz)
-                                       - e.occurred_at
-                                   )
-                               )
-                           ) AS ttr_avg
-                    FROM workorders w
-                    JOIN events e ON e.asset_id = w.asset_id
-                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
-                    GROUP BY w.asset_id
-                    ORDER BY ttr_avg DESC NULLS LAST
-                    LIMIT 10
-                """)
-                rows = cur3.fetchall() or []
-                out["per_asset_ttr"] = [
-                    {"asset_id": row[0], "ttr_seconds_avg": float(row[1]) if row[1] is not None else None}
-                    for row in rows
-                ]
-        except Exception:
+        if ttr_rows:
+            per_asset_ttr: Dict[str, List[float]] = defaultdict(list)
+            for row in ttr_rows:
+                asset_id = row.get("asset_id")
+                if asset_id:
+                    per_asset_ttr[asset_id].append(row["ttr_seconds"])
+            out["per_asset_ttr"] = [
+                {
+                    "asset_id": asset_id,
+                    "ttr_seconds_avg": sum(values) / len(values),
+                }
+                for asset_id, values in sorted(
+                    per_asset_ttr.items(),
+                    key=lambda item: (sum(item[1]) / len(item[1])) if item[1] else -1,
+                    reverse=True,
+                )[:10]
+            ]
+        else:
             out["per_asset_ttr"] = None
 
         return out

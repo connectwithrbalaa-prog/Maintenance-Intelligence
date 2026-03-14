@@ -147,6 +147,7 @@ Notes:
 ### Outcomes Per-Asset & Resolution Timestamp
 
 - TTR now prefers `workorders.metadata.resolved_at` and falls back to `created_at` when missing.
+- TTR linkage prefers `metadata.evidence_event_id`; otherwise it uses the nearest same-asset event within `MI_TTR_FALLBACK_WINDOW_H` hours.
 - API / CSV include:
   - per_asset_acceptance: rate, accepts, total
   - per_asset_ttr: average TTR seconds by asset
