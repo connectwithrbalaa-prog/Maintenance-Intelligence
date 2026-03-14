@@ -191,6 +191,8 @@ Notes:
   - `POST /playbooks/search` returns stub playbook matches for planner review.
   - `GET /pm/proposals` lists scoped proposal drafts.
   - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
+  - PM proposal endpoints resolve identity from `request.state.user` first, then `X-Org-Id`, `X-Role`, and `X-Subject`, and finally the configured auth mode fallback.
+  - Proposal responses include `org_id` and `proposer_subject` so the portal can reflect backend identity consistently.
 - Thin portal preview:
   - `GET /portal/pm-approvals` serves a single-page planner review UI backed by the PM proposal endpoints.
   - `GET /api/v1/whoami` returns `{org_id, role, subject}` from request context when available and falls back to `X-Org-Id`, `X-Role`, and `X-Subject` headers for dev/testing.
@@ -203,7 +205,9 @@ Notes:
   - Use an `operator` or `admin` identity, approve a proposal, and confirm the CMS handoff reference is shown.
 - Schema:
   - Alembic revision `005_pm_change_proposals`
+  - Alembic revision `006_pm_change_proposals_identity`
   - SQL fallback migration `008_pm_change_proposals.sql`
+  - SQL fallback migration `009_pm_change_proposals_identity.sql`
 - The CMS handoff is intentionally a stub in `maintenance_intelligence/services/wo_bridge.py`; replace it with your planner or CMMS client before rollout.
 
 ## Cost and Latency Dashboards v2

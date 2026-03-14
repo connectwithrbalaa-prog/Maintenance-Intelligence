@@ -31,14 +31,15 @@ class FakeCursor:
             proposal = {
                 "proposal_id": params[0],
                 "org_id": params[1],
-                "run_id": params[2],
-                "recommendation_id": params[3],
-                "asset_id": params[4],
-                "proposal_title": params[5],
-                "proposal_summary": params[6],
+                "proposer_subject": params[2],
+                "run_id": params[3],
+                "recommendation_id": params[4],
+                "asset_id": params[5],
+                "proposal_title": params[6],
+                "proposal_summary": params[7],
                 "recommended_actions": ["Inspect bearings"],
                 "playbook_refs": [{"playbook_id": "PB-STUB-001"}],
-                "status": params[9],
+                "status": params[10],
                 "approved_by": None,
                 "approved_at": None,
                 "cms_reference": None,
@@ -53,6 +54,8 @@ class FakeCursor:
             if proposal and proposal["proposal_id"] == params[0] and proposal["org_id"] == params[1]:
                 self.row = (
                     proposal["proposal_id"],
+                    proposal["org_id"],
+                    proposal["proposer_subject"],
                     proposal["run_id"],
                     proposal["recommendation_id"],
                     proposal["asset_id"],
@@ -69,6 +72,8 @@ class FakeCursor:
                 self.rows = [
                     (
                         proposal["proposal_id"],
+                        proposal["org_id"],
+                        proposal["proposer_subject"],
                         proposal["run_id"],
                         proposal["recommendation_id"],
                         proposal["asset_id"],
@@ -123,12 +128,12 @@ def test_pm_advisor_routes(monkeypatch):
     monkeypatch.setattr(
         pm_mod,
         "analyze_pm_strategy",
-        lambda recommendation, context=None: {
+        lambda recommendation, context=None, identity=None: {
             "proposal_title": "PM plan for PUMP-101",
             "proposal_summary": "Schedule inspection and bearing swap.",
             "recommended_actions": ["Inspect bearings"],
             "playbook_query": "bearing swap",
-            "metadata": {"source": "test"},
+            "metadata": {"source": "test", "identity": identity or {}},
         },
     )
     monkeypatch.setattr(
@@ -164,6 +169,8 @@ def test_pm_advisor_routes(monkeypatch):
     )
     assert analyze.status_code == 200
     proposal_id = analyze.json()["proposal_id"]
+    assert analyze.json()["org_id"] == "default-org"
+    assert analyze.json()["proposer_subject"] == "anonymous"
 
     playbooks = client.post(
         "/api/v1/agents/playbooks/search",
@@ -175,6 +182,7 @@ def test_pm_advisor_routes(monkeypatch):
     listed = client.get("/api/v1/agents/pm/proposals")
     assert listed.status_code == 200
     assert listed.json()[0]["proposal_id"] == proposal_id
+    assert listed.json()[0]["proposer_subject"] == "anonymous"
 
     approved = client.post(
         f"/api/v1/agents/pm/proposals/{proposal_id}/approve",
@@ -182,3 +190,4 @@ def test_pm_advisor_routes(monkeypatch):
     )
     assert approved.status_code == 200
     assert approved.json()["cms_result"]["cms_reference"] == "CMS-123"
+    assert approved.json()["proposer_subject"] == "anonymous"

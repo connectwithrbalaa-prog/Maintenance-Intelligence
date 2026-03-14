@@ -13,9 +13,12 @@ def _draft_actions(recommendation: Dict[str, Any]) -> List[str]:
 
 
 def analyze_pm_strategy(
-    recommendation: Dict[str, Any], context: Optional[Dict[str, Any]] = None
+    recommendation: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+    identity: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     context = context or {}
+    identity = identity or {}
     actions = _draft_actions(recommendation)
     asset_id = recommendation.get("asset_id") or "unknown-asset"
     evidence = recommendation.get("evidence") or []
@@ -31,5 +34,10 @@ def analyze_pm_strategy(
             "source": "pm_advisor_stub",
             "evidence_count": len(evidence),
             "context_keys": sorted(context.keys()),
+            "identity": {
+                "org_id": identity.get("org_id"),
+                "subject": identity.get("subject"),
+                "role": identity.get("role"),
+            },
         },
     }

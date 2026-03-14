@@ -2,14 +2,16 @@ import importlib
 import sys
 from pathlib import Path
 
-import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.middleware.base import BaseHTTPMiddleware
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from maintenance_intelligence.api.main import app
+from maintenance_intelligence.multitenancy import TenantContext
 
 pm_mod = importlib.import_module("maintenance_intelligence.api.pm_advisor")
 
@@ -37,22 +39,21 @@ class FakeCursor:
                 "asset_id": params[5],
                 "proposal_title": params[6],
                 "proposal_summary": params[7],
-                "recommended_actions": ["Inspect bearings", "Plan bearing swap"],
-                "playbook_refs": [{"playbook_id": "PB-SMOKE-001", "title": "Bearing plan"}],
+                "recommended_actions": ["Inspect bearings"],
+                "playbook_refs": [{"playbook_id": "PB-ID-001"}],
                 "status": params[10],
                 "approved_by": None,
                 "approved_at": None,
                 "cms_reference": None,
-                "metadata": {"source": "smoke"},
+                "metadata": {"source": "identity-test"},
                 "created_at": None,
                 "updated_at": None,
             }
             return
-
         if "FROM pm_change_proposals\n                WHERE org_id" in query:
             proposal = self.state.get("proposal")
             self.rows = []
-            if proposal:
+            if proposal and proposal["org_id"] == params[0]:
                 self.rows = [
                     (
                         proposal["proposal_id"],
@@ -75,11 +76,10 @@ class FakeCursor:
                     )
                 ]
             return
-
         if "FROM pm_change_proposals\n                WHERE proposal_id" in query:
             proposal = self.state.get("proposal")
             self.row = None
-            if proposal:
+            if proposal and proposal["proposal_id"] == params[0] and proposal["org_id"] == params[1]:
                 self.row = (
                     proposal["proposal_id"],
                     proposal["org_id"],
@@ -94,7 +94,6 @@ class FakeCursor:
                     proposal["metadata"],
                 )
             return
-
         if "UPDATE pm_change_proposals" in query:
             proposal = self.state.get("proposal")
             if proposal:
@@ -126,8 +125,7 @@ class FakeConnection:
         return None
 
 
-@pytest.fixture
-def smoke_client(monkeypatch):
+def test_pm_advisor_identity_header_fallback(monkeypatch):
     state = {}
     monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
     monkeypatch.setattr(
@@ -135,66 +133,87 @@ def smoke_client(monkeypatch):
         "analyze_pm_strategy",
         lambda recommendation, context=None, identity=None: {
             "proposal_title": "PM plan for PUMP-101",
-            "proposal_summary": "Schedule inspection and bearing swap.",
-            "recommended_actions": ["Inspect bearings", "Plan bearing swap"],
-            "playbook_query": "bearing plan",
-            "metadata": {"source": "smoke", "identity": identity or {}},
+            "proposal_summary": "Header identity path.",
+            "recommended_actions": ["Inspect bearings"],
+            "playbook_query": "bearing review",
+            "metadata": {"identity": identity or {}},
         },
     )
-    monkeypatch.setattr(
-        pm_mod,
-        "search_playbooks",
-        lambda query, asset_id=None, limit=5: [{"playbook_id": "PB-SMOKE-001", "title": query}],
-    )
+    monkeypatch.setattr(pm_mod, "search_playbooks", lambda query, asset_id=None, limit=5: [])
     monkeypatch.setattr(
         pm_mod,
         "push_work_order_to_cms",
-        lambda proposal, approved_by=None, notes=None: {
-            "status": "queued",
-            "cms_reference": "WO-SMOKE-001",
-            "approved_by": approved_by,
-            "notes": notes,
-            "proposal_id": proposal.get("proposal_id"),
-        },
+        lambda proposal, approved_by=None, notes=None: {"cms_reference": "WO-ID-001"},
     )
-    return TestClient(app), state
 
-
-def test_pm_advisor_approve_flow_smoke(smoke_client):
-    client, _state = smoke_client
+    client = TestClient(app)
+    headers = {"X-Org-Id": "org-header", "X-Role": "operator", "X-Subject": "header-user"}
 
     created = client.post(
         "/api/v1/agents/pm/advisor/analyze",
+        headers=headers,
         json={
-            "run_id": "RUN-SMOKE-1",
-            "recommendation_id": "REC-SMOKE-1",
+            "run_id": "RUN-ID-1",
+            "recommendation_id": "REC-ID-1",
             "asset_id": "PUMP-101",
             "title": "Bearing wear",
-            "rationale": "Planner review requested.",
-            "evidence": ["E1"],
-            "immediate_actions": ["Inspect bearings"],
-            "metadata": {"source_run": "smoke"},
+            "metadata": {},
+        },
+    )
+
+    assert created.status_code == 200
+    body = created.json()
+    assert body["org_id"] == "org-header"
+    assert body["proposer_subject"] == "header-user"
+
+    approved = client.post(
+        f"/api/v1/agents/pm/proposals/{body['proposal_id']}/approve",
+        headers=headers,
+        json={"notes": "approve with header identity"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["org_id"] == "org-header"
+    assert approved.json()["proposer_subject"] == "header-user"
+
+
+def test_pm_advisor_identity_request_state_user(monkeypatch):
+    state = {}
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+    monkeypatch.setattr(
+        pm_mod,
+        "analyze_pm_strategy",
+        lambda recommendation, context=None, identity=None: {
+            "proposal_title": "PM plan for PUMP-202",
+            "proposal_summary": "Middleware identity path.",
+            "recommended_actions": ["Inspect motor coupling"],
+            "playbook_query": "coupling review",
+            "metadata": {"identity": identity or {}},
+        },
+    )
+    monkeypatch.setattr(pm_mod, "search_playbooks", lambda query, asset_id=None, limit=5: [])
+
+    class InjectUserMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            request.state.user = TenantContext(
+                org_id="org-middleware", role="operator", subject="middleware-user"
+            )
+            return await call_next(request)
+
+    temp_app = FastAPI()
+    temp_app.add_middleware(InjectUserMiddleware)
+    temp_app.include_router(pm_mod.router)
+
+    client = TestClient(temp_app)
+    created = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        json={
+            "run_id": "RUN-ID-2",
+            "recommendation_id": "REC-ID-2",
+            "asset_id": "PUMP-202",
+            "title": "Coupling drift",
+            "metadata": {},
         },
     )
     assert created.status_code == 200
-    proposal_id = created.json().get("proposal_id")
-    assert created.json()["proposer_subject"] == "anonymous"
-    if not proposal_id:
-        pytest.skip("No PM proposal created in smoke flow")
-
-    listed = client.get("/api/v1/agents/pm/proposals")
-    assert listed.status_code == 200
-    proposals = listed.json()
-    if not proposals:
-        pytest.skip("No PM proposals available in smoke flow")
-    assert proposals[0]["proposal_id"] == proposal_id
-
-    approved = client.post(
-        f"/api/v1/agents/pm/proposals/{proposal_id}/approve",
-        json={"approved_by": "planner@example.com", "notes": "Smoke test approval"},
-    )
-    assert approved.status_code == 200
-    body = approved.json()
-    assert body["status"] == "approved"
-    assert body["cms_result"]["cms_reference"] == "WO-SMOKE-001"
-    assert body["proposer_subject"] == "anonymous"
+    assert created.json()["org_id"] == "org-middleware"
+    assert created.json()["proposer_subject"] == "middleware-user"
