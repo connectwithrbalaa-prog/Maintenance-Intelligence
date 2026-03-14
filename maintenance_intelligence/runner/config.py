@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     default_org: str = Field(default="default-org", alias="MI_DEFAULT_ORG")
     auth_mode: str = Field(default="none", alias="MI_AUTH_MODE")
     dev_allow_headers: bool = Field(default=False, alias="MI_DEV_ALLOW_HEADERS")
+    pm_connector_backend: str = Field(default="mock", alias="MI_PM_CONNECTOR_BACKEND")
     api_keys_raw: str = Field(default="{}", alias="MI_API_KEYS")
     kafka_tenant_mode: str = Field(default="message", alias="MI_KAFKA_TENANT_MODE")
     prompt_defaults_raw: str = Field(default='{"rca":"rca-default-v1"}', alias="MI_PROMPT_DEFAULTS")

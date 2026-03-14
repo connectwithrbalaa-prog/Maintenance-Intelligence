@@ -190,7 +190,7 @@ Notes:
   - `POST /pm/advisor/analyze` creates a draft PM change proposal from an RCA recommendation.
   - `POST /playbooks/search` returns stub playbook matches for planner review.
   - `GET /pm/proposals` lists scoped proposal drafts.
-  - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
+  - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and sends it through the configured CMMS connector.
   - PM proposal endpoints resolve identity from `request.state.user` first, then guarded dev headers, and finally the configured auth mode fallback.
   - Proposal responses include `org_id` and `proposer_subject` so the portal can reflect backend identity consistently.
 - Thin portal preview:
@@ -209,11 +209,13 @@ Notes:
   - Alembic revision `006_pm_change_proposals_identity`
   - SQL fallback migration `008_pm_change_proposals.sql`
   - SQL fallback migration `009_pm_change_proposals_identity.sql`
-- The CMS handoff is intentionally a stub in `maintenance_intelligence/services/wo_bridge.py`; replace it with your planner or CMMS client before rollout.
+- `MI_PM_CONNECTOR_BACKEND` defaults to `mock`, which returns a realistic draft work-order payload and keeps the approval path behind a swappable adapter boundary.
+- The CMMS connector entry point lives behind `maintenance_intelligence/services/cmms.py`; add a real connector there before rollout.
 
 ## Environment & Dev Mode
 
 - `MI_DEV_ALLOW_HEADERS` defaults to `false` and should only be enabled for local development or isolated test environments.
+- `MI_PM_CONNECTOR_BACKEND` defaults to `mock`; switch it only after adding a real connector implementation behind the same adapter interface.
 - When enabled, `/api/v1/whoami` and the PM proposal endpoints may honor `X-Org-Id`, `X-Role`, and `X-Subject` for developer-controlled identity.
 - When disabled, real request-context auth is required; header-only identity returns null from `/api/v1/whoami` and PM proposal actions reject unauthenticated access.
 

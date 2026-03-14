@@ -227,11 +227,14 @@ def approve_pm_proposal(
                 "playbook_refs": row[9] or [],
                 "metadata": row[10] or {},
             }
-            cms_result = push_work_order_to_cms(
-                proposal,
-                approved_by=payload.approved_by or access.subject,
-                notes=payload.notes,
-            )
+            try:
+                cms_result = push_work_order_to_cms(
+                    proposal,
+                    approved_by=payload.approved_by or access.subject,
+                    notes=payload.notes,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
             cur.execute(
                 """
                 UPDATE pm_change_proposals
