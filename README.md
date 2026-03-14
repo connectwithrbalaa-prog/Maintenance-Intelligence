@@ -183,3 +183,12 @@ Notes:
 - `MI_PROMPT_DEFAULTS` and `MI_PROMPT_CANARY_DEFAULTS` provide config-backed fallbacks when no DB override exists.
 - `MI_PROMPT_CANARY_RATIO` controls the default canary split; the RCA agent records `prompt_id` and variant in run summaries and recommendation model metadata.
 - Feedback can carry `prompt_id` and `prompt_route`, enabling prompt quality tracking via `prompt_feedback_total` and auto-rollback decisions.
+
+## Cost and Latency Dashboards v2
+
+- RCA runs now export `rca_cost_usd_total{model,prompt_id}` using a token-based estimate derived from `MI_RCA_MODEL_RATES`.
+- Model latency is exported via `rca_latency_seconds{service,model,prompt_id}` while the existing `rca_duration_seconds{service}` still tracks full agent runtime.
+- Budget caps are exposed via `rca_budget_cap_usd{window}` using `MI_RCA_BUDGET_CAPS_USD` for daily and weekly utilization panels.
+- Prompt acceptance rate is derived from `prompt_feedback_total{route,prompt_id,action}` in PromQL rather than stored as a separate gauge.
+- RCA run summaries now persist `estimated_cost_usd` alongside tokens and latency for per-run auditability.
+- Dashboard and alert assets live under `monitoring/grafana/rca_observability_v2.dashboard.json` and `monitoring/prometheus/rca_observability_v2_alerts.yml`.

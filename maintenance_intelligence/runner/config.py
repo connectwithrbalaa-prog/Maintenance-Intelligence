@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     prompt_defaults_raw: str = Field(default='{"rca":"rca-default-v1"}', alias="MI_PROMPT_DEFAULTS")
     prompt_canary_defaults_raw: str = Field(default='{"rca":"rca-canary-v1"}', alias="MI_PROMPT_CANARY_DEFAULTS")
     prompt_canary_ratio: float = Field(default=0.1, alias="MI_PROMPT_CANARY_RATIO")
+    rca_model_rates_raw: str = Field(
+        default='{"gpt-4.1":{"per_1k_tokens_usd":0.01},"unset":{"per_1k_tokens_usd":0.0}}',
+        alias="MI_RCA_MODEL_RATES",
+    )
+    rca_budget_caps_usd_raw: str = Field(default='{"daily":25.0,"weekly":100.0}', alias="MI_RCA_BUDGET_CAPS_USD")
     genai_model: str = Field(default="gpt-4.1")
     genai_timeout_s: int = Field(default=25)
     run_summary_dir: str = Field(default="outputs")
@@ -58,6 +63,37 @@ class Settings(BaseSettings):
         except json.JSONDecodeError:
             return {}
         return data if isinstance(data, dict) else {}
+
+    @property
+    def rca_model_rates(self) -> Dict[str, float]:
+        try:
+            data = json.loads(self.rca_model_rates_raw or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        parsed: Dict[str, float] = {}
+        for model_name, raw_value in data.items():
+            if isinstance(raw_value, (int, float)):
+                parsed[model_name] = float(raw_value)
+                continue
+            if isinstance(raw_value, dict) and isinstance(raw_value.get("per_1k_tokens_usd"), (int, float)):
+                parsed[model_name] = float(raw_value["per_1k_tokens_usd"])
+        return parsed
+
+    @property
+    def rca_budget_caps_usd(self) -> Dict[str, float]:
+        try:
+            data = json.loads(self.rca_budget_caps_usd_raw or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        parsed: Dict[str, float] = {}
+        for window, raw_value in data.items():
+            if isinstance(raw_value, (int, float)):
+                parsed[window] = float(raw_value)
+        return parsed
 
     class Config:
         env_prefix = "MI_"
