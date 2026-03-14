@@ -4,6 +4,7 @@ from loguru import logger
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
+from maintenance_intelligence.context.assembler import get_event_context
 
 def rca_agent(kafka_bootstrap: str = None):
     settings = Settings()
@@ -20,22 +21,19 @@ def rca_agent(kafka_bootstrap: str = None):
                          value_serializer=lambda v: json.dumps(v).encode("utf-8"))
 
     openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        logger.warning({"event":"genai.missing_key","note":"OPENAI_API_KEY not set; using fallback text"})
-        gateway = None
-    else:
-        gateway = GenAIGateway(api_key=openai_key, model=getattr(settings, "genai_model", "gpt-4.1"),
-                               timeout_s=getattr(settings, "genai_timeout_s", 25))
+    gateway = GenAIGateway(api_key=openai_key, model=getattr(settings, "genai_model", "gpt-4.1"),
+                           timeout_s=getattr(settings, "genai_timeout_s", 25)) if openai_key else None
 
     for msg in cons:
         evt = msg.value
         if evt.get("kind") not in ("alarm", "anomaly"):
             continue
 
-        context = {"notes": "MVP context; extend with signals/WOs/docs"}
+        # Assemble MVP context
+        ctx = get_event_context(evt, settings)
 
         if gateway:
-            g = gateway.call_rca(evt, context)
+            g = gateway.call_rca(evt, ctx)
             rationale = g.get("text", "No output")
             model_meta = {"name": "openai", "version": g.get("model_version"), "tokens": g.get("tokens"), "latency_ms": g.get("latency_ms")}
         else:
@@ -43,6 +41,8 @@ def rca_agent(kafka_bootstrap: str = None):
             model_meta = {"name": "openai", "version": "unset", "tokens": None, "latency_ms": None}
 
         rec_id = str(uuid.uuid4())
+        doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
+
         out = {
             "event_type": "recommendation.created",
             "event_id": str(uuid.uuid4()),
@@ -53,11 +53,15 @@ def rca_agent(kafka_bootstrap: str = None):
                 "asset_id": evt.get("asset_id"),
                 "title": f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}",
                 "rationale": rationale,
-                "evidence": [evt.get("event_id", "")],
+                "evidence": [evt.get("event_id", "")] + doc_chunk_ids,
                 "model": model_meta,
                 "immutable": True,
             },
             "lineage": {"source": "agent-rca-genai"},
+            "context_meta": {
+                "wo_titles_count": len(ctx.get("last_wo_titles", [])),
+                "doc_chunk_ids": doc_chunk_ids,
+            },
         }
         prod.send("canonical.recommendation.created", out)
         prod.flush()
@@ -69,6 +73,7 @@ def rca_agent(kafka_bootstrap: str = None):
             "recommendation_id": rec_id,
             "event_id": evt.get("event_id"),
             "model": model_meta,
+            "context_meta": out.get("context_meta", {}),
         })
 
-        logger.info({"event":"rca.recommendation.created","id":rec_id,"model":model_meta})
+        logger.info({"event":"rca.recommendation.created","id":rec_id,"model":model_meta,"ctx":out.get("context_meta")})
