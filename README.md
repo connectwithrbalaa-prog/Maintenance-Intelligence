@@ -184,6 +184,18 @@ Notes:
 - `MI_PROMPT_CANARY_RATIO` controls the default canary split; the RCA agent records `prompt_id` and variant in run summaries and recommendation model metadata.
 - Feedback can carry `prompt_id` and `prompt_route`, enabling prompt quality tracking via `prompt_feedback_total` and auto-rollback decisions.
 
+## PM Advisor Skeleton
+
+- New PM advisory endpoints live under `/api/v1/agents`:
+  - `POST /pm/advisor/analyze` creates a draft PM change proposal from an RCA recommendation.
+  - `POST /playbooks/search` returns stub playbook matches for planner review.
+  - `GET /pm/proposals` lists scoped proposal drafts.
+  - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
+- Schema:
+  - Alembic revision `005_pm_change_proposals`
+  - SQL fallback migration `008_pm_change_proposals.sql`
+- The CMS handoff is intentionally a stub in `maintenance_intelligence/services/wo_bridge.py`; replace it with your planner or CMMS client before rollout.
+
 ## Cost and Latency Dashboards v2
 
 - RCA runs now export `rca_cost_usd_total{model,prompt_id}` using a token-based estimate derived from `MI_RCA_MODEL_RATES`.

@@ -20,6 +20,17 @@ def with_pg(dsn: str):
             time.sleep(1)
 
 
+def push_work_order_to_cms(proposal: dict, approved_by: str | None = None, notes: str | None = None):
+    return {
+        "status": "pending",
+        "cms_reference": None,
+        "approved_by": approved_by,
+        "notes": notes,
+        "message": "Stub CMS handoff; replace with your planner/CMMS integration.",
+        "proposal_id": proposal.get("proposal_id"),
+    }
+
+
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
     settings = Settings()
     conn = with_pg(pg_dsn)
