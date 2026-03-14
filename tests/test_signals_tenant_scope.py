@@ -2,9 +2,9 @@ import json
 
 from fastapi.testclient import TestClient
 
+from maintenance_intelligence.api import signals as signals_api
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.context import assembler
-from maintenance_intelligence.api import signals as signals_api
 
 
 class _Cursor:

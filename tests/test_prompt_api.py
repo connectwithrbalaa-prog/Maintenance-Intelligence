@@ -2,10 +2,10 @@ import json
 
 from fastapi.testclient import TestClient
 
-from maintenance_intelligence.api.main import app
-from maintenance_intelligence.api.metrics import prompt_feedback_total
 from maintenance_intelligence.api import feedback as feedback_api
 from maintenance_intelligence.api import prompts as prompts_api
+from maintenance_intelligence.api.main import app
+from maintenance_intelligence.api.metrics import prompt_feedback_total
 
 
 def test_prompt_api_list_and_admin_update(monkeypatch):

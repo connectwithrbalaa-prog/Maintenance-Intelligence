@@ -1,6 +1,8 @@
-from .config import Settings
-from .logging import setup_logger, run_id, timed
 from loguru import logger
+
+from .config import Settings
+from .logging import run_id, setup_logger, timed
+
 
 @timed
 def run(event_id: str, settings: Settings, org_id: str | None = None):

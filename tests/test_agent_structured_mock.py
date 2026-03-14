@@ -1,6 +1,5 @@
-import os, json
 from maintenance_intelligence.services import rca_agent as rca_mod
-from maintenance_intelligence.runner.config import Settings
+
 
 def test_agent_structured_mock(monkeypatch, tmp_path):
     # Test that structured fields are included in summary
@@ -34,8 +33,6 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
     
     # Directly test the logic by importing and calling parts
     # Since rca_agent is a consumer loop, we'll simulate the key parts
-    from maintenance_intelligence.context.assembler import get_event_context
-    from maintenance_intelligence.genai.gateway import GenAIGateway
     
     # Mock context
     monkeypatch.setattr(rca_mod, "get_event_context", lambda evt, settings: {"doc_chunks": [{"chunk_id": "DOC-1"}]})
@@ -46,7 +43,6 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
     gateway = FakeGW()
     g = gateway.call_rca(evt, ctx)
     structured = g.get("structured") or {}
-    rationale = "\n".join(structured.get("hypothesis", [])[:4]) or g.get("text", "No output")
     model_meta = {"name": "openai", "version": g.get("model_version"), "tokens": g.get("tokens"), "latency_ms": g.get("latency_ms"), "confidence": structured.get("confidence", 0.5)}
     
     # Create the summary payload as in the code

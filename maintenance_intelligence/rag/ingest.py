@@ -1,9 +1,13 @@
-import os, json, uuid, pathlib, re, time
-from typing import List, Dict, Any
-import psycopg2
+import os
+import pathlib
+import re
+import uuid
+from typing import Any, Dict, List
+
 from loguru import logger
-from maintenance_intelligence.runner.config import Settings
+
 from maintenance_intelligence.context.assembler import with_pg
+from maintenance_intelligence.runner.config import Settings
 
 try:
     from openai import OpenAI

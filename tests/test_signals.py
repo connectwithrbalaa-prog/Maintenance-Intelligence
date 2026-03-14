@@ -1,8 +1,12 @@
-import pytest
-from maintenance_intelligence.services.signals import _detect_anomalies, _compute_rollups, _resolve_signal_org_id
-import psycopg2
 from unittest.mock import MagicMock
+
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.signals import (
+    _compute_rollups,
+    _detect_anomalies,
+    _resolve_signal_org_id,
+)
+
 
 def test_detect_anomalies():
     # Normal values

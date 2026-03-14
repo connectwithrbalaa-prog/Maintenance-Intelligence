@@ -1,5 +1,9 @@
+import sys
+import time
+import uuid
+
 from loguru import logger
-import sys, time, uuid
+
 
 def setup_logger(level: str = "INFO"):
     logger.remove()

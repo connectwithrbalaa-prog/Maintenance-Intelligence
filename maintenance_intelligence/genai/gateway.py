@@ -1,6 +1,8 @@
-import os, time
-from typing import Dict, Any
+import time
+from typing import Any, Dict
+
 from loguru import logger
+
 try:
     from openai import OpenAI
 except Exception:
@@ -66,7 +68,8 @@ class GenAIGateway:
         return system_prompt, prompt
 
     def _parse_structured(self, text: str) -> Dict[str, Any]:
-        import json, re
+        import json
+        import re
         # Extract first JSON object if model wraps content
         m = re.search(r'\{[\s\S]*\}', text)
         payload = text if m is None else m.group(0)

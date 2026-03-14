@@ -4,26 +4,28 @@ import os
 import signal
 import sys
 import uuid
+
+import backoff
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
-from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
-from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.genai.gateway import GenAIGateway
-from maintenance_intelligence.prompts.catalog import resolve_prompt_for_route
-from maintenance_intelligence.runner.summaries import write_run_summary
-from maintenance_intelligence.context.assembler import get_event_context
-import backoff
+
 from maintenance_intelligence.api.metrics import (
     publish_budget_caps,
-    recommendations_created_total,
     rca_cost_usd_total,
     rca_duration_seconds,
-    rca_failures_total,
     rca_latency_seconds,
     rca_runs_by_prompt_total,
     rca_runs_total,
+    recommendations_created_total,
 )
+from maintenance_intelligence.context.assembler import get_event_context
+from maintenance_intelligence.genai.gateway import GenAIGateway
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
+from maintenance_intelligence.prompts.catalog import resolve_prompt_for_route
+from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.summaries import write_run_summary
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):

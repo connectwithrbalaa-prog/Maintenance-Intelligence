@@ -1,10 +1,10 @@
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional
-import psycopg2
+
 from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.context.assembler import with_pg
 
 router = APIRouter()
 

@@ -1,6 +1,12 @@
-import os, json, time, uuid, threading, datetime as dt
-from kafka import KafkaProducer, KafkaConsumer
+import datetime as dt
+import json
+import os
+import threading
+import time
+import uuid
+
 import psycopg2
+from kafka import KafkaConsumer, KafkaProducer
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 PG_DSN = "dbname={db} user={user} password={pwd} host={host} port=5432".format(

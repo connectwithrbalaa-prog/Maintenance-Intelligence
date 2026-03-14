@@ -1,10 +1,11 @@
-import re
 import math
-from typing import List, Dict, Any, Optional, Tuple
+import re
 from collections import Counter
-import psycopg2
+from typing import Any, Dict, List, Optional, Tuple
+
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.runner.config import Settings
+
 
 class HybridRetriever:
     """Hybrid retrieval combining BM25 and vector similarity."""

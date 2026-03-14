@@ -3,10 +3,10 @@ import json
 
 from fastapi.testclient import TestClient
 
-from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import feedback as feedback_api
 from maintenance_intelligence.api import main as main_api
 from maintenance_intelligence.api import outcomes as outcomes_api
+from maintenance_intelligence.api.main import app
 
 
 class _Cursor:

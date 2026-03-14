@@ -2,7 +2,12 @@ from typing import Callable
 
 from fastapi import Depends, Header, HTTPException
 
-from maintenance_intelligence.multitenancy import TenantContext, normalize_role, resolve_org_id, role_allows
+from maintenance_intelligence.multitenancy import (
+    TenantContext,
+    normalize_role,
+    resolve_org_id,
+    role_allows,
+)
 from maintenance_intelligence.runner.config import Settings
 
 

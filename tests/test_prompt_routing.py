@@ -1,6 +1,9 @@
-import json
 
-from maintenance_intelligence.api.metrics import rca_cost_usd_total, rca_latency_seconds, rca_runs_by_prompt_total
+from maintenance_intelligence.api.metrics import (
+    rca_cost_usd_total,
+    rca_latency_seconds,
+    rca_runs_by_prompt_total,
+)
 from maintenance_intelligence.services import rca_agent as rca_mod
 
 

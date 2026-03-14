@@ -1,9 +1,11 @@
-import datetime as dt
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Optional
+
 import psycopg2
 from loguru import logger
+
 from maintenance_intelligence.multitenancy import org_scope_enabled, resolve_org_id
 from maintenance_intelligence.runner.config import Settings
+
 
 def with_pg(dsn: str):
     import time
@@ -130,7 +132,8 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
         logger.debug({"event":"ctx.error","err":str(e)})
     finally:
         try:
-            if conn: conn.close()
+            if conn:
+                conn.close()
         except Exception:
             pass
     return out

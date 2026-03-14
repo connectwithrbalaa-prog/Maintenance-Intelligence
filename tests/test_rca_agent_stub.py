@@ -1,6 +1,5 @@
-import os, json
 from maintenance_intelligence.services import rca_agent as rca_mod
-from maintenance_intelligence.runner.config import Settings
+
 
 def test_rca_agent_stub_path(monkeypatch, tmp_path):
     # Ensure no OpenAI key
@@ -26,13 +25,12 @@ def test_rca_agent_stub_path(monkeypatch, tmp_path):
     # Run one loop iteration by breaking after first message
     collected = {}
     def one_loop(*args, **kwargs):
-        settings = Settings()
         cons = FakeCons()
-        prod = FakeProd()
         # inline single-iteration from module function
         for msg in cons:
             evt = msg.value
-            if evt.get("kind") not in ("alarm","anomaly"): continue
+            if evt.get("kind") not in ("alarm", "anomaly"):
+                continue
             # we test just that gateway missing path doesn't crash and summary writer is invoked
             collected["evt"] = evt
             break

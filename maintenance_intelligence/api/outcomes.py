@@ -4,8 +4,9 @@ import io
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
 import psycopg2
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+
 from maintenance_intelligence.api.auth import require_role
 from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings

@@ -1,12 +1,17 @@
-import json, signal, sys, time
+import json
+import signal
+import sys
+
+import backoff
+import psycopg2
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
-import psycopg2
 from loguru import logger
-import backoff
+
 from maintenance_intelligence.api.metrics import events_ingested_total
 from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope
 from maintenance_intelligence.runner.config import Settings
+
 
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
 def create_db_connection(dsn: str):

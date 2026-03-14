@@ -3,13 +3,14 @@ import uuid
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.api.auth import require_role
-from maintenance_intelligence.context.assembler import with_pg
-from maintenance_intelligence.api.metrics import REGISTRY, prompt_feedback_total
-from maintenance_intelligence.multitenancy import TenantContext
 from prometheus_client import Counter
+from pydantic import BaseModel, Field
+
+from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.api.metrics import REGISTRY, prompt_feedback_total
+from maintenance_intelligence.context.assembler import with_pg
+from maintenance_intelligence.multitenancy import TenantContext
+from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/rca", tags=["rca"])
 feedback_total = Counter("rca_feedback_total", "Total RCA feedback items", ["action"], registry=REGISTRY)

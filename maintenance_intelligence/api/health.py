@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Query
-from maintenance_intelligence.runner.config import Settings
-import socket, psycopg2
-from kafka import KafkaAdminClient
 import os
-from typing import Dict, Any, List, Tuple
-from kafka import KafkaConsumer
+import socket
+from typing import Any, Dict, List
+
+import psycopg2
+from fastapi import APIRouter, Query
+from kafka import KafkaAdminClient, KafkaConsumer
+
+from maintenance_intelligence.runner.config import Settings
+
 
 def compute_kafka_lag(bootstrap: str, groups: List[str], topics: List[str], timeout_ms: int = 3000) -> Dict[str, Any]:
     """
@@ -53,14 +56,18 @@ def compute_kafka_lag(bootstrap: str, groups: List[str], topics: List[str], time
                 # If committed offsets cannot be fetched due to ACLs/permissions, mark unknown
                 parts_detail.append({"topic": "unknown", "partition": -1, "lag": None})
             finally:
-                try: group_cons.close()
-                except Exception: pass
+                try:
+                    group_cons.close()
+                except Exception:
+                    pass
 
             out[g] = {"total_lag": grp_total, "partitions": parts_detail}
             summary_total += grp_total
 
-        try: base_cons.close()
-        except Exception: pass
+        try:
+            base_cons.close()
+        except Exception:
+            pass
 
         out["_summary"] = {"total_lag": summary_total}
         return out

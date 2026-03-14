@@ -1,10 +1,14 @@
-import json, datetime as dt
-from kafka import KafkaConsumer
+import datetime as dt
+import json
+
 import psycopg2
+from kafka import KafkaConsumer
 from loguru import logger
+
 from maintenance_intelligence.api.metrics import wo_drafts_total
-from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope
 from maintenance_intelligence.runner.config import Settings
+
 
 def with_pg(dsn: str):
     import time

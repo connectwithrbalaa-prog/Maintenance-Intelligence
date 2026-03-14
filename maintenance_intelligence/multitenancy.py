@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-
 ROLE_ORDER = {"viewer": 0, "operator": 1, "admin": 2}
 
 

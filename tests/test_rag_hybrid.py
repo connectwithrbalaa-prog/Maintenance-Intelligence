@@ -1,6 +1,5 @@
-import pytest
 from maintenance_intelligence.rag.retrieval import HybridRetriever
-from unittest.mock import MagicMock, patch
+
 
 def test_hybrid_retriever_combine_scores():
     retriever = HybridRetriever("dummy_db_url")

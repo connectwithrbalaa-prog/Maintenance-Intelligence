@@ -1,14 +1,19 @@
-import os, json, datetime as dt, signal, sys
-from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import KafkaError
-from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.runner.logging import get_logger
-from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
+import datetime as dt
+import json
+import signal
+import statistics
+import sys
+from collections import defaultdict
+
+import backoff
 import psycopg2
 import psycopg2.extras
-from collections import defaultdict
-import statistics
-import backoff
+from kafka import KafkaConsumer, KafkaProducer
+from kafka.errors import KafkaError
+
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
+from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.logging import get_logger
 
 logger = get_logger(__name__)
 

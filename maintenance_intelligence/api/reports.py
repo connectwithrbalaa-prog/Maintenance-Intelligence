@@ -1,7 +1,8 @@
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, Query
 import psycopg2
+from fastapi import APIRouter, Depends, Query
+
 from maintenance_intelligence.api.auth import require_role
 from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
@@ -79,5 +80,7 @@ def bad_actors(
         rows.sort(key=lambda r: r["score"], reverse=True)
         return rows[:limit]
     finally:
-        try: conn.close()
-        except Exception: pass
+        try:
+            conn.close()
+        except Exception:
+            pass

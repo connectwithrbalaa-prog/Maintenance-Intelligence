@@ -1,10 +1,18 @@
-import time, uuid, json, datetime as dt, signal, sys
+import datetime as dt
+import json
+import signal
+import sys
+import time
+import uuid
+
+import backoff
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
-import backoff
+
 from maintenance_intelligence.multitenancy import scoped_topic
 from maintenance_intelligence.runner.config import Settings
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_producer(kafka_bootstrap: str):

@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+
 from maintenance_intelligence.api.main import app
+
 
 def test_outcomes_shape_keys():
     c = TestClient(app)

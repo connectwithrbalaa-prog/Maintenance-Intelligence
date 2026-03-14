@@ -1,13 +1,15 @@
 import os
-import sys
+
 from loguru import logger
+
 from maintenance_intelligence.runner.config import Settings
+
 
 def run():
     """Run database migrations using Alembic."""
     try:
-        from alembic.config import Config
         from alembic import command
+        from alembic.config import Config
 
         # Get database URL
         settings = Settings()
@@ -27,7 +29,9 @@ def run():
         logger.warning({"event": "migration.fallback", "reason": "alembic not available, using legacy SQL migrations"})
 
         # Fallback to legacy SQL migrations
-        import glob, psycopg2
+        import glob
+
+        import psycopg2
 
         DDL_TRACK_TABLE = "mi_schema_migrations"
 
@@ -57,7 +61,7 @@ def run():
                         if already_applied(cur, name):
                             logger.info({"event":"migration.skip","file":name})
                             continue
-                        with open(f, "r") as fh:
+                        with open(f) as fh:
                             sql_text = fh.read()
                         logger.info({"event":"migration.apply","file":name})
                         apply_sql(cur, sql_text)

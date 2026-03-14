@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.runner.config import Settings
 
-
 DEFAULT_PROMPTS: List[Dict[str, Any]] = [
     {
         "prompt_id": "rca-default-v1",

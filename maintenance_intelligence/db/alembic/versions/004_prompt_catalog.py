@@ -7,10 +7,9 @@ Create Date: 2026-03-14 12:15:00.000000
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
-
 
 revision: str = "004_prompt_catalog"
 down_revision: Union[str, None] = "003_signals_org_scope"

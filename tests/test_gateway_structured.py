@@ -1,5 +1,6 @@
 from maintenance_intelligence.genai.gateway import GenAIGateway
 
+
 def test_parse_structured_fallback(monkeypatch):
     class FakeGW(GenAIGateway):
         def __init__(self): pass
