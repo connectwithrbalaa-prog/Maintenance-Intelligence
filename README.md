@@ -192,3 +192,8 @@ Notes:
 - Prompt acceptance rate is derived from `prompt_feedback_total{route,prompt_id,action}` in PromQL rather than stored as a separate gauge.
 - RCA run summaries now persist `estimated_cost_usd` alongside tokens and latency for per-run auditability.
 - Dashboard and alert assets live under `monitoring/grafana/rca_observability_v2.dashboard.json` and `monitoring/prometheus/rca_observability_v2_alerts.yml`.
+
+## Rollout and Operations Docs
+
+- Rollout guide: `docs/v0.3.0-rollout-guide.md`
+- Operator checklist: `docs/v0.3.0-operator-checklist.md`
