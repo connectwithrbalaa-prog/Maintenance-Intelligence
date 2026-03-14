@@ -14,14 +14,14 @@ class GenAIGateway:
             raise RuntimeError("openai package not installed")
         self.client = OpenAI(api_key=api_key)
 
-    def call_rca(self, event: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    def call_rca(self, event: Dict[str, Any], context: Dict[str, Any], prompt_selection: Dict[str, Any] | None = None) -> Dict[str, Any]:
         t0 = time.time()
-        prompt = self._build_prompt(event, context)
+        system_prompt, prompt = self._build_prompt(event, context, prompt_selection=prompt_selection)
         try:
             resp = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are an industrial maintenance RCA assistant. Be concise and cite signals/WOs/docs when possible."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
@@ -40,26 +40,30 @@ class GenAIGateway:
             "model_version": self.model,
             "tokens": tokens,
             "latency_ms": latency,
+            "structured": self._parse_structured(text),
+            "prompt_id": (prompt_selection or {}).get("prompt_id"),
         }
 
-    
-    def _build_prompt(self, event: Dict[str, Any], context: Dict[str, Any]) -> str:
-        lines = []
-        lines.append("You are an industrial maintenance RCA assistant. Respond with STRICT JSON only.")
-        lines.append("Do NOT include markdown, backticks, or commentary — return ONLY the JSON object.")
-        lines.append("Use this schema and fill every field; if unknown, produce your best estimate:")
-        lines.append('\nSCHEMA (strict JSON; do not include extra keys):\n{\n  "title": "string",\n  "hypothesis": ["string", "..."],\n  "evidence_ids": ["string", "..."],  // IDs from signals/doc chunks/WOs\n  "immediate_actions": ["string", "..."],\n  "pm_suggestions": ["string", "..."],\n  "confidence": 0.0  // 0..1\n}\n')
-        lines.append("Event JSON:")
-        lines.append(str(event))
-        lines.append("Context JSON:")
-        lines.append(str(context))
-        return "\n".join(lines)
-
-        lines.append("Task: Draft an RCA hypothesis and recommended next actions for this alarm/anomaly.")
-        lines.append(f"Event: {event}")
-        lines.append(f"Context: {context}")
-        lines.append("Output format:\\n- Title\\n- Hypothesis (2-4 bullets)\\n- Evidence to check (signals/WOs/docs)\\n- Immediate actions (1-3)\\n- Longer-term PM/design suggestions (1-2)")
-        return "\\n".join(lines)
+    def _build_prompt(self, event: Dict[str, Any], context: Dict[str, Any], prompt_selection: Dict[str, Any] | None = None) -> tuple[str, str]:
+        default_system = "You are an industrial maintenance RCA assistant. Respond with strict JSON only."
+        default_user = (
+            "Use this schema and fill every field; if unknown, produce your best estimate:\n"
+            '{{"title":"string","hypothesis":["string"],"evidence_ids":["string"],'
+            '"immediate_actions":["string"],"pm_suggestions":["string"],"confidence":0.0}}\n'
+            "Event JSON:\n{event_json}\n"
+            "Context JSON:\n{context_json}"
+        )
+        prompt_selection = prompt_selection or {}
+        system_prompt = prompt_selection.get("system_prompt") or default_system
+        user_template = prompt_selection.get("user_prompt_template") or default_user
+        prompt = user_template.format(
+            event_json=str(event),
+            context_json=str(context),
+            asset_id=event.get("asset_id"),
+            severity=event.get("severity"),
+            kind=event.get("kind"),
+        )
+        return system_prompt, prompt
 
     def _parse_structured(self, text: str) -> Dict[str, Any]:
         import json, re

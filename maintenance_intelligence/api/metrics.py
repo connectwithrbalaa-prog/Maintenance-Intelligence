@@ -14,6 +14,18 @@ rca_duration_seconds = Histogram("rca_duration_seconds", "RCA run duration (seco
 events_ingested_total = Counter("events_ingested_total", "Total events ingested", ["service"], registry=REGISTRY)
 recommendations_created_total = Counter("recommendations_created_total", "Total recommendations created", ["service"], registry=REGISTRY)
 wo_drafts_total = Counter("wo_drafts_total", "Total WO drafts created", ["service"], registry=REGISTRY)
+rca_runs_by_prompt_total = Counter(
+    "rca_runs_by_prompt_total",
+    "Total RCA runs by route and prompt",
+    ["service", "route", "prompt_id", "variant"],
+    registry=REGISTRY,
+)
+prompt_feedback_total = Counter(
+    "prompt_feedback_total",
+    "Total prompt-linked feedback items",
+    ["route", "prompt_id", "action"],
+    registry=REGISTRY,
+)
 
 # Kafka lag gauge (optional; set by health checks if desired)
 kafka_consume_lag = Gauge("kafka_consume_lag", "Kafka consumer group lag (total)", ["group"], registry=REGISTRY)

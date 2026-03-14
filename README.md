@@ -175,3 +175,11 @@ Notes:
 - `signals` and `signal_rollups` now carry `org_id` for end-to-end tenant isolation in the context path.
 - Signal ingestion writes `org_id` from the incoming event, falls back to `lineage.org_id`, and then to `MI_DEFAULT_ORG`.
 - The SQL migration backfills existing `signals.org_id` from stored metadata where available; historical rollups without source org metadata may remain null until recomputed.
+
+## Prompt Catalog and A/B Testing
+
+- Prompt templates are versioned in `prompt_catalog` with IDs, route ownership, descriptions, and intended-use metadata.
+- Route-level defaults and org-specific overrides are stored in `prompt_route_configs`.
+- `MI_PROMPT_DEFAULTS` and `MI_PROMPT_CANARY_DEFAULTS` provide config-backed fallbacks when no DB override exists.
+- `MI_PROMPT_CANARY_RATIO` controls the default canary split; the RCA agent records `prompt_id` and variant in run summaries and recommendation model metadata.
+- Feedback can carry `prompt_id` and `prompt_route`, enabling prompt quality tracking via `prompt_feedback_total` and auto-rollback decisions.
