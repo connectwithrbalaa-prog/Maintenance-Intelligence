@@ -21,13 +21,18 @@ def _header_fallback(
     )
 
 
+def _dev_headers_allowed() -> bool:
+    return bool(Settings().dev_allow_headers)
+
+
 def resolve_request_identity(
     request: Request,
     x_api_key: str | None = None,
     x_org_id: str | None = None,
     x_role: str | None = None,
     x_subject: str | None = None,
-) -> TenantContext:
+    allow_missing: bool = False,
+) -> TenantContext | None:
     user = getattr(request.state, "user", None)
     if isinstance(user, TenantContext):
         return user
@@ -38,7 +43,9 @@ def resolve_request_identity(
             subject=str(getattr(user, "subject", "request-state")),
         )
     if x_org_id or x_role or x_subject:
-        return _header_fallback(x_org_id, x_role, x_subject)
+        if _dev_headers_allowed():
+            return _header_fallback(x_org_id, x_role, x_subject)
+        return None
     return get_request_context(x_api_key=x_api_key)
 
 
@@ -56,5 +63,8 @@ def whoami(
         x_org_id=x_org_id,
         x_role=x_role,
         x_subject=x_subject,
+        allow_missing=True,
     )
+    if access is None:
+        return {"org_id": None, "role": None, "subject": None}
     return {"org_id": access.org_id, "role": access.role, "subject": access.subject}

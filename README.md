@@ -191,12 +191,13 @@ Notes:
   - `POST /playbooks/search` returns stub playbook matches for planner review.
   - `GET /pm/proposals` lists scoped proposal drafts.
   - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
-  - PM proposal endpoints resolve identity from `request.state.user` first, then `X-Org-Id`, `X-Role`, and `X-Subject`, and finally the configured auth mode fallback.
+  - PM proposal endpoints resolve identity from `request.state.user` first, then guarded dev headers, and finally the configured auth mode fallback.
   - Proposal responses include `org_id` and `proposer_subject` so the portal can reflect backend identity consistently.
 - Thin portal preview:
   - `GET /portal/pm-approvals` serves a single-page planner review UI backed by the PM proposal endpoints.
-  - `GET /api/v1/whoami` returns `{org_id, role, subject}` from request context when available and falls back to `X-Org-Id`, `X-Role`, and `X-Subject` headers for dev/testing.
-  - The portal uses `/api/v1/whoami` first and only falls back to local browser role state when backend identity is unavailable.
+  - `GET /api/v1/whoami` returns `{org_id, role, subject}` from request context when available.
+  - Dev header fallback via `X-Org-Id`, `X-Role`, and `X-Subject` is honored only when `MI_DEV_ALLOW_HEADERS=true`.
+  - The portal sends explicit dev headers from its local controls, but it fails clearly when backend identity is unavailable and the env guard is off.
 - Manual check:
   - Create a PM proposal through the advisor API.
   - Open `/portal/pm-approvals` and verify the draft renders.

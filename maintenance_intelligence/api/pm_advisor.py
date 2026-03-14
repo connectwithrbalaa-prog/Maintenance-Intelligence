@@ -63,6 +63,8 @@ def require_pm_identity(minimum_role: str):
             x_role=x_role,
             x_subject=x_subject,
         )
+        if access is None:
+            raise HTTPException(status_code=401, detail="Authenticated identity required")
         if not role_allows(access.role, minimum_role):
             raise HTTPException(status_code=403, detail="Insufficient role")
         return access

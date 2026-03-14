@@ -16,6 +16,32 @@ from maintenance_intelligence.multitenancy import TenantContext
 
 def test_whoami_header_fallback():
     client = TestClient(app)
+    import os
+
+    os.environ["MI_DEV_ALLOW_HEADERS"] = "true"
+    try:
+        response = client.get(
+            "/api/v1/whoami",
+            headers={
+                "X-Org-Id": "org-demo",
+                "X-Role": "operator",
+                "X-Subject": "portal-user",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "org_id": "org-demo",
+            "role": "operator",
+            "subject": "portal-user",
+        }
+    finally:
+        os.environ.pop("MI_DEV_ALLOW_HEADERS", None)
+
+
+def test_whoami_header_fallback_disabled_returns_null(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
 
     response = client.get(
         "/api/v1/whoami",
@@ -27,11 +53,7 @@ def test_whoami_header_fallback():
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "org_id": "org-demo",
-        "role": "operator",
-        "subject": "portal-user",
-    }
+    assert response.json() == {"org_id": None, "role": None, "subject": None}
 
 
 def test_whoami_request_state_user():

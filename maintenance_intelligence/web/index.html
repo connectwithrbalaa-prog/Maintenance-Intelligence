@@ -309,6 +309,10 @@
             </select>
           </div>
           <div class="field">
+            <label for="org-id">Dev org id</label>
+            <input id="org-id" type="text" value="default-org" />
+          </div>
+          <div class="field">
             <label for="approver">Approver name</label>
             <input id="approver" type="text" value="planner@example.com" />
           </div>
@@ -355,6 +359,7 @@
       const messageNode = document.getElementById("message");
       const roleNode = document.getElementById("role");
       const roleStateNode = document.getElementById("role-state");
+      const orgNode = document.getElementById("org-id");
       const approverNode = document.getElementById("approver");
       const notesNode = document.getElementById("notes");
       const refreshNode = document.getElementById("refresh");
@@ -362,7 +367,7 @@
       const reloadIdentityNode = document.getElementById("reload-identity");
 
       let includeApproved = false;
-      let currentIdentity = { org_id: "default-org", role: "operator", subject: "loading" };
+      let currentIdentity = { org_id: null, role: null, subject: "loading" };
 
       function readFallbackRole() {
         return window.localStorage.getItem("mi_portal_role") || roleNode.value || "operator";
@@ -372,8 +377,24 @@
         window.localStorage.setItem("mi_portal_role", role);
       }
 
+      function readFallbackOrg() {
+        return window.localStorage.getItem("mi_portal_org") || orgNode.value || "default-org";
+      }
+
+      function writeFallbackOrg(orgId) {
+        window.localStorage.setItem("mi_portal_org", orgId);
+      }
+
+      function identityHeaders() {
+        return {
+          "X-Org-Id": readFallbackOrg(),
+          "X-Role": readFallbackRole(),
+          "X-Subject": approverNode.value || "portal-dev-user",
+        };
+      }
+
       function activeRole() {
-        return currentIdentity.role || readFallbackRole();
+        return currentIdentity.role;
       }
 
       function renderIdentityState(mode) {
@@ -398,37 +419,41 @@
 
       async function loadIdentity() {
         roleNode.disabled = true;
+        orgNode.disabled = true;
         roleStateNode.textContent = "Identity: loading";
         try {
-          const response = await fetch("/api/v1/whoami", { headers: { Accept: "application/json" } });
+          const response = await fetch("/api/v1/whoami", {
+            headers: { Accept: "application/json", ...identityHeaders() },
+          });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok || !payload.role) {
-            throw new Error(payload.detail || "Unable to resolve identity");
+            throw new Error(payload.detail || "Backend identity is required for this portal view.");
           }
           currentIdentity = {
             org_id: payload.org_id || "default-org",
-            role: payload.role || readFallbackRole(),
+            role: payload.role,
             subject: payload.subject || "request-context",
           };
+          orgNode.value = currentIdentity.org_id;
           roleNode.value = currentIdentity.role;
           renderIdentityState("backend");
           return;
-        } catch (_error) {
-          const fallbackRole = readFallbackRole();
-          currentIdentity = {
-            org_id: window.localStorage.getItem("mi_portal_org") || "default-org",
-            role: fallbackRole,
-            subject: "local-dev-fallback",
-          };
-          roleNode.value = fallbackRole;
+        } catch (error) {
+          currentIdentity = { org_id: null, role: null, subject: "missing-identity" };
           renderIdentityState("fallback");
+          setMessage(error.message || "Backend identity is required for this portal view.", true);
         } finally {
           roleNode.disabled = false;
+          orgNode.disabled = false;
         }
       }
 
       async function approveProposal(proposalId) {
         const role = activeRole();
+        if (!role) {
+          setMessage("Backend identity is required before approval actions are available.", true);
+          return;
+        }
         if (role === "viewer") {
           setMessage("Viewer mode hides approval actions. Switch to operator or admin to approve.", true);
           return;
@@ -438,7 +463,7 @@
         try {
           const response = await fetch(`/api/v1/agents/pm/proposals/${proposalId}/approve`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...identityHeaders() },
             body: JSON.stringify({
               approved_by: approverNode.value || "planner@example.com",
               notes: notesNode.value || "Approve and send to planner queue.",
@@ -458,7 +483,7 @@
 
       function renderProposal(proposal) {
         const role = activeRole();
-        const canApprove = role !== "viewer" && proposal.status !== "approved";
+        const canApprove = !!role && role !== "viewer" && proposal.status !== "approved";
         const actionItems = Array.isArray(proposal.recommended_actions) ? proposal.recommended_actions : [];
         const playbooks = Array.isArray(proposal.playbook_refs) ? proposal.playbook_refs : [];
         const playbookItems = playbooks.length
@@ -516,7 +541,9 @@
 
         const statusQuery = includeApproved ? "" : "?status=draft";
         try {
-          const response = await fetch(`/api/v1/agents/pm/proposals${statusQuery}`);
+          const response = await fetch(`/api/v1/agents/pm/proposals${statusQuery}`, {
+            headers: identityHeaders(),
+          });
           const payload = await response.json().catch(() => []);
           if (!response.ok) {
             throw new Error(payload.detail || "Unable to fetch PM proposals");
@@ -539,17 +566,20 @@
       }
 
       roleNode.value = readFallbackRole();
+      orgNode.value = readFallbackOrg();
       writeFallbackRole(roleNode.value);
+      writeFallbackOrg(orgNode.value);
 
       roleNode.addEventListener("change", async () => {
         writeFallbackRole(roleNode.value);
-        currentIdentity = {
-          org_id: window.localStorage.getItem("mi_portal_org") || "default-org",
-          role: roleNode.value,
-          subject: "local-dev-fallback",
-        };
-        renderIdentityState("fallback");
-        loadQueue();
+        await loadIdentity();
+        await loadQueue();
+      });
+
+      orgNode.addEventListener("change", async () => {
+        writeFallbackOrg(orgNode.value);
+        await loadIdentity();
+        await loadQueue();
       });
 
       refreshNode.addEventListener("click", () => loadQueue());

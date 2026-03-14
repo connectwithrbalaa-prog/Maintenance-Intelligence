@@ -126,6 +126,7 @@ class FakeConnection:
 
 
 def test_pm_advisor_identity_header_fallback(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "1")
     state = {}
     monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
     monkeypatch.setattr(
@@ -174,6 +175,26 @@ def test_pm_advisor_identity_header_fallback(monkeypatch):
     assert approved.status_code == 200
     assert approved.json()["org_id"] == "org-header"
     assert approved.json()["proposer_subject"] == "header-user"
+
+
+def test_pm_advisor_identity_header_fallback_disabled(monkeypatch):
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        headers={"X-Org-Id": "org-header", "X-Role": "operator", "X-Subject": "header-user"},
+        json={
+            "run_id": "RUN-ID-DISABLED",
+            "recommendation_id": "REC-ID-DISABLED",
+            "asset_id": "PUMP-909",
+            "title": "Disabled fallback",
+            "metadata": {},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authenticated identity required"
 
 
 def test_pm_advisor_identity_request_state_user(monkeypatch):
