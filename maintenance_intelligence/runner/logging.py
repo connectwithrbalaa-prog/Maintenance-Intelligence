@@ -5,6 +5,9 @@ def setup_logger(level: str = "INFO"):
     logger.remove()
     logger.add(sys.stdout, level=level, serialize=False)
 
+def get_logger(name: str = None):
+    return logger.bind(logger_name=name) if name else logger
+
 def run_id() -> str:
     return str(uuid.uuid4())
 

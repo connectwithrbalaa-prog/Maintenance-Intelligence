@@ -3,6 +3,7 @@ name = "maintenance-intelligence"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
+  "openai>=1.0",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.27",
   "typer>=0.12",
@@ -13,9 +14,14 @@ dependencies = [
   "python-json-logger>=2.0",
   "kafka-python>=2.0.2",
   "psycopg2-binary>=2.9",
+  "prometheus-client>=0.20",
+  "backoff>=2.2",
 ]
 [project.optional-dependencies]
 dev = ["ruff>=0.3","black>=24.2","mypy>=1.8","pytest>=8.0","pytest-cov>=4.1"]
+rag = ["beautifulsoup4>=4.12"]
+ops = ["alembic>=1.13"]
+observability = ["opentelemetry-distro>=0.45b0", "opentelemetry-exporter-otlp-proto-http>=1.24.0"]
 [project.scripts]
 mi-runner = "maintenance_intelligence.runner.cli:app"
 [tool.black]
@@ -23,3 +29,5 @@ line-length = 100
 [tool.ruff]
 line-length = 100
 select = ["E","F","I","UP"]
+[tool.setuptools.packages.find]
+exclude = ["logs*", "configs*", "outputs*", "scripts*"]

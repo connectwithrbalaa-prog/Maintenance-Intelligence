@@ -2,6 +2,7 @@ import json, datetime as dt
 from kafka import KafkaConsumer
 import psycopg2
 from loguru import logger
+from maintenance_intelligence.api.metrics import wo_drafts_total
 
 def with_pg(dsn: str):
     import time
@@ -40,3 +41,4 @@ def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
                     ),
                 )
         logger.info({"event":"wo_bridge.draft_created","wo_id":wo_id})
+        wo_drafts_total.labels(service="wo_bridge").inc()
