@@ -6,15 +6,20 @@ from pydantic import BaseModel, Field
 from maintenance_intelligence.api.auth import require_role
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.multitenancy import TenantContext
-from maintenance_intelligence.prompts.catalog import list_prompts, load_route_config, save_route_config
+from maintenance_intelligence.prompts.catalog import (
+    list_prompts,
+    load_route_config,
+    save_route_config,
+)
 from maintenance_intelligence.runner.config import Settings
-
 
 router = APIRouter(prefix="/api/v1/prompts", tags=["prompts"])
 
 
 class PromptRouteConfigPayload(BaseModel):
-    org_id: Optional[str] = Field(default=None, description="Optional org-specific override; omit for global")
+    org_id: Optional[str] = Field(
+        default=None, description="Optional org-specific override; omit for global"
+    )
     default_prompt_id: str
     canary_prompt_id: Optional[str] = None
     canary_ratio: float = Field(default=0.0, ge=0.0, le=1.0)

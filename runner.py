@@ -1,6 +1,12 @@
-import os, json, time, uuid, threading, datetime as dt
-from kafka import KafkaProducer, KafkaConsumer
+import datetime as dt
+import json
+import os
+import threading
+import time
+import uuid
+
 import psycopg2
+from kafka import KafkaConsumer, KafkaProducer
 
 KAFKA = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 PG_DSN = "dbname={db} user={user} password={pwd} host={host} port=5432".format(
@@ -20,7 +26,9 @@ def with_pg():
 
 
 def simulator():
-    prod = KafkaProducer(bootstrap_servers=KAFKA, value_serializer=lambda v: json.dumps(v).encode("utf-8"))
+    prod = KafkaProducer(
+        bootstrap_servers=KAFKA, value_serializer=lambda v: json.dumps(v).encode("utf-8")
+    )
     asset_ids = ["PUMP-101", "PUMP-102", "COMP-201"]
     print("[sim] ready")
     while True:
@@ -71,9 +79,15 @@ def ingestion():
                         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb) "
                         "ON CONFLICT (event_id) DO NOTHING",
                         (
-                            evt.get("event_id"), evt.get("occurred_at"), evt.get("org_id"),
-                            evt.get("asset_id"), evt.get("kind"), evt.get("severity"),
-                            evt.get("summary"), json.dumps(evt.get("details")), json.dumps(evt.get("lineage")),
+                            evt.get("event_id"),
+                            evt.get("occurred_at"),
+                            evt.get("org_id"),
+                            evt.get("asset_id"),
+                            evt.get("kind"),
+                            evt.get("severity"),
+                            evt.get("summary"),
+                            json.dumps(evt.get("details")),
+                            json.dumps(evt.get("lineage")),
                         ),
                     )
             print(f"[ingestion] stored {et} id={evt.get('event_id')}")
@@ -87,7 +101,9 @@ def rca():
         group_id="agent-rca",
         auto_offset_reset="earliest",
     )
-    prod = KafkaProducer(bootstrap_servers=KAFKA, value_serializer=lambda v: json.dumps(v).encode("utf-8"))
+    prod = KafkaProducer(
+        bootstrap_servers=KAFKA, value_serializer=lambda v: json.dumps(v).encode("utf-8")
+    )
     print("[rca] ready")
     for msg in cons:
         evt = msg.value
@@ -140,7 +156,12 @@ def wo_bridge():
                         rec.get("title"),
                         rec.get("rationale"),
                         "MEDIUM",
-                        json.dumps({"source": "agent-wo-bridge-stub", "created_at": dt.datetime.utcnow().isoformat() + "Z"}),
+                        json.dumps(
+                            {
+                                "source": "agent-wo-bridge-stub",
+                                "created_at": dt.datetime.utcnow().isoformat() + "Z",
+                            }
+                        ),
                     ),
                 )
         print("[wo-bridge] created draft WO", wo_id)

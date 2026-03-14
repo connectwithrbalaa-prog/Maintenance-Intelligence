@@ -59,7 +59,9 @@ def test_context_uses_org_scope_and_forwards_org_to_retriever(monkeypatch):
 
     monkeypatch.setattr(retrieval_mod, "HybridRetriever", FakeRetriever)
 
-    ctx = assembler.get_event_context({"asset_id": "ASSET-CTX", "org_id": "ORG-CTX", "kind": "alarm"})
+    ctx = assembler.get_event_context(
+        {"asset_id": "ASSET-CTX", "org_id": "ORG-CTX", "kind": "alarm"}
+    )
 
     assert ctx["asset_id"] == "ASSET-CTX"
     assert any("org_id = %s" in query for query, _ in calls if "FROM workorders" in query)

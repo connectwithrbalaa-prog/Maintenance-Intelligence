@@ -4,14 +4,16 @@ from typing import Any, Dict, List, Optional
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.runner.config import Settings
 
-
 DEFAULT_PROMPTS: List[Dict[str, Any]] = [
     {
         "prompt_id": "rca-default-v1",
         "route_name": "rca",
         "version": 1,
         "description": "Conservative RCA prompt for general industrial alarms.",
-        "intended_use": {"severity": ["medium", "high"], "asset_class": ["pump", "compressor", "generic"]},
+        "intended_use": {
+            "severity": ["medium", "high"],
+            "asset_class": ["pump", "compressor", "generic"],
+        },
         "system_prompt": "You are an industrial maintenance RCA assistant. Be concise, operational, and evidence-driven.",
         "user_prompt_template": (
             "Return strict JSON only with title, hypothesis, evidence_ids, immediate_actions, pm_suggestions, confidence.\n"
@@ -140,13 +142,11 @@ def list_prompts(conn, route_name: str | None = None) -> List[Dict[str, Any]]:
                 (route_name,),
             )
         else:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT prompt_id, route_name, version, description, intended_use, system_prompt, user_prompt_template, active
                 FROM prompt_catalog
                 ORDER BY route_name, version DESC, prompt_id
-                """
-            )
+                """)
         rows = cur.fetchall() or []
     return [
         {
@@ -194,7 +194,9 @@ def load_route_config(conn, settings: Settings, route_name: str, org_id: str) ->
     }
 
 
-def save_route_config(conn, route_name: str, org_id: Optional[str], payload: Dict[str, Any]) -> Dict[str, Any]:
+def save_route_config(
+    conn, route_name: str, org_id: Optional[str], payload: Dict[str, Any]
+) -> Dict[str, Any]:
     seed_prompt_catalog(conn)
     effective_org = org_id or "global"
     config_id = f"{effective_org}:{route_name}"
@@ -266,7 +268,11 @@ def resolve_prompt_for_route(
     settings: Optional[Settings] = None,
 ) -> Dict[str, Any]:
     settings = settings or Settings()
-    fallback_prompts = {prompt["prompt_id"]: prompt for prompt in DEFAULT_PROMPTS if prompt["route_name"] == route_name}
+    fallback_prompts = {
+        prompt["prompt_id"]: prompt
+        for prompt in DEFAULT_PROMPTS
+        if prompt["route_name"] == route_name
+    }
     fallback_config = _default_route_config(settings, route_name, org_id)
     try:
         conn = with_pg(settings.pg_dsn)
@@ -280,7 +286,14 @@ def resolve_prompt_for_route(
         stats = prompt_feedback_stats(
             conn,
             org_id,
-            [prompt_id for prompt_id in [route_config.get("default_prompt_id"), route_config.get("canary_prompt_id")] if prompt_id],
+            [
+                prompt_id
+                for prompt_id in [
+                    route_config.get("default_prompt_id"),
+                    route_config.get("canary_prompt_id"),
+                ]
+                if prompt_id
+            ],
         )
         return choose_prompt_variant(prompts_by_id, route_config, subject_key, feedback_stats=stats)
     finally:

@@ -3,10 +3,10 @@ import json
 
 from fastapi.testclient import TestClient
 
-from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import feedback as feedback_api
 from maintenance_intelligence.api import main as main_api
 from maintenance_intelligence.api import outcomes as outcomes_api
+from maintenance_intelligence.api.main import app
 
 
 class _Cursor:
@@ -23,13 +23,17 @@ class _Cursor:
         elif "FROM workorders w" in normalized and "COUNT(*) AS n" in normalized:
             self.rows = [("ASSET-1", 3)]
         elif normalized.startswith("SELECT wo_id, asset_id, metadata FROM workorders"):
-            self.rows = [(
-                "WO-1",
-                "ASSET-1",
-                {"created_at": "2026-03-14T10:00:00Z", "resolved_at": "2026-03-14T11:00:00Z"},
-            )]
+            self.rows = [
+                (
+                    "WO-1",
+                    "ASSET-1",
+                    {"created_at": "2026-03-14T10:00:00Z", "resolved_at": "2026-03-14T11:00:00Z"},
+                )
+            ]
         elif normalized.startswith("SELECT event_id, asset_id, occurred_at FROM events"):
-            self.rows = [("EVT-1", "ASSET-1", dt.datetime(2026, 3, 14, 10, 30, tzinfo=dt.timezone.utc))]
+            self.rows = [
+                ("EVT-1", "ASSET-1", dt.datetime(2026, 3, 14, 10, 30, tzinfo=dt.timezone.utc))
+            ]
         elif "COUNT(*) FILTER (WHERE action = 'accept')" in normalized:
             self.rows = [("ASSET-1", 2, 3)]
         else:
@@ -73,11 +77,21 @@ def test_trigger_requires_operator_role(monkeypatch):
             }
         ),
     )
-    monkeypatch.setattr(main_api, "run", lambda event_id, settings, org_id=None: {"event_id": event_id, "org_id": org_id})
+    monkeypatch.setattr(
+        main_api,
+        "run",
+        lambda event_id, settings, org_id=None: {"event_id": event_id, "org_id": org_id},
+    )
 
     client = TestClient(app)
-    denied = client.post("/api/v1/agents/rca/trigger", json={"event_id": "E-1"}, headers={"X-API-Key": "viewer-key"})
-    allowed = client.post("/api/v1/agents/rca/trigger", json={"event_id": "E-1"}, headers={"X-API-Key": "operator-key"})
+    denied = client.post(
+        "/api/v1/agents/rca/trigger", json={"event_id": "E-1"}, headers={"X-API-Key": "viewer-key"}
+    )
+    allowed = client.post(
+        "/api/v1/agents/rca/trigger",
+        json={"event_id": "E-1"},
+        headers={"X-API-Key": "operator-key"},
+    )
 
     assert denied.status_code == 403
     assert allowed.status_code == 200
@@ -87,7 +101,9 @@ def test_trigger_requires_operator_role(monkeypatch):
 def test_feedback_uses_authenticated_org(monkeypatch):
     calls = []
     monkeypatch.setenv("MI_AUTH_MODE", "api_key")
-    monkeypatch.setenv("MI_API_KEYS", json.dumps({"operator-key": {"org_id": "ORG-9", "role": "operator"}}))
+    monkeypatch.setenv(
+        "MI_API_KEYS", json.dumps({"operator-key": {"org_id": "ORG-9", "role": "operator"}})
+    )
     monkeypatch.setattr(feedback_api, "with_pg", lambda _dsn: _Conn(calls))
 
     client = TestClient(app)
@@ -112,11 +128,15 @@ def test_outcomes_queries_are_org_scoped(monkeypatch):
     calls = []
     monkeypatch.setenv("MI_MULTI_TENANT", "true")
     monkeypatch.setenv("MI_AUTH_MODE", "api_key")
-    monkeypatch.setenv("MI_API_KEYS", json.dumps({"viewer-key": {"org_id": "ORG-1", "role": "viewer"}}))
+    monkeypatch.setenv(
+        "MI_API_KEYS", json.dumps({"viewer-key": {"org_id": "ORG-1", "role": "viewer"}})
+    )
     monkeypatch.setattr(outcomes_api, "with_pg", lambda _dsn: _Conn(calls))
 
     client = TestClient(app)
-    response = client.get("/api/v1/reports/rca-outcomes?window=30", headers={"X-API-Key": "viewer-key"})
+    response = client.get(
+        "/api/v1/reports/rca-outcomes?window=30", headers={"X-API-Key": "viewer-key"}
+    )
 
     assert response.status_code == 200
     relevant_calls = [

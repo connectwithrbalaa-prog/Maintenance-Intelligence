@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional
-import psycopg2
+
 from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.context.assembler import with_pg
 
 router = APIRouter()
+
 
 @router.get("/api/v1/signals/summary")
 async def get_signals_summary(
@@ -21,23 +21,29 @@ async def get_signals_summary(
         with conn, conn.cursor() as cur:
             scope_enabled = org_scope_enabled(settings)
             # Get recent signals
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT signal_id, signal_type, value, unit, timestamp, metadata
                 FROM signals
                 WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
                 ORDER BY timestamp DESC
                 LIMIT %s
-            """, (asset_id, scope_enabled, access.org_id, limit))
+            """,
+                (asset_id, scope_enabled, access.org_id, limit),
+            )
             signals = cur.fetchall()
 
             # Get latest rollups
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT signal_type, period, mean_value, min_value, max_value, anomaly_flags, end_time
                 FROM signal_rollups
                 WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
                 ORDER BY end_time DESC
                 LIMIT 20
-            """, (asset_id, scope_enabled, access.org_id))
+            """,
+                (asset_id, scope_enabled, access.org_id),
+            )
             rollups = cur.fetchall()
 
         return {
@@ -49,8 +55,9 @@ async def get_signals_summary(
                     "value": s[2],
                     "unit": s[3],
                     "timestamp": s[4].isoformat() if s[4] else None,
-                    "metadata": s[5] or {}
-                } for s in signals
+                    "metadata": s[5] or {},
+                }
+                for s in signals
             ],
             "rollups": [
                 {
@@ -60,9 +67,10 @@ async def get_signals_summary(
                     "min": r[3],
                     "max": r[4],
                     "anomalies": r[5] or {},
-                    "end_time": r[6].isoformat() if r[6] else None
-                } for r in rollups
-            ]
+                    "end_time": r[6].isoformat() if r[6] else None,
+                }
+                for r in rollups
+            ],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

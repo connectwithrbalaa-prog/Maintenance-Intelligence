@@ -1,8 +1,12 @@
-import pytest
-from maintenance_intelligence.services.signals import _detect_anomalies, _compute_rollups, _resolve_signal_org_id
-import psycopg2
 from unittest.mock import MagicMock
+
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.signals import (
+    _compute_rollups,
+    _detect_anomalies,
+    _resolve_signal_org_id,
+)
+
 
 def test_detect_anomalies():
     # Normal values
@@ -16,6 +20,7 @@ def test_detect_anomalies():
     recent = [1.0] * 10 + [10.0]  # Mean ~1.8, stdev ~2.8, z-score > 3
     anomalies = _detect_anomalies(recent, 10.0)
     assert "z_score_spike" in anomalies
+
 
 def test_compute_rollups():
     # Mock connection and cursor
@@ -44,6 +49,11 @@ def test_resolve_signal_org_id_prefers_event_then_lineage_then_default(monkeypat
     monkeypatch.setenv("MI_DEFAULT_ORG", "ORG-DEFAULT")
     settings = Settings()
 
-    assert _resolve_signal_org_id({"org_id": "ORG-EVT", "lineage": {"org_id": "ORG-LINEAGE"}}, settings) == "ORG-EVT"
+    assert (
+        _resolve_signal_org_id(
+            {"org_id": "ORG-EVT", "lineage": {"org_id": "ORG-LINEAGE"}}, settings
+        )
+        == "ORG-EVT"
+    )
     assert _resolve_signal_org_id({"lineage": {"org_id": "ORG-LINEAGE"}}, settings) == "ORG-LINEAGE"
     assert _resolve_signal_org_id({}, settings) == "ORG-DEFAULT"
