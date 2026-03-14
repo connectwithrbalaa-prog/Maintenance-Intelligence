@@ -4,8 +4,10 @@ import io
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 import psycopg2
+from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -23,6 +25,12 @@ def with_pg(dsn: str):
 
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
+
+
+def _org_scope_sql(settings: Settings, org_id: str, column: str = "org_id") -> tuple[str, tuple[Any, ...]]:
+    if not org_scope_enabled(settings):
+        return "", ()
+    return f" AND {column} = %s", (org_id,)
 
 
 def _parse_timestamp(value: Any) -> Optional[dt.datetime]:
@@ -129,15 +137,17 @@ def _build_ttr_measurements(
     return measurements
 
 
-def _fetch_workorders_for_ttr(cur, window: int) -> List[Dict[str, Any]]:
+def _fetch_workorders_for_ttr(cur, window: int, settings: Settings, org_id: str) -> List[Dict[str, Any]]:
+    org_sql, org_params = _org_scope_sql(settings, org_id)
     cur.execute(
         f"""
             SELECT wo_id, asset_id, metadata
             FROM workorders
-            WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+            WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}{org_sql}
             ORDER BY COALESCE((metadata->>'created_at')::timestamptz, NOW()) DESC
             LIMIT 500
-        """
+        """,
+        org_params,
     )
     return [
         {"wo_id": row[0], "asset_id": row[1], "metadata": row[2] or {}}
@@ -145,7 +155,13 @@ def _fetch_workorders_for_ttr(cur, window: int) -> List[Dict[str, Any]]:
     ]
 
 
-def _fetch_candidate_events(cur, workorders: List[Dict[str, Any]], fallback_window_h: int) -> List[Dict[str, Any]]:
+def _fetch_candidate_events(
+    cur,
+    workorders: List[Dict[str, Any]],
+    fallback_window_h: int,
+    settings: Settings,
+    org_id: str,
+) -> List[Dict[str, Any]]:
     evidence_event_ids = []
     asset_ids = set()
     workorder_timestamps = []
@@ -176,6 +192,11 @@ def _fetch_candidate_events(cur, workorders: List[Dict[str, Any]], fallback_wind
         where_clauses.append("(asset_id = ANY(%s) AND occurred_at BETWEEN %s AND %s)")
         params.extend([sorted(asset_ids), min_ts, max_ts])
 
+    if org_scope_enabled(settings):
+        where_clauses = [f"({clause})" for clause in where_clauses]
+        where_clauses.append("org_id = %s")
+        params.append(org_id)
+
     cur.execute(
         f"""
             SELECT event_id, asset_id, occurred_at
@@ -189,8 +210,7 @@ def _fetch_candidate_events(cur, workorders: List[Dict[str, Any]], fallback_wind
         for row in (cur.fetchall() or [])
     ]
 
-@router.get("/rca-outcomes")
-def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
+def _rca_outcomes_report(window: int, access: TenantContext) -> Dict[str, Any]:
     if window > 365:
         raise HTTPException(status_code=400, detail="Window cannot exceed 365 days")
     s = Settings()
@@ -202,31 +222,35 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         fallback_window_h = max(1, int(getattr(s, "ttr_fallback_window_h", 24) or 24))
         with conn, conn.cursor() as cur:
+            fb_scope_sql, fb_scope_params = _org_scope_sql(s, access.org_id)
             # Feedback counts by action (accept/reject/edited)
             cur.execute(f"""
                 SELECT action, COUNT(*) FROM rca_feedback
                 WHERE created_at > {_window_clause(window)}
+                {fb_scope_sql}
                 GROUP BY action
-            """)
+            """, fb_scope_params)
             fb = {r[0]: int(r[1]) for r in cur.fetchall() if r and r[0]}
             total = sum(fb.values())
             accept = fb.get("accept", 0)
             out["feedback_counts"] = fb
             out["acceptance_rate"] = (accept / total) if total > 0 else None
 
+            wo_scope_sql, wo_scope_params = _org_scope_sql(s, access.org_id, column="w.org_id")
             cur.execute(f"""
                 SELECT w.asset_id, COUNT(*) AS n
                 FROM workorders w
                 WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                {wo_scope_sql}
                 GROUP BY w.asset_id
                 ORDER BY n DESC
                 LIMIT 10
-            """)
+            """, wo_scope_params)
             out["top_assets_by_wo_volume"] = [{"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r]
 
             try:
-                workorders = _fetch_workorders_for_ttr(cur, window)
-                candidate_events = _fetch_candidate_events(cur, workorders, fallback_window_h)
+                workorders = _fetch_workorders_for_ttr(cur, window, s, access.org_id)
+                candidate_events = _fetch_candidate_events(cur, workorders, fallback_window_h, s, access.org_id)
                 ttr_rows = _build_ttr_measurements(workorders, candidate_events, fallback_window_h)
             except Exception:
                 ttr_rows = []
@@ -236,14 +260,16 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
 
         try:
             with conn, conn.cursor() as cur2:
+                fb_scope_sql, fb_scope_params = _org_scope_sql(s, access.org_id)
                 cur2.execute(f"""
                     SELECT asset_id,
                            COUNT(*) FILTER (WHERE action = 'accept') AS accept_cnt,
                            COUNT(*) AS total_cnt
                     FROM rca_feedback
                     WHERE created_at > {_window_clause(window)}
+                    {fb_scope_sql}
                     GROUP BY asset_id
-                """)
+                """, fb_scope_params)
                 rows = cur2.fetchall() or []
                 out["per_asset_acceptance"] = [
                     {
@@ -281,10 +307,21 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
     finally:
         conn.close()
 
+
+@router.get("/rca-outcomes")
+def rca_outcomes(
+    window: int = Query(30, ge=1, le=365),
+    access: TenantContext = Depends(require_role("viewer")),
+) -> Dict[str, Any]:
+    return _rca_outcomes_report(window, access)
+
 @router.get("/rca-outcomes/csv")
-def rca_outcomes_csv(window: int = Query(30, ge=1, le=365)):
+def rca_outcomes_csv(
+    window: int = Query(30, ge=1, le=365),
+    access: TenantContext = Depends(require_role("viewer")),
+):
     # Flatten a report view for leadership export
-    rep = rca_outcomes(window=window)  # reuse computation
+    rep = _rca_outcomes_report(window=window, access=access)
     rows = []
     # Feedback counts by action -> key/value rows
     for k, v in (rep.get("feedback_counts") or {}).items():

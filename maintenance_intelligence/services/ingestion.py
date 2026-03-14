@@ -5,6 +5,8 @@ import psycopg2
 from loguru import logger
 import backoff
 from maintenance_intelligence.api.metrics import events_ingested_total
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope
+from maintenance_intelligence.runner.config import Settings
 
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
 def create_db_connection(dsn: str):
@@ -12,11 +14,10 @@ def create_db_connection(dsn: str):
     return psycopg2.connect(dsn)
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
-def create_kafka_consumer(kafka_bootstrap: str):
+def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
     return KafkaConsumer(
-        "canonical.asset.upserted",
-        "canonical.event.raised",
+        *consumer_topics(["canonical.asset.upserted", "canonical.event.raised"], settings, org_id=settings.default_org),
         bootstrap_servers=kafka_bootstrap,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         group_id="agent-ingestion",
@@ -43,6 +44,7 @@ def store_event(conn, evt):
 
 def ingestion(kafka_bootstrap: str, pg_dsn: str):
     logger.info({"event": "ingestion.start", "kafka_bootstrap": kafka_bootstrap})
+    settings = Settings()
 
     # Graceful shutdown handling
     shutdown_requested = False
@@ -60,13 +62,15 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
 
     try:
         conn = create_db_connection(pg_dsn)
-        cons = create_kafka_consumer(kafka_bootstrap)
+        cons = create_kafka_consumer(kafka_bootstrap, settings)
 
         for msg in cons:
             if shutdown_requested:
                 break
 
             evt = msg.value
+            if not event_in_scope(evt.get("org_id"), settings, org_id=settings.default_org):
+                continue
             if evt.get("event_type") == "event.raised":
                 try:
                     store_event(conn, evt)

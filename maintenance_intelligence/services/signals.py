@@ -3,6 +3,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.logging import get_logger
+from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
 import psycopg2
 import psycopg2.extras
 from collections import defaultdict
@@ -12,9 +13,9 @@ import backoff
 logger = get_logger(__name__)
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
-def create_kafka_consumer(kafka_bootstrap: str):
+def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
-    return KafkaConsumer("canonical.event.raised",
+    return KafkaConsumer(*consumer_topics(["canonical.event.raised"], settings, org_id=settings.default_org),
                          bootstrap_servers=kafka_bootstrap,
                          value_deserializer=lambda v: json.loads(v.decode("utf-8")),
                          auto_offset_reset="earliest",
@@ -39,9 +40,9 @@ def create_db_connection(db_url: str):
     return conn
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
-def send_anomaly_event(producer, anomaly_event):
+def send_anomaly_event(producer, anomaly_event, settings: Settings):
     """Send anomaly event with retry logic."""
-    producer.send("canonical.signal.anomaly.detected", anomaly_event)
+    producer.send(scoped_topic("canonical.signal.anomaly.detected", settings, anomaly_event.get("org_id")), anomaly_event)
     producer.flush()
 
 def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
@@ -68,7 +69,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
     conn = None
 
     try:
-        cons = create_kafka_consumer(kafka_bootstrap)
+        cons = create_kafka_consumer(kafka_bootstrap, settings)
         prod = create_kafka_producer(kafka_bootstrap)
         conn = create_db_connection(db_url)
 
@@ -80,6 +81,8 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                 break
 
             evt = msg.value
+            if not event_in_scope(evt.get("org_id"), settings, org_id=settings.default_org):
+                continue
             if evt.get("kind") not in ("alarm", "anomaly", "measurement"):
                 continue
 
@@ -137,7 +140,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                             },
                             "lineage": {"source": "signals-processor", "parent_event_id": evt["event_id"]},
                         }
-                        send_anomaly_event(prod, anomaly_evt)
+                        send_anomaly_event(prod, anomaly_evt, settings)
 
                 logger.info({"event": "signals.processed", "asset_id": asset_id, "signals_count": len(signals)})
 

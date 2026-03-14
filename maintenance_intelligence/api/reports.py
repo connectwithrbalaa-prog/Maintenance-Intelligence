@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Query
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends, Query
 import psycopg2
+from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -14,7 +17,10 @@ def with_pg(dsn: str):
             time.sleep(1)
 
 @router.get("/bad-actors")
-def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
+def bad_actors(
+    limit: int = Query(20, ge=1, le=200),
+    access: TenantContext = Depends(require_role("viewer")),
+) -> List[Dict[str, Any]]:
     """
     Ranks assets by recent event/WO activity (MVP heuristic):
     - score = (#events last 90d) + 2*(#workorders last 90d)
@@ -24,13 +30,16 @@ def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
     conn = with_pg(s.pg_dsn)
     try:
         with conn, conn.cursor() as cur:
+            org_clause = " AND org_id = %s" if org_scope_enabled(s) else ""
+            org_params = (access.org_id,) if org_scope_enabled(s) else ()
             # events count (90d)
             cur.execute("""
                 SELECT asset_id, COUNT(*) AS ev_count, MAX(occurred_at) AS last_evt_at
                 FROM events
                 WHERE occurred_at > (NOW() - INTERVAL '90 days')
+            """ + org_clause + """
                 GROUP BY asset_id
-            """)
+            """, org_params)
             ev = {r[0]: {"ev_count": r[1], "last_evt_at": r[2]} for r in cur.fetchall() if r and r[0]}
 
             # latest severity per asset
@@ -38,8 +47,9 @@ def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
                 SELECT DISTINCT ON (asset_id) asset_id, severity, occurred_at
                 FROM events
                 WHERE occurred_at > (NOW() - INTERVAL '90 days')
+            """ + org_clause + """
                 ORDER BY asset_id, occurred_at DESC
-            """)
+            """, org_params)
             sev = {r[0]: r[1] for r in cur.fetchall() if r and r[0]}
 
             # workorder count (90d)
@@ -47,8 +57,9 @@ def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
                 SELECT asset_id, COUNT(*) AS wo_count
                 FROM workorders
                 WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > (NOW() - INTERVAL '90 days')
+            """ + (" AND org_id = %s" if org_scope_enabled(s) else "") + """
                 GROUP BY asset_id
-            """)
+            """, org_params)
             wo = {r[0]: r[1] for r in cur.fetchall() if r and r[0]}
 
         rows = []

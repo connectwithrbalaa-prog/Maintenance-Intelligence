@@ -68,18 +68,18 @@ def load_texts(path: str) -> List[Dict[str, Any]]:
             logger.warning({"event":"rag.read.skip","file":str(f),"err":str(e)})
     return docs
 
-def upsert_chunks(conn, asset_id: str, docs: List[Dict[str, Any]], embeddings: List[List[float]], titles: List[str]):
+def upsert_chunks(conn, asset_id: str, org_id: str, docs: List[Dict[str, Any]], embeddings: List[List[float]], titles: List[str]):
     with conn:
         with conn.cursor() as cur:
             for i, doc in enumerate(docs):
                 chunk_id = "DC-" + uuid.uuid4().hex[:12]
                 cur.execute(
                     """
-                    INSERT INTO doc_chunks (chunk_id, asset_id, title, content, source, embedding)
-                    VALUES (%s,%s,%s,%s,%s,%s)
+                    INSERT INTO doc_chunks (chunk_id, org_id, asset_id, title, content, source, embedding)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (chunk_id) DO NOTHING
                     """,
-                    (chunk_id, asset_id, titles[i], doc["content"], doc["source"], embeddings[i]),
+                    (chunk_id, org_id, asset_id, titles[i], doc["content"], doc["source"], embeddings[i]),
                 )
 
 def ingest_path(path: str, asset_id: str, chunk_size: int = 1200, bulk_mode: bool = False):
@@ -122,7 +122,7 @@ def ingest_path(path: str, asset_id: str, chunk_size: int = 1200, bulk_mode: boo
 
         texts = [c["content"] for c in all_chunks]
         embs = embed_texts(api_key, texts)
-        upsert_chunks(conn, asset_id, all_chunks, embs, all_titles)
+        upsert_chunks(conn, asset_id, s.default_org, all_chunks, embs, all_titles)
         logger.info({"event":"rag.ingested","chunks":len(all_chunks),"asset_id":asset_id,"bulk_mode":bulk_mode})
     finally:
         conn.close()
