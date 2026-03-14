@@ -123,3 +123,16 @@ Utilities:
 - mi-runner rca-test
 - mi-runner export-bad-actors --limit 50
 - scripts/cron_rca_test.sh (cron-friendly)
+
+## Optional: pgvector RAG
+
+- Enable extension + embedding column:
+  - python -m maintenance_intelligence.db.migrate  (applies 002_pgvector.sql)
+- Ingest docs:
+  - mi-runner rag --path ./docs --asset-id PUMP-101
+- Retrieval:
+  - Context assembler tries vector similarity (pgvector) when available; falls back gracefully.
+
+Notes:
+- Requires OPENAI_API_KEY
+- Embedding model can be set via MI_EMBED_MODEL (default: text-embedding-3-large)

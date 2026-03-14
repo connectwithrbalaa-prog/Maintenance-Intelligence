@@ -43,4 +43,12 @@ def export_bad_actors(limit: int = 50):
     with open(path, "w") as f:
         json.dump(rows, f, indent=2, default=str)
     typer.echo(path)
-
+@app.command()
+def rag(path: str, asset_id: str = typer.Option(..., help="Associate ingested chunks to this asset_id")):
+    """
+    Ingest docs into RAG store (doc_chunks with pgvector embeddings).
+    Usage: mi-runner rag --path ./docs --asset-id PUMP-101
+    """
+    from maintenance_intelligence.rag.ingest import ingest_path
+    ingest_path(path, asset_id)
+\n

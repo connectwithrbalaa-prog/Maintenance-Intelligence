@@ -59,6 +59,26 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
                 out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
         except Exception as e:
             logger.debug({"event":"ctx.docs.skip","err":str(e)})
+        # doc chunks via pgvector (if available)
+        try:
+            with conn, conn.cursor() as cur:
+                # If pgvector/embedding not present, this will error and fall back
+                cur.execute(
+                    """
+                    SELECT chunk_id, title
+                    FROM doc_chunks
+                    WHERE asset_id = %s
+                    ORDER BY embedding <-> (SELECT embedding FROM doc_chunks WHERE asset_id = %s LIMIT 1)
+                    LIMIT 3
+                    """,
+                    (asset_id, asset_id)
+                )
+                rows = cur.fetchall()
+                out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
+        except Exception as e:
+            # Keep prior stub/random fallback if vector unavailable
+            pass
+
 
     except Exception as e:
         logger.debug({"event":"ctx.error","err":str(e)})
