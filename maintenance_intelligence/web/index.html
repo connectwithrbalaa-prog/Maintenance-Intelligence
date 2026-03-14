@@ -299,7 +299,7 @@
           </div>
         </div>
         <aside class="control">
-          <h2>Local Dev Controls</h2>
+          <h2>Identity Controls</h2>
           <div class="field">
             <label for="role">Visible role</label>
             <select id="role">
@@ -319,8 +319,9 @@
           <div class="actions">
             <button id="refresh" class="primary" type="button">Refresh queue</button>
             <button id="show-all" class="secondary" type="button">Include approved</button>
+            <button id="reload-identity" class="secondary" type="button">Reload identity</button>
           </div>
-          <div id="role-state" class="pill">Role stub: operator</div>
+          <div id="role-state" class="pill">Identity: loading</div>
         </aside>
       </section>
 
@@ -339,8 +340,9 @@
           <ol>
             <li>Create a PM proposal with the PM advisor endpoint or seeded smoke test data.</li>
             <li>Open <strong>/portal/pm-approvals</strong> and verify the proposal details render.</li>
-            <li>Switch the local role stub to <strong>viewer</strong> and confirm approve actions disappear.</li>
-            <li>Switch back to <strong>operator</strong>, approve a proposal, and confirm a CMS reference is returned.</li>
+            <li>Call <strong>/api/v1/whoami</strong> with real auth or dev headers and confirm the page reflects the returned role.</li>
+            <li>Set the fallback selector to <strong>viewer</strong> only when backend identity is unavailable, then confirm approve actions disappear.</li>
+            <li>Use an <strong>operator</strong> or <strong>admin</strong> identity, approve a proposal, and confirm a CMS reference is returned.</li>
             <li>Refresh the queue and verify the proposal status changes from draft to approved when the backend persists it.</li>
           </ol>
         </aside>
@@ -357,16 +359,26 @@
       const notesNode = document.getElementById("notes");
       const refreshNode = document.getElementById("refresh");
       const showAllNode = document.getElementById("show-all");
+      const reloadIdentityNode = document.getElementById("reload-identity");
 
       let includeApproved = false;
+      let currentIdentity = { org_id: "default-org", role: "operator", subject: "loading" };
 
-      function readRole() {
-        return window.localStorage.getItem("mi_portal_role") || "operator";
+      function readFallbackRole() {
+        return window.localStorage.getItem("mi_portal_role") || roleNode.value || "operator";
       }
 
-      function writeRole(role) {
+      function writeFallbackRole(role) {
         window.localStorage.setItem("mi_portal_role", role);
-        roleStateNode.textContent = `Role stub: ${role}`;
+      }
+
+      function activeRole() {
+        return currentIdentity.role || readFallbackRole();
+      }
+
+      function renderIdentityState(mode) {
+        const suffix = mode === "backend" ? "backend" : "fallback";
+        roleStateNode.textContent = `Identity: ${currentIdentity.subject} | role ${currentIdentity.role} | org ${currentIdentity.org_id} | ${suffix}`;
       }
 
       function setMessage(text, isError = false) {
@@ -384,8 +396,39 @@
           .replaceAll("'", "&#39;");
       }
 
+      async function loadIdentity() {
+        roleNode.disabled = true;
+        roleStateNode.textContent = "Identity: loading";
+        try {
+          const response = await fetch("/api/v1/whoami", { headers: { Accept: "application/json" } });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.role) {
+            throw new Error(payload.detail || "Unable to resolve identity");
+          }
+          currentIdentity = {
+            org_id: payload.org_id || "default-org",
+            role: payload.role || readFallbackRole(),
+            subject: payload.subject || "request-context",
+          };
+          roleNode.value = currentIdentity.role;
+          renderIdentityState("backend");
+          return;
+        } catch (_error) {
+          const fallbackRole = readFallbackRole();
+          currentIdentity = {
+            org_id: window.localStorage.getItem("mi_portal_org") || "default-org",
+            role: fallbackRole,
+            subject: "local-dev-fallback",
+          };
+          roleNode.value = fallbackRole;
+          renderIdentityState("fallback");
+        } finally {
+          roleNode.disabled = false;
+        }
+      }
+
       async function approveProposal(proposalId) {
-        const role = readRole();
+        const role = activeRole();
         if (role === "viewer") {
           setMessage("Viewer mode hides approval actions. Switch to operator or admin to approve.", true);
           return;
@@ -414,7 +457,7 @@
       }
 
       function renderProposal(proposal) {
-        const role = readRole();
+        const role = activeRole();
         const canApprove = role !== "viewer" && proposal.status !== "approved";
         const actionItems = Array.isArray(proposal.recommended_actions) ? proposal.recommended_actions : [];
         const playbooks = Array.isArray(proposal.playbook_refs) ? proposal.playbook_refs : [];
@@ -495,22 +538,32 @@
         }
       }
 
-      roleNode.value = readRole();
-      writeRole(roleNode.value);
+      roleNode.value = readFallbackRole();
+      writeFallbackRole(roleNode.value);
 
-      roleNode.addEventListener("change", () => {
-        writeRole(roleNode.value);
+      roleNode.addEventListener("change", async () => {
+        writeFallbackRole(roleNode.value);
+        currentIdentity = {
+          org_id: window.localStorage.getItem("mi_portal_org") || "default-org",
+          role: roleNode.value,
+          subject: "local-dev-fallback",
+        };
+        renderIdentityState("fallback");
         loadQueue();
       });
 
       refreshNode.addEventListener("click", () => loadQueue());
+      reloadIdentityNode.addEventListener("click", async () => {
+        await loadIdentity();
+        await loadQueue();
+      });
       showAllNode.addEventListener("click", () => {
         includeApproved = !includeApproved;
         showAllNode.textContent = includeApproved ? "Show draft only" : "Include approved";
         loadQueue();
       });
 
-      loadQueue();
+      loadIdentity().then(() => loadQueue());
     </script>
   </body>
 </html>

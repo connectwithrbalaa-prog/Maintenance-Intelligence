@@ -193,12 +193,14 @@ Notes:
   - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and calls the stub CMS handoff.
 - Thin portal preview:
   - `GET /portal/pm-approvals` serves a single-page planner review UI backed by the PM proposal endpoints.
-  - Role visibility in the page is intentionally a local dev stub stored in browser local storage; backend auth remains API-driven.
+  - `GET /api/v1/whoami` returns `{org_id, role, subject}` from request context when available and falls back to `X-Org-Id`, `X-Role`, and `X-Subject` headers for dev/testing.
+  - The portal uses `/api/v1/whoami` first and only falls back to local browser role state when backend identity is unavailable.
 - Manual check:
   - Create a PM proposal through the advisor API.
   - Open `/portal/pm-approvals` and verify the draft renders.
-  - Switch the local role stub to `viewer` and confirm approve actions are disabled.
-  - Switch back to `operator`, approve a proposal, and confirm the CMS handoff reference is shown.
+  - Verify `/api/v1/whoami` returns the expected role from auth context or dev headers.
+  - Switch fallback role state to `viewer` only when backend identity is unavailable and confirm approve actions are disabled.
+  - Use an `operator` or `admin` identity, approve a proposal, and confirm the CMS handoff reference is shown.
 - Schema:
   - Alembic revision `005_pm_change_proposals`
   - SQL fallback migration `008_pm_change_proposals.sql`

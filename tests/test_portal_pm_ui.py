@@ -18,3 +18,4 @@ def test_portal_pm_ui_served():
     assert response.status_code == 200
     assert "PM approval queue for planner review" in response.text
     assert "/api/v1/agents/pm/proposals" in response.text
+    assert "/api/v1/whoami" in response.text
