@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     auth_mode: str = Field(default="none", alias="MI_AUTH_MODE")
     api_keys_raw: str = Field(default="{}", alias="MI_API_KEYS")
     kafka_tenant_mode: str = Field(default="message", alias="MI_KAFKA_TENANT_MODE")
+    prompt_defaults_raw: str = Field(default='{"rca":"rca-default-v1"}', alias="MI_PROMPT_DEFAULTS")
+    prompt_canary_defaults_raw: str = Field(default='{"rca":"rca-canary-v1"}', alias="MI_PROMPT_CANARY_DEFAULTS")
+    prompt_canary_ratio: float = Field(default=0.1, alias="MI_PROMPT_CANARY_RATIO")
     genai_model: str = Field(default="gpt-4.1")
     genai_timeout_s: int = Field(default=25)
     run_summary_dir: str = Field(default="outputs")
@@ -36,6 +39,22 @@ class Settings(BaseSettings):
     def api_keys(self) -> Dict[str, Dict[str, Any]]:
         try:
             data = json.loads(self.api_keys_raw or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @property
+    def prompt_defaults(self) -> Dict[str, str]:
+        try:
+            data = json.loads(self.prompt_defaults_raw or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @property
+    def prompt_canary_defaults(self) -> Dict[str, str]:
+        try:
+            data = json.loads(self.prompt_canary_defaults_raw or "{}")
         except json.JSONDecodeError:
             return {}
         return data if isinstance(data, dict) else {}

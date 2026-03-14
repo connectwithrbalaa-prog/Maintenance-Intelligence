@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
 from maintenance_intelligence.api.auth import require_role
+from maintenance_intelligence.api.prompts import router as prompts_router
 from maintenance_intelligence.api.reports import router as reports_router
 from maintenance_intelligence.api.health import router as health_router
 from maintenance_intelligence.api.signals import router as signals_router
@@ -21,6 +22,7 @@ app.include_router(signals_router)
 app.include_router(feedback_router)
 app.include_router(outcomes_router)
 app.include_router(metrics_router)
+app.include_router(prompts_router)
 settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")

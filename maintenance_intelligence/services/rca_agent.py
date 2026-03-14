@@ -5,10 +5,11 @@ from loguru import logger
 from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope, scoped_topic
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
+from maintenance_intelligence.prompts.catalog import resolve_prompt_for_route
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
 import backoff
-from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
+from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_runs_by_prompt_total, rca_failures_total, rca_duration_seconds
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
@@ -39,6 +40,11 @@ def send_recommendation(producer, recommendation, settings: Settings):
     """Send recommendation with retry logic."""
     producer.send(scoped_topic("canonical.recommendation.created", settings, recommendation.get("org_id")), recommendation)
     producer.flush()
+
+
+def _record_prompt_run_metrics(prompt_id: str, variant: str, route_name: str = "rca", service: str = "rca_agent"):
+    rca_runs_total.labels(service=service).inc()
+    rca_runs_by_prompt_total.labels(service=service, route=route_name, prompt_id=prompt_id, variant=variant).inc()
 
 def rca_agent(kafka_bootstrap: str = None):
     logger.info({"event": "rca_agent.start"})
@@ -84,16 +90,49 @@ def rca_agent(kafka_bootstrap: str = None):
             try:
                 # Assemble MVP context
                 ctx = get_event_context(evt, settings, org_id=evt.get("org_id"))
+                prompt_selection = resolve_prompt_for_route(
+                    route_name="rca",
+                    org_id=evt.get("org_id") or settings.default_org,
+                    subject_key=evt.get("event_id") or evt.get("asset_id") or str(uuid.uuid4()),
+                    settings=settings,
+                )
+                prompt_meta = {
+                    "prompt_id": prompt_selection["prompt_id"],
+                    "variant": prompt_selection["variant"],
+                    "route_name": prompt_selection["route_name"],
+                    "auto_rollback_triggered": prompt_selection.get("auto_rollback_triggered", False),
+                }
 
                 if gateway:
-                    g = gateway.call_rca(evt, ctx)
+                    try:
+                        g = gateway.call_rca(evt, ctx, prompt_selection=prompt_selection["prompt"])
+                    except TypeError:
+                        g = gateway.call_rca(evt, ctx)
                     structured = g.get("structured") or {}
                     rationale = "\n".join(structured.get("hypothesis", [])[:4]) or g.get("text", "No output")
-                    model_meta = {"name": "openai", "version": g.get("model_version"), "tokens": g.get("tokens"), "latency_ms": g.get("latency_ms"), "confidence": structured.get("confidence", 0.5)}
+                    model_meta = {
+                        "name": "openai",
+                        "version": g.get("model_version"),
+                        "tokens": g.get("tokens"),
+                        "latency_ms": g.get("latency_ms"),
+                        "confidence": structured.get("confidence", 0.5),
+                        "prompt_id": prompt_meta["prompt_id"],
+                        "prompt_variant": prompt_meta["variant"],
+                        "prompt_route": prompt_meta["route_name"],
+                    }
                 else:
                     rationale = "Stub RCA (no OPENAI_API_KEY). Replace with GenAI output once key is set."
                     structured = {"title":"RCA Draft","hypothesis":[rationale],"evidence_ids":[],"immediate_actions":[],"pm_suggestions":[],"confidence":0.3}
-                    model_meta = {"name": "openai", "version": "unset", "tokens": None, "latency_ms": None, "confidence": structured.get("confidence", 0.3)}
+                    model_meta = {
+                        "name": "openai",
+                        "version": "unset",
+                        "tokens": None,
+                        "latency_ms": None,
+                        "confidence": structured.get("confidence", 0.3),
+                        "prompt_id": prompt_meta["prompt_id"],
+                        "prompt_variant": prompt_meta["variant"],
+                        "prompt_route": prompt_meta["route_name"],
+                    }
 
                 rec_id = str(uuid.uuid4())
                 doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
@@ -118,6 +157,7 @@ def rca_agent(kafka_bootstrap: str = None):
                         "wo_titles_count": len(ctx.get("last_wo_titles", [])),
                         "doc_chunk_ids": doc_chunk_ids,
                     },
+                    "prompt": prompt_meta,
                 }
 
                 send_recommendation(prod, out, settings)
@@ -129,13 +169,14 @@ def rca_agent(kafka_bootstrap: str = None):
                     "recommendation_id": rec_id,
                     "event_id": evt.get("event_id"),
                     "model": model_meta,
+                    "prompt": prompt_meta,
                     "structured": structured,
                     "context_meta": out.get("context_meta", {}),
                 })
 
                 logger.info({"event":"rca.recommendation.created","id":rec_id,"model":model_meta,"ctx":out.get("context_meta")})
                 try:
-                    rca_runs_total.labels(service="rca_agent").inc()
+                    _record_prompt_run_metrics(prompt_meta["prompt_id"], prompt_meta["variant"], route_name=prompt_meta["route_name"])
                     rca_duration_seconds.labels(service="rca_agent").observe(max(0.0, time.time() - _t0))
                     recommendations_created_total.labels(service="rca_agent").inc()
                 except Exception:
