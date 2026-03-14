@@ -19,3 +19,12 @@ Next:
 - Replace RCA stub with GenAI gateway + RAG
 - Add OpenClaw cron + run summaries
 - Add DB migrations & health endpoints
+
+## GenAI Gateway (OpenAI) & Run Summaries
+
+- Set OPENAI_API_KEY to enable GenAI RCA drafts.
+- Defaults:
+  - MI_GENAI_MODEL=gpt-4.1
+  - MI_GENAI_TIMEOUT_S=25
+  - MI_RUN_SUMMARY_DIR=outputs (JSON artifacts per run)
+- RCA agent includes model_version/tokens/latency in recommendation.model.

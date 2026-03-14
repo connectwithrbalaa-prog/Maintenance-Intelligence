@@ -17,3 +17,10 @@ class Settings(BaseSettings):
     class Config:
         env_prefix = "MI_"
         extra = "allow"
+
+# --- GenAI / summaries ---
+from pydantic import Field  # ensure imported
+
+setattr(Settings, "genai_model", Field(default="gpt-4.1"))
+setattr(Settings, "genai_timeout_s", Field(default=25))
+setattr(Settings, "run_summary_dir", Field(default="outputs"))
