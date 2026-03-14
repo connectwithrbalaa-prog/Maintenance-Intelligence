@@ -143,3 +143,10 @@ Notes:
   - title, hypothesis[], evidence_ids[], immediate_actions[], pm_suggestions[], confidence (0..1)
 - rca_agent uses structured fields to set recommendation title/rationale/evidence and carries confidence in model metadata.
 - Run summaries include the structured payload for traceability.
+
+### Outcomes Per-Asset & Resolution Timestamp
+
+- TTR now prefers `workorders.metadata.resolved_at` and falls back to `created_at` when missing.
+- API / CSV include:
+  - per_asset_acceptance: rate, accepts, total
+  - per_asset_ttr: average TTR seconds by asset
