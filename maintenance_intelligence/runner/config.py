@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     pg_user: str = Field(default="postgres", alias="POSTGRES_USER")
     pg_password: str = Field(default="postgres", alias="POSTGRES_PASSWORD")
     pg_host: str = Field(default="timescaledb", alias="POSTGRES_HOST")
+    ttr_fallback_window_h: int = Field(default=24)
 
     @property
     def pg_dsn(self) -> str:
