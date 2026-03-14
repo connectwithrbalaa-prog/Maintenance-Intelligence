@@ -42,7 +42,9 @@ def test_choose_prompt_variant_auto_rolls_back_underperforming_canary():
         "rca-canary-v1": {"total": 10, "accept": 2},
     }
 
-    selected = choose_prompt_variant(prompts, route_config, "evt-3", feedback_stats=stats, subject_bucket=0.01)
+    selected = choose_prompt_variant(
+        prompts, route_config, "evt-3", feedback_stats=stats, subject_bucket=0.01
+    )
 
     assert selected["prompt_id"] == "rca-default-v1"
     assert selected["variant"] == "default"

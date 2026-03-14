@@ -8,6 +8,7 @@ try:
 except Exception:
     OpenAI = None
 
+
 class GenAIGateway:
     def __init__(self, api_key: str, model: str, timeout_s: int = 25):
         self.model = model
@@ -16,9 +17,16 @@ class GenAIGateway:
             raise RuntimeError("openai package not installed")
         self.client = OpenAI(api_key=api_key)
 
-    def call_rca(self, event: Dict[str, Any], context: Dict[str, Any], prompt_selection: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def call_rca(
+        self,
+        event: Dict[str, Any],
+        context: Dict[str, Any],
+        prompt_selection: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         t0 = time.time()
-        system_prompt, prompt = self._build_prompt(event, context, prompt_selection=prompt_selection)
+        system_prompt, prompt = self._build_prompt(
+            event, context, prompt_selection=prompt_selection
+        )
         try:
             resp = self.client.chat.completions.create(
                 model=self.model,
@@ -33,7 +41,7 @@ class GenAIGateway:
             usage = getattr(resp, "usage", None)
             tokens = usage.total_tokens if usage else None
         except Exception as e:
-            logger.error({"event":"genai.error","err":str(e)})
+            logger.error({"event": "genai.error", "err": str(e)})
             text, tokens = f"[GENAI_ERROR] {e}", None
 
         latency = int((time.time() - t0) * 1000)
@@ -46,8 +54,15 @@ class GenAIGateway:
             "prompt_id": (prompt_selection or {}).get("prompt_id"),
         }
 
-    def _build_prompt(self, event: Dict[str, Any], context: Dict[str, Any], prompt_selection: Dict[str, Any] | None = None) -> tuple[str, str]:
-        default_system = "You are an industrial maintenance RCA assistant. Respond with strict JSON only."
+    def _build_prompt(
+        self,
+        event: Dict[str, Any],
+        context: Dict[str, Any],
+        prompt_selection: Dict[str, Any] | None = None,
+    ) -> tuple[str, str]:
+        default_system = (
+            "You are an industrial maintenance RCA assistant. Respond with strict JSON only."
+        )
         default_user = (
             "Use this schema and fill every field; if unknown, produce your best estimate:\n"
             '{{"title":"string","hypothesis":["string"],"evidence_ids":["string"],'
@@ -70,8 +85,9 @@ class GenAIGateway:
     def _parse_structured(self, text: str) -> Dict[str, Any]:
         import json
         import re
+
         # Extract first JSON object if model wraps content
-        m = re.search(r'\{[\s\S]*\}', text)
+        m = re.search(r"\{[\s\S]*\}", text)
         payload = text if m is None else m.group(0)
         try:
             obj = json.loads(payload)
@@ -83,7 +99,7 @@ class GenAIGateway:
                 "evidence_ids": [],
                 "immediate_actions": [],
                 "pm_suggestions": [],
-                "confidence": 0.5
+                "confidence": 0.5,
             }
         # Fill missing keys with defaults
         defaults = {
@@ -92,14 +108,18 @@ class GenAIGateway:
             "evidence_ids": [],
             "immediate_actions": [],
             "pm_suggestions": [],
-            "confidence": 0.5
+            "confidence": 0.5,
         }
         for k, v in defaults.items():
             obj.setdefault(k, v)
         # Bound confidence
         try:
             obj["confidence"] = float(obj["confidence"])
-            obj["confidence"] = 0.0 if obj["confidence"] < 0 else (1.0 if obj["confidence"] > 1 else obj["confidence"])
+            obj["confidence"] = (
+                0.0
+                if obj["confidence"] < 0
+                else (1.0 if obj["confidence"] > 1 else obj["confidence"])
+            )
         except Exception:
             obj["confidence"] = 0.5
         return obj

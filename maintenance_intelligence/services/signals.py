@@ -22,25 +22,32 @@ def _resolve_signal_org_id(evt: dict, settings: Settings) -> str:
     lineage = evt.get("lineage") if isinstance(evt.get("lineage"), dict) else {}
     return evt.get("org_id") or lineage.get("org_id") or settings.default_org
 
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
-    return KafkaConsumer(*consumer_topics(["canonical.event.raised"], settings, org_id=settings.default_org),
-                         bootstrap_servers=kafka_bootstrap,
-                         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
-                         auto_offset_reset="earliest",
-                         group_id="signals-processor",
-                         enable_auto_commit=True,
-                         auto_commit_interval_ms=5000)
+    return KafkaConsumer(
+        *consumer_topics(["canonical.event.raised"], settings, org_id=settings.default_org),
+        bootstrap_servers=kafka_bootstrap,
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        auto_offset_reset="earliest",
+        group_id="signals-processor",
+        enable_auto_commit=True,
+        auto_commit_interval_ms=5000,
+    )
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_producer(kafka_bootstrap: str):
     """Create Kafka producer with retry logic."""
-    return KafkaProducer(bootstrap_servers=kafka_bootstrap,
-                         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-                         acks='all',
-                         retries=3,
-                         retry_backoff_ms=1000)
+    return KafkaProducer(
+        bootstrap_servers=kafka_bootstrap,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        acks="all",
+        retries=3,
+        retry_backoff_ms=1000,
+    )
+
 
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
 def create_db_connection(db_url: str):
@@ -49,11 +56,16 @@ def create_db_connection(db_url: str):
     conn.autocommit = True
     return conn
 
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
 def send_anomaly_event(producer, anomaly_event, settings: Settings):
     """Send anomaly event with retry logic."""
-    producer.send(scoped_topic("canonical.signal.anomaly.detected", settings, anomaly_event.get("org_id")), anomaly_event)
+    producer.send(
+        scoped_topic("canonical.signal.anomaly.detected", settings, anomaly_event.get("org_id")),
+        anomaly_event,
+    )
     producer.flush()
+
 
 def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
     """Process events to extract signals, compute rollups, and detect anomalies."""
@@ -114,12 +126,23 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
 
                     # Insert signal
                     with conn.cursor() as cur:
-                        cur.execute("""
+                        cur.execute(
+                            """
                             INSERT INTO signals (signal_id, org_id, asset_id, signal_type, timestamp, value, unit, metadata)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (signal_id) DO NOTHING
-                        """, (signal_id, org_id, asset_id, signal_type, evt["occurred_at"], value, unit,
-                              {"event_id": evt["event_id"], "source": "event", "org_id": org_id}))
+                        """,
+                            (
+                                signal_id,
+                                org_id,
+                                asset_id,
+                                signal_type,
+                                evt["occurred_at"],
+                                value,
+                                unit,
+                                {"event_id": evt["event_id"], "source": "event", "org_id": org_id},
+                            ),
+                        )
 
                     # Update recent values for anomaly detection
                     key = (org_id, asset_id, signal_type)
@@ -131,7 +154,9 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                     _compute_rollups(conn, org_id, asset_id, signal_type)
 
                     # Detect anomalies
-                    anomaly_flags = _detect_anomalies(recent_values[key], value, details.get("threshold"))
+                    anomaly_flags = _detect_anomalies(
+                        recent_values[key], value, details.get("threshold")
+                    )
                     if anomaly_flags:
                         # Send anomaly event
                         anomaly_evt = {
@@ -147,16 +172,31 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                                 "signal_type": signal_type,
                                 "value": value,
                                 "anomaly_flags": anomaly_flags,
-                                "threshold": details.get("threshold")
+                                "threshold": details.get("threshold"),
                             },
-                            "lineage": {"source": "signals-processor", "parent_event_id": evt["event_id"]},
+                            "lineage": {
+                                "source": "signals-processor",
+                                "parent_event_id": evt["event_id"],
+                            },
                         }
                         send_anomaly_event(prod, anomaly_evt, settings)
 
-                logger.info({"event": "signals.processed", "asset_id": asset_id, "signals_count": len(signals)})
+                logger.info(
+                    {
+                        "event": "signals.processed",
+                        "asset_id": asset_id,
+                        "signals_count": len(signals),
+                    }
+                )
 
             except Exception as e:
-                logger.error({"event": "signals_processor.processing_error", "event_id": evt.get("event_id"), "error": str(e)})
+                logger.error(
+                    {
+                        "event": "signals_processor.processing_error",
+                        "event_id": evt.get("event_id"),
+                        "error": str(e),
+                    }
+                )
                 # Continue processing other events
 
     except Exception as e:
@@ -174,6 +214,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
 
     logger.info({"event": "signals_processor.exit"})
 
+
 def _compute_rollups(conn, org_id: str, asset_id: str, signal_type: str):
     """Compute 1h, 6h, 24h rollups for the last period."""
     now = dt.datetime.utcnow()
@@ -187,11 +228,14 @@ def _compute_rollups(conn, org_id: str, asset_id: str, signal_type: str):
         start_time = now - delta
 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT value FROM signals
                 WHERE org_id = %s AND asset_id = %s AND signal_type = %s AND timestamp >= %s
                 ORDER BY timestamp
-            """, (org_id, asset_id, signal_type, start_time))
+            """,
+                (org_id, asset_id, signal_type, start_time),
+            )
 
             values = [row["value"] for row in cur.fetchall()]
             if not values:
@@ -211,7 +255,8 @@ def _compute_rollups(conn, org_id: str, asset_id: str, signal_type: str):
 
             rollup_id = f"{asset_id}-{signal_type}-{period_name}-{now.isoformat()}"
 
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO signal_rollups (rollup_id, org_id, asset_id, signal_type, period, start_time, end_time,
                                            mean_value, min_value, max_value, count, anomaly_flags)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -222,8 +267,23 @@ def _compute_rollups(conn, org_id: str, asset_id: str, signal_type: str):
                     max_value = EXCLUDED.max_value,
                     count = EXCLUDED.count,
                     anomaly_flags = EXCLUDED.anomaly_flags
-            """, (rollup_id, org_id, asset_id, signal_type, period_name, start_time, now,
-                  mean_val, min_val, max_val, count, json.dumps({**anomaly_flags, "org_id": org_id})))
+            """,
+                (
+                    rollup_id,
+                    org_id,
+                    asset_id,
+                    signal_type,
+                    period_name,
+                    start_time,
+                    now,
+                    mean_val,
+                    min_val,
+                    max_val,
+                    count,
+                    json.dumps({**anomaly_flags, "org_id": org_id}),
+                ),
+            )
+
 
 def _detect_anomalies(recent_values: list, current_value: float, threshold: float = None) -> dict:
     """Simple anomaly detection using z-score and threshold."""

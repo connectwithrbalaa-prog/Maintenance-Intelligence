@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column("system_prompt", sa.Text(), nullable=False),
         sa.Column("user_prompt_template", sa.Text(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")
+        ),
         sa.PrimaryKeyConstraint("prompt_id"),
     )
     op.create_table(
@@ -39,16 +41,27 @@ def upgrade() -> None:
         sa.Column("default_prompt_id", sa.Text(), nullable=False),
         sa.Column("canary_prompt_id", sa.Text(), nullable=True),
         sa.Column("canary_ratio", sa.Float(), nullable=False, server_default="0.0"),
-        sa.Column("auto_rollback_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "auto_rollback_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
         sa.Column("rollback_min_runs", sa.Integer(), nullable=False, server_default="20"),
         sa.Column("rollback_acceptance_delta", sa.Float(), nullable=False, server_default="0.05"),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=True, server_default=sa.text("now()")
+        ),
         sa.PrimaryKeyConstraint("config_id"),
     )
     op.add_column("rca_feedback", sa.Column("prompt_id", sa.Text(), nullable=True))
     op.add_column("rca_feedback", sa.Column("prompt_route", sa.Text(), nullable=True))
-    op.create_index("idx_prompt_catalog_route_active", "prompt_catalog", ["route_name", "active"], unique=False)
-    op.create_index("idx_prompt_configs_org_route", "prompt_route_configs", ["org_id", "route_name"], unique=False)
+    op.create_index(
+        "idx_prompt_catalog_route_active", "prompt_catalog", ["route_name", "active"], unique=False
+    )
+    op.create_index(
+        "idx_prompt_configs_org_route",
+        "prompt_route_configs",
+        ["org_id", "route_name"],
+        unique=False,
+    )
     op.create_index("idx_feedback_prompt", "rca_feedback", ["prompt_id", "action"], unique=False)
 
 

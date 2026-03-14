@@ -31,7 +31,10 @@ def org_scope_enabled(settings) -> bool:
 
 
 def scoped_topic(base_topic: str, settings, org_id: Optional[str] = None) -> str:
-    if not org_scope_enabled(settings) or getattr(settings, "kafka_tenant_mode", "message") != "namespaced":
+    if (
+        not org_scope_enabled(settings)
+        or getattr(settings, "kafka_tenant_mode", "message") != "namespaced"
+    ):
         return base_topic
     parts = base_topic.split(".")
     if len(parts) < 2:
@@ -40,7 +43,9 @@ def scoped_topic(base_topic: str, settings, org_id: Optional[str] = None) -> str
     return ".".join([parts[0], effective_org, *parts[1:]])
 
 
-def consumer_topics(base_topics: Iterable[str], settings, org_id: Optional[str] = None) -> list[str]:
+def consumer_topics(
+    base_topics: Iterable[str], settings, org_id: Optional[str] = None
+) -> list[str]:
     return [scoped_topic(topic, settings, org_id=org_id) for topic in base_topics]
 
 

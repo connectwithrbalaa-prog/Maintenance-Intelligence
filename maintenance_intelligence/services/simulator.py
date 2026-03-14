@@ -20,10 +20,11 @@ def create_kafka_producer(kafka_bootstrap: str):
     return KafkaProducer(
         bootstrap_servers=kafka_bootstrap,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        acks='all',  # Wait for all replicas
+        acks="all",  # Wait for all replicas
         retries=3,
-        retry_backoff_ms=1000
+        retry_backoff_ms=1000,
     )
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
 def send_event(producer, topic, event, settings: Settings):
@@ -31,6 +32,7 @@ def send_event(producer, topic, event, settings: Settings):
     future = producer.send(scoped_topic(topic, settings, event.get("org_id")), event)
     producer.flush()  # Wait for send to complete
     return future
+
 
 def simulator(kafka_bootstrap: str):
     logger.info({"event": "simulator.start", "kafka_bootstrap": kafka_bootstrap})
@@ -72,7 +74,9 @@ def simulator(kafka_bootstrap: str):
 
                 try:
                     send_event(prod, "canonical.event.raised", evt, settings)
-                    logger.debug({"event": "simulator.sent", "asset_id": a, "event_id": evt["event_id"]})
+                    logger.debug(
+                        {"event": "simulator.sent", "asset_id": a, "event_id": evt["event_id"]}
+                    )
                 except Exception as e:
                     logger.error({"event": "simulator.send_failed", "asset_id": a, "error": str(e)})
                     # Continue with next asset rather than crashing

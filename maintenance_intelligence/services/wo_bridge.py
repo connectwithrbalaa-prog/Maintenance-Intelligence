@@ -12,17 +12,21 @@ from maintenance_intelligence.runner.config import Settings
 
 def with_pg(dsn: str):
     import time
+
     while True:
         try:
             return psycopg2.connect(dsn)
         except Exception:
             time.sleep(1)
 
+
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
     settings = Settings()
     conn = with_pg(pg_dsn)
     cons = KafkaConsumer(
-        *consumer_topics(["canonical.recommendation.created"], settings, org_id=settings.default_org),
+        *consumer_topics(
+            ["canonical.recommendation.created"], settings, org_id=settings.default_org
+        ),
         bootstrap_servers=kafka_bootstrap,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         group_id="agent-wo-bridge",
@@ -47,8 +51,13 @@ def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
                         rec.get("title"),
                         rec.get("rationale"),
                         "MEDIUM",
-                        json.dumps({"source":"agent-wo-bridge-stub","created_at": dt.datetime.utcnow().isoformat() + "Z"}),
+                        json.dumps(
+                            {
+                                "source": "agent-wo-bridge-stub",
+                                "created_at": dt.datetime.utcnow().isoformat() + "Z",
+                            }
+                        ),
                     ),
                 )
-        logger.info({"event":"wo_bridge.draft_created","wo_id":wo_id})
+        logger.info({"event": "wo_bridge.draft_created", "wo_id": wo_id})
         wo_drafts_total.labels(service="wo_bridge").inc()

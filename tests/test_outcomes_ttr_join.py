@@ -37,7 +37,11 @@ def test_ttr_measurements_prioritize_exact_then_nearest_with_window():
     ]
 
     events = [
-        {"event_id": "EVT-EXACT", "asset_id": "PUMP-101", "occurred_at": _ts("2026-03-14T09:00:00Z")},
+        {
+            "event_id": "EVT-EXACT",
+            "asset_id": "PUMP-101",
+            "occurred_at": _ts("2026-03-14T09:00:00Z"),
+        },
         {"event_id": "EVT-N1", "asset_id": "PUMP-102", "occurred_at": _ts("2026-03-14T09:30:00Z")},
         {"event_id": "EVT-N2", "asset_id": "PUMP-102", "occurred_at": _ts("2026-03-14T10:45:00Z")},
         {"event_id": "EVT-FAR", "asset_id": "PUMP-103", "occurred_at": _ts("2026-03-12T10:00:00Z")},
@@ -65,7 +69,11 @@ def test_ttr_measurements_do_not_fallback_when_exact_link_is_missing():
         }
     ]
     events = [
-        {"event_id": "EVT-OTHER", "asset_id": "PUMP-201", "occurred_at": _ts("2026-03-14T10:30:00Z")}
+        {
+            "event_id": "EVT-OTHER",
+            "asset_id": "PUMP-201",
+            "occurred_at": _ts("2026-03-14T10:30:00Z"),
+        }
     ]
 
     rows = _build_ttr_measurements(workorders, events, fallback_window_h=24)

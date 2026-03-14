@@ -18,11 +18,16 @@ def create_db_connection(dsn: str):
     """Create database connection with retry logic."""
     return psycopg2.connect(dsn)
 
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
     """Create Kafka consumer with retry logic."""
     return KafkaConsumer(
-        *consumer_topics(["canonical.asset.upserted", "canonical.event.raised"], settings, org_id=settings.default_org),
+        *consumer_topics(
+            ["canonical.asset.upserted", "canonical.event.raised"],
+            settings,
+            org_id=settings.default_org,
+        ),
         bootstrap_servers=kafka_bootstrap,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         group_id="agent-ingestion",
@@ -30,6 +35,7 @@ def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
         enable_auto_commit=True,  # Auto-commit offsets
         auto_commit_interval_ms=5000,  # Commit every 5 seconds
     )
+
 
 @backoff.on_exception(backoff.expo, (psycopg2.Error, Exception), max_tries=3, max_time=30)
 def store_event(conn, evt):
@@ -41,11 +47,18 @@ def store_event(conn, evt):
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb) "
                 "ON CONFLICT (event_id) DO NOTHING",
                 (
-                    evt.get("event_id"), evt.get("occurred_at"), evt.get("org_id"),
-                    evt.get("asset_id"), evt.get("kind"), evt.get("severity"),
-                    evt.get("summary"), json.dumps(evt.get("details")), json.dumps(evt.get("lineage")),
+                    evt.get("event_id"),
+                    evt.get("occurred_at"),
+                    evt.get("org_id"),
+                    evt.get("asset_id"),
+                    evt.get("kind"),
+                    evt.get("severity"),
+                    evt.get("summary"),
+                    json.dumps(evt.get("details")),
+                    json.dumps(evt.get("lineage")),
                 ),
             )
+
 
 def ingestion(kafka_bootstrap: str, pg_dsn: str):
     logger.info({"event": "ingestion.start", "kafka_bootstrap": kafka_bootstrap})
@@ -82,7 +95,13 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                     logger.info({"event": "ingestion.stored", "id": evt.get("event_id")})
                     events_ingested_total.labels(service="ingestion").inc()
                 except Exception as e:
-                    logger.error({"event": "ingestion.store_failed", "id": evt.get("event_id"), "error": str(e)})
+                    logger.error(
+                        {
+                            "event": "ingestion.store_failed",
+                            "id": evt.get("event_id"),
+                            "error": str(e),
+                        }
+                    )
                     # Continue processing other messages
 
     except Exception as e:

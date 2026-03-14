@@ -20,13 +20,17 @@ class Settings(BaseSettings):
     api_keys_raw: str = Field(default="{}", alias="MI_API_KEYS")
     kafka_tenant_mode: str = Field(default="message", alias="MI_KAFKA_TENANT_MODE")
     prompt_defaults_raw: str = Field(default='{"rca":"rca-default-v1"}', alias="MI_PROMPT_DEFAULTS")
-    prompt_canary_defaults_raw: str = Field(default='{"rca":"rca-canary-v1"}', alias="MI_PROMPT_CANARY_DEFAULTS")
+    prompt_canary_defaults_raw: str = Field(
+        default='{"rca":"rca-canary-v1"}', alias="MI_PROMPT_CANARY_DEFAULTS"
+    )
     prompt_canary_ratio: float = Field(default=0.1, alias="MI_PROMPT_CANARY_RATIO")
     rca_model_rates_raw: str = Field(
         default='{"gpt-4.1":{"per_1k_tokens_usd":0.01},"unset":{"per_1k_tokens_usd":0.0}}',
         alias="MI_RCA_MODEL_RATES",
     )
-    rca_budget_caps_usd_raw: str = Field(default='{"daily":25.0,"weekly":100.0}', alias="MI_RCA_BUDGET_CAPS_USD")
+    rca_budget_caps_usd_raw: str = Field(
+        default='{"daily":25.0,"weekly":100.0}', alias="MI_RCA_BUDGET_CAPS_USD"
+    )
     genai_model: str = Field(default="gpt-4.1")
     genai_timeout_s: int = Field(default=25)
     run_summary_dir: str = Field(default="outputs")
@@ -77,7 +81,9 @@ class Settings(BaseSettings):
             if isinstance(raw_value, (int, float)):
                 parsed[model_name] = float(raw_value)
                 continue
-            if isinstance(raw_value, dict) and isinstance(raw_value.get("per_1k_tokens_usd"), (int, float)):
+            if isinstance(raw_value, dict) and isinstance(
+                raw_value.get("per_1k_tokens_usd"), (int, float)
+            ):
                 parsed[model_name] = float(raw_value["per_1k_tokens_usd"])
         return parsed
 

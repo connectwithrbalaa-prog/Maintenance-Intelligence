@@ -26,7 +26,9 @@ def _context_from_api_key(api_key: str, settings: Settings) -> TenantContext:
     return TenantContext(org_id=str(org_id), role=role, subject="api_key")
 
 
-def get_request_context(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> TenantContext:
+def get_request_context(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+) -> TenantContext:
     settings = Settings()
     auth_mode = (settings.auth_mode or "none").strip().lower()
     if auth_mode == "none":

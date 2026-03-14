@@ -1,4 +1,3 @@
-
 from maintenance_intelligence.api.metrics import (
     rca_cost_usd_total,
     rca_latency_seconds,
@@ -13,7 +12,22 @@ def test_rca_agent_records_prompt_metadata_and_metric(monkeypatch, tmp_path):
 
     class FakeCons:
         def __iter__(self):
-            return iter([type("M", (), {"value": {"org_id": "ORG-1", "asset_id": "A1", "kind": "alarm", "event_id": "E1"}})()])
+            return iter(
+                [
+                    type(
+                        "M",
+                        (),
+                        {
+                            "value": {
+                                "org_id": "ORG-1",
+                                "asset_id": "A1",
+                                "kind": "alarm",
+                                "event_id": "E1",
+                            }
+                        },
+                    )()
+                ]
+            )
 
         def close(self):
             return None
@@ -47,12 +61,23 @@ def test_rca_agent_records_prompt_metadata_and_metric(monkeypatch, tmp_path):
     monkeypatch.setattr(rca_mod, "create_kafka_consumer", lambda *_a, **_k: FakeCons())
     monkeypatch.setattr(rca_mod, "create_kafka_producer", lambda *_a, **_k: FakeProd())
     monkeypatch.setattr(rca_mod, "GenAIGateway", FakeGW)
-    monkeypatch.setattr(rca_mod, "get_event_context", lambda evt, settings, org_id=None: {"doc_chunks": [{"chunk_id": "DOC-1"}], "recent_signals": []})
+    monkeypatch.setattr(
+        rca_mod,
+        "get_event_context",
+        lambda evt, settings, org_id=None: {
+            "doc_chunks": [{"chunk_id": "DOC-1"}],
+            "recent_signals": [],
+        },
+    )
     monkeypatch.setattr(
         rca_mod,
         "resolve_prompt_for_route",
         lambda route_name, org_id, subject_key, settings=None: {
-            "prompt": {"prompt_id": "rca-canary-v1", "system_prompt": "sys", "user_prompt_template": "Event {event_json}"},
+            "prompt": {
+                "prompt_id": "rca-canary-v1",
+                "system_prompt": "sys",
+                "user_prompt_template": "Event {event_json}",
+            },
             "prompt_id": "rca-canary-v1",
             "variant": "canary",
             "route_name": "rca",
@@ -67,13 +92,21 @@ def test_rca_agent_records_prompt_metadata_and_metric(monkeypatch, tmp_path):
 
     monkeypatch.setattr(rca_mod, "write_run_summary", fake_write)
 
-    before = rca_runs_by_prompt_total.labels(service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary")._value.get()
+    before = rca_runs_by_prompt_total.labels(
+        service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary"
+    )._value.get()
     before_cost = rca_cost_usd_total.labels(model="gpt-4.1", prompt_id="rca-canary-v1")._value.get()
-    before_latency = rca_latency_seconds.labels(service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1")._sum.get()
+    before_latency = rca_latency_seconds.labels(
+        service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1"
+    )._sum.get()
     rca_mod.rca_agent("kafka:9092")
-    after = rca_runs_by_prompt_total.labels(service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary")._value.get()
+    after = rca_runs_by_prompt_total.labels(
+        service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary"
+    )._value.get()
     after_cost = rca_cost_usd_total.labels(model="gpt-4.1", prompt_id="rca-canary-v1")._value.get()
-    after_latency = rca_latency_seconds.labels(service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1")._sum.get()
+    after_latency = rca_latency_seconds.labels(
+        service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1"
+    )._sum.get()
 
     assert after == before + 1
     assert round(after_cost - before_cost, 6) == 0.042

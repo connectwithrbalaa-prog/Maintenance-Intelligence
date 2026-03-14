@@ -17,9 +17,28 @@ class _Cursor:
         self.calls.append((query, params))
         normalized = " ".join(query.split())
         if "FROM signals" in normalized:
-            self.rows = [("SIG-1", "vibration", 7.2, "mm/s", None, {"org_id": params[2] if len(params) > 2 else "ORG-A"})]
+            self.rows = [
+                (
+                    "SIG-1",
+                    "vibration",
+                    7.2,
+                    "mm/s",
+                    None,
+                    {"org_id": params[2] if len(params) > 2 else "ORG-A"},
+                )
+            ]
         elif "FROM signal_rollups" in normalized:
-            self.rows = [("vibration", "1h", 7.2, 6.8, 8.1, {"org_id": params[2] if len(params) > 2 else "ORG-A"}, None)]
+            self.rows = [
+                (
+                    "vibration",
+                    "1h",
+                    7.2,
+                    6.8,
+                    8.1,
+                    {"org_id": params[2] if len(params) > 2 else "ORG-A"},
+                    None,
+                )
+            ]
         elif "SELECT title FROM workorders" in normalized:
             self.rows = []
         else:
@@ -56,14 +75,22 @@ def test_signals_summary_api_scopes_queries_by_org(monkeypatch):
     calls = []
     monkeypatch.setenv("MI_MULTI_TENANT", "true")
     monkeypatch.setenv("MI_AUTH_MODE", "api_key")
-    monkeypatch.setenv("MI_API_KEYS", json.dumps({"viewer-key": {"org_id": "ORG-A", "role": "viewer"}}))
+    monkeypatch.setenv(
+        "MI_API_KEYS", json.dumps({"viewer-key": {"org_id": "ORG-A", "role": "viewer"}})
+    )
     monkeypatch.setattr(signals_api, "with_pg", lambda _dsn: _Conn(calls))
 
     client = TestClient(app)
-    response = client.get("/api/v1/signals/summary?asset_id=ASSET-1&limit=5", headers={"X-API-Key": "viewer-key"})
+    response = client.get(
+        "/api/v1/signals/summary?asset_id=ASSET-1&limit=5", headers={"X-API-Key": "viewer-key"}
+    )
 
     assert response.status_code == 200
-    relevant = [(query, params) for query, params in calls if "FROM signals" in query or "FROM signal_rollups" in query]
+    relevant = [
+        (query, params)
+        for query, params in calls
+        if "FROM signals" in query or "FROM signal_rollups" in query
+    ]
     assert relevant
     assert all("org_id = %s" in query for query, _ in relevant)
     assert all("ORG-A" in params for _, params in relevant)
@@ -78,7 +105,11 @@ def test_context_signal_queries_are_org_scoped(monkeypatch):
     ctx = assembler.get_event_context({"asset_id": "ASSET-1", "org_id": "ORG-A", "kind": "alarm"})
 
     assert ctx["asset_id"] == "ASSET-1"
-    signal_queries = [(query, params) for query, params in calls if "FROM signals" in query or "FROM signal_rollups" in query]
+    signal_queries = [
+        (query, params)
+        for query, params in calls
+        if "FROM signals" in query or "FROM signal_rollups" in query
+    ]
     assert signal_queries
     assert all("org_id = %s" in query for query, _ in signal_queries)
     assert all("ORG-A" in params for _, params in signal_queries)

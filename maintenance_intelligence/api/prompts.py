@@ -17,7 +17,9 @@ router = APIRouter(prefix="/api/v1/prompts", tags=["prompts"])
 
 
 class PromptRouteConfigPayload(BaseModel):
-    org_id: Optional[str] = Field(default=None, description="Optional org-specific override; omit for global")
+    org_id: Optional[str] = Field(
+        default=None, description="Optional org-specific override; omit for global"
+    )
     default_prompt_id: str
     canary_prompt_id: Optional[str] = None
     canary_ratio: float = Field(default=0.0, ge=0.0, le=1.0)
