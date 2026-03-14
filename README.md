@@ -36,3 +36,37 @@ Next:
 - Health endpoint:
   - GET /healthz (basic)
   - GET /healthz?deep=true (PG + Kafka checks)
+
+## OpenClaw Cron Wiring (Scheduled RCA Test)
+
+This repo provides a cron-friendly CLI and wrapper:
+- Trigger a synthetic RCA test: `mi-runner rca-test`
+- Cron wrapper: `scripts/cron_rca_test.sh` (writes to `logs/cron_rca_test.log` and prints JSON)
+
+Environment:
+- `OPENAI_API_KEY` (for GenAI output; otherwise stub text is used)
+- Optional:
+  - `MI_RUN_SUMMARY_DIR` (default: `outputs`)
+  - `MI_CRON_LOG_DIR` (default: `logs`)
+
+Example OpenClaw cron job (JSON):
+{
+  "action": "add",
+  "job": {
+    "name": "maintenance-intel-rca-test-hourly",
+    "schedule": { "kind": "cron", "expr": "0 * * * *", "tz": "Asia/Kolkata" },
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Reminder: Run scheduled RCA test now (scripts/cron_rca_test.sh). Expect a new run_summary.json in outputs/.",
+      "timeoutSeconds": 60
+    },
+    "sessionTarget": "isolated",
+    "enabled": true
+  }
+}
+
+If your OpenClaw runner can execute shell commands directly, schedule:
+`/workspaces/Maintenance-Intelligence/scripts/cron_rca_test.sh`
+and tail `logs/cron_rca_test.log`.
+
+The wrapper outputs a single JSON line from `mi-runner rca-test`, which includes the event_id and run_id. The full run summary is stored at `outputs/YYYY-MM-DD/<run_id>.json`.
