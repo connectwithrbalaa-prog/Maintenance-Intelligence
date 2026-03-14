@@ -6,11 +6,14 @@ from maintenance_intelligence.runner.config import Settings
 
 def with_pg(dsn: str):
     import time
-    while True:
+    last_error = None
+    for _ in range(3):
         try:
-            return psycopg2.connect(dsn)
-        except Exception:
-            time.sleep(1)
+            return psycopg2.connect(dsn, connect_timeout=2)
+        except Exception as exc:
+            last_error = exc
+            time.sleep(0.2)
+    raise last_error
 
 def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None) -> Dict[str, Any]:
     """
@@ -41,43 +44,82 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
         except Exception as e:
             logger.debug({"event":"ctx.wo.skip","err":str(e)})
 
-        # signal summary stub (extend via real signals later)
-        out["signal_summary"] = {"note": "MVP stub; add rolling means/min/max from measurements"}
+        # signal summary: recent rollups and anomalies
+        try:
+            with conn, conn.cursor() as cur:
+                # Get latest rollups for each signal type
+                cur.execute("""
+                    SELECT signal_type, period, mean_value, min_value, max_value, anomaly_flags
+                    FROM signal_rollups
+                    WHERE asset_id = %s AND end_time >= NOW() - INTERVAL '24 hours'
+                    ORDER BY end_time DESC
+                    LIMIT 10
+                """, (asset_id,))
+                rollups = cur.fetchall()
+                out["signal_rollups"] = [
+                    {
+                        "signal_type": r[0],
+                        "period": r[1],
+                        "mean": r[2],
+                        "min": r[3],
+                        "max": r[4],
+                        "anomalies": r[5] or {}
+                    } for r in rollups
+                ]
 
-        # doc chunks stub (if doc_chunks table exists)
-        try:
-            with conn, conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT chunk_id, title FROM doc_chunks
-                    WHERE asset_id = %s
-                    ORDER BY RANDOM()
-                    LIMIT 3
-                    """, (asset_id,)
-                )
-                rows = cur.fetchall()
-                out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
+                # Get recent signals with anomaly flags
+                cur.execute("""
+                    SELECT signal_id, signal_type, value, timestamp, metadata
+                    FROM signals
+                    WHERE asset_id = %s AND timestamp >= NOW() - INTERVAL '1 hour'
+                    ORDER BY timestamp DESC
+                    LIMIT 20
+                """, (asset_id,))
+                signals = cur.fetchall()
+                out["recent_signals"] = [
+                    {
+                        "signal_id": r[0],
+                        "signal_type": r[1],
+                        "value": r[2],
+                        "timestamp": r[3].isoformat() if r[3] else None,
+                        "metadata": r[4] or {}
+                    } for r in signals
+                ]
         except Exception as e:
-            logger.debug({"event":"ctx.docs.skip","err":str(e)})
-        # doc chunks via pgvector (if available)
+            logger.debug({"event":"ctx.signals.skip","err":str(e)})
+            out["signal_rollups"] = []
+            out["recent_signals"] = []
+
+        # doc chunks via hybrid retrieval (BM25 + vector)
         try:
-            with conn, conn.cursor() as cur:
-                # If pgvector/embedding not present, this will error and fall back
-                cur.execute(
-                    """
-                    SELECT chunk_id, title
-                    FROM doc_chunks
-                    WHERE asset_id = %s
-                    ORDER BY embedding <-> (SELECT embedding FROM doc_chunks WHERE asset_id = %s LIMIT 1)
-                    LIMIT 3
-                    """,
-                    (asset_id, asset_id)
-                )
-                rows = cur.fetchall()
-                out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
+            from maintenance_intelligence.rag.retrieval import HybridRetriever
+            # Create a query from event details for better retrieval
+            event_details = event.get("details", {})
+            event_kind = event.get("kind", "")
+            event_summary = event.get("summary", "")
+            query = f"{event_kind} {event_summary} {' '.join(str(v) for v in event_details.values())}"
+
+            retriever = HybridRetriever(settings.pg_dsn)
+            chunks = retriever.retrieve(query, asset_id, limit=5, token_budget=2000)
+            out["doc_chunks"] = [{"chunk_id": c["chunk_id"], "title": c["title"]} for c in chunks]
         except Exception as e:
-            # Keep prior stub/random fallback if vector unavailable
-            pass
+            logger.debug({"event":"ctx.hybrid_rag.skip","err":str(e)})
+            # Fallback to random selection
+            try:
+                with conn, conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT chunk_id, title FROM doc_chunks
+                        WHERE asset_id = %s
+                        ORDER BY RANDOM()
+                        LIMIT 3
+                        """, (asset_id,)
+                    )
+                    rows = cur.fetchall()
+                    out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
+            except Exception as e2:
+                logger.debug({"event":"ctx.docs.skip","err":str(e2)})
+                out["doc_chunks"] = []
 
 
     except Exception as e:

@@ -13,5 +13,6 @@ BEGIN
   END IF;
 END $$;
 
--- Simple index (optional; improves ANN search later)
--- CREATE INDEX IF NOT EXISTS doc_chunks_embedding_idx ON doc_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+-- IVFFlat index for efficient ANN search (tuned for small datasets)
+-- lists = 100 is reasonable for ~1000-10000 vectors; adjust based on data size
+CREATE INDEX IF NOT EXISTS doc_chunks_embedding_idx ON doc_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);

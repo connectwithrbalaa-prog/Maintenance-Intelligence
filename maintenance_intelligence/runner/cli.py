@@ -44,11 +44,22 @@ def export_bad_actors(limit: int = 50):
         json.dump(rows, f, indent=2, default=str)
     typer.echo(path)
 @app.command()
-def rag(path: str, asset_id: str = typer.Option(..., help="Associate ingested chunks to this asset_id")):
+def signals():
+    """
+    Run the signals processor to compute rollups and detect anomalies.
+    """
+    from maintenance_intelligence.services.signals import signals_processor
+    signals_processor()
+
+@app.command()
+def rag(path: str, asset_id: str = typer.Option(..., help="Associate ingested chunks to this asset_id"),
+        chunk_size: int = typer.Option(1200, help="Max characters per chunk"),
+        bulk_mode: bool = typer.Option(False, help="Chunk documents into multiple pieces")):
     """
     Ingest docs into RAG store (doc_chunks with pgvector embeddings).
-    Usage: mi-runner rag --path ./docs --asset-id PUMP-101
+    Supports .txt, .md, .html files. HTML is converted to text.
+    Usage: mi-runner rag --path ./docs --asset-id PUMP-101 --bulk-mode
     """
     from maintenance_intelligence.rag.ingest import ingest_path
-    ingest_path(path, asset_id)
+    ingest_path(path, asset_id, chunk_size=chunk_size, bulk_mode=bulk_mode)
 \n
