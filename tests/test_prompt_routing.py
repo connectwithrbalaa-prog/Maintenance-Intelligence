@@ -1,11 +1,12 @@
 import json
 
-from maintenance_intelligence.api.metrics import rca_runs_by_prompt_total
+from maintenance_intelligence.api.metrics import rca_cost_usd_total, rca_latency_seconds, rca_runs_by_prompt_total
 from maintenance_intelligence.services import rca_agent as rca_mod
 
 
 def test_rca_agent_records_prompt_metadata_and_metric(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setenv("MI_RCA_MODEL_RATES", '{"gpt-4.1": 1.0}')
 
     class FakeCons:
         def __iter__(self):
@@ -64,9 +65,17 @@ def test_rca_agent_records_prompt_metadata_and_metric(monkeypatch, tmp_path):
     monkeypatch.setattr(rca_mod, "write_run_summary", fake_write)
 
     before = rca_runs_by_prompt_total.labels(service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary")._value.get()
+    before_cost = rca_cost_usd_total.labels(model="gpt-4.1", prompt_id="rca-canary-v1")._value.get()
+    before_latency = rca_latency_seconds.labels(service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1")._sum.get()
     rca_mod.rca_agent("kafka:9092")
     after = rca_runs_by_prompt_total.labels(service="rca_agent", route="rca", prompt_id="rca-canary-v1", variant="canary")._value.get()
+    after_cost = rca_cost_usd_total.labels(model="gpt-4.1", prompt_id="rca-canary-v1")._value.get()
+    after_latency = rca_latency_seconds.labels(service="rca_agent", model="gpt-4.1", prompt_id="rca-canary-v1")._sum.get()
 
     assert after == before + 1
+    assert round(after_cost - before_cost, 6) == 0.042
+    assert round(after_latency - before_latency, 6) == 0.012
     assert written["payload"]["prompt"]["prompt_id"] == "rca-canary-v1"
+    assert written["payload"]["metrics"]["estimated_cost_usd"] == 0.042
+    assert written["payload"]["model"]["estimated_cost_usd"] == 0.042
     assert written["payload"]["model"]["prompt_variant"] == "canary"

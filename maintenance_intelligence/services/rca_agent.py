@@ -1,4 +1,9 @@
-import os, json, uuid, datetime as dt, signal, sys
+import datetime as dt
+import json
+import os
+import signal
+import sys
+import uuid
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
@@ -9,7 +14,16 @@ from maintenance_intelligence.prompts.catalog import resolve_prompt_for_route
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
 import backoff
-from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_runs_by_prompt_total, rca_failures_total, rca_duration_seconds
+from maintenance_intelligence.api.metrics import (
+    publish_budget_caps,
+    recommendations_created_total,
+    rca_cost_usd_total,
+    rca_duration_seconds,
+    rca_failures_total,
+    rca_latency_seconds,
+    rca_runs_by_prompt_total,
+    rca_runs_total,
+)
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str, settings: Settings):
@@ -42,9 +56,41 @@ def send_recommendation(producer, recommendation, settings: Settings):
     producer.flush()
 
 
-def _record_prompt_run_metrics(prompt_id: str, variant: str, route_name: str = "rca", service: str = "rca_agent"):
+def _resolve_model_rate(model_name: str | None, settings: Settings) -> float:
+    model_name = model_name or "unset"
+    configured_rates = settings.rca_model_rates
+    if model_name in configured_rates:
+        return configured_rates[model_name]
+    for configured_model, rate in configured_rates.items():
+        if model_name.startswith(configured_model):
+            return rate
+    return configured_rates.get("default", 0.0)
+
+
+def _estimate_cost_usd(tokens: int | None, model_name: str | None, settings: Settings) -> float:
+    if not tokens or tokens <= 0:
+        return 0.0
+    estimated = (float(tokens) / 1000.0) * _resolve_model_rate(model_name, settings)
+    return round(max(0.0, estimated), 6)
+
+
+def _record_prompt_run_metrics(
+    prompt_id: str,
+    variant: str,
+    model_name: str,
+    latency_ms: int | None,
+    estimated_cost_usd: float,
+    route_name: str = "rca",
+    service: str = "rca_agent",
+):
+    prompt_label = prompt_id or "unknown"
+    model_label = model_name or "unknown"
     rca_runs_total.labels(service=service).inc()
-    rca_runs_by_prompt_total.labels(service=service, route=route_name, prompt_id=prompt_id, variant=variant).inc()
+    rca_runs_by_prompt_total.labels(service=service, route=route_name, prompt_id=prompt_label, variant=variant).inc()
+    if latency_ms is not None:
+        rca_latency_seconds.labels(service=service, model=model_label, prompt_id=prompt_label).observe(max(0.0, latency_ms / 1000.0))
+    if estimated_cost_usd > 0:
+        rca_cost_usd_total.labels(model=model_label, prompt_id=prompt_label).inc(estimated_cost_usd)
 
 def rca_agent(kafka_bootstrap: str = None):
     logger.info({"event": "rca_agent.start"})
@@ -61,6 +107,7 @@ def rca_agent(kafka_bootstrap: str = None):
     signal.signal(signal.SIGTERM, signal_handler)
 
     settings = Settings()
+    publish_budget_caps(settings.rca_budget_caps_usd)
     kafka_bootstrap = kafka_bootstrap or settings.kafka_bootstrap
 
     cons = None
@@ -110,11 +157,13 @@ def rca_agent(kafka_bootstrap: str = None):
                         g = gateway.call_rca(evt, ctx)
                     structured = g.get("structured") or {}
                     rationale = "\n".join(structured.get("hypothesis", [])[:4]) or g.get("text", "No output")
+                    estimated_cost_usd = _estimate_cost_usd(g.get("tokens"), g.get("model_version"), settings)
                     model_meta = {
                         "name": "openai",
                         "version": g.get("model_version"),
                         "tokens": g.get("tokens"),
                         "latency_ms": g.get("latency_ms"),
+                        "estimated_cost_usd": estimated_cost_usd,
                         "confidence": structured.get("confidence", 0.5),
                         "prompt_id": prompt_meta["prompt_id"],
                         "prompt_variant": prompt_meta["variant"],
@@ -123,11 +172,13 @@ def rca_agent(kafka_bootstrap: str = None):
                 else:
                     rationale = "Stub RCA (no OPENAI_API_KEY). Replace with GenAI output once key is set."
                     structured = {"title":"RCA Draft","hypothesis":[rationale],"evidence_ids":[],"immediate_actions":[],"pm_suggestions":[],"confidence":0.3}
+                    estimated_cost_usd = 0.0
                     model_meta = {
                         "name": "openai",
                         "version": "unset",
                         "tokens": None,
                         "latency_ms": None,
+                        "estimated_cost_usd": estimated_cost_usd,
                         "confidence": structured.get("confidence", 0.3),
                         "prompt_id": prompt_meta["prompt_id"],
                         "prompt_variant": prompt_meta["variant"],
@@ -171,12 +222,24 @@ def rca_agent(kafka_bootstrap: str = None):
                     "model": model_meta,
                     "prompt": prompt_meta,
                     "structured": structured,
+                    "metrics": {
+                        "estimated_cost_usd": estimated_cost_usd,
+                        "latency_ms": model_meta.get("latency_ms"),
+                        "tokens": model_meta.get("tokens"),
+                    },
                     "context_meta": out.get("context_meta", {}),
                 })
 
                 logger.info({"event":"rca.recommendation.created","id":rec_id,"model":model_meta,"ctx":out.get("context_meta")})
                 try:
-                    _record_prompt_run_metrics(prompt_meta["prompt_id"], prompt_meta["variant"], route_name=prompt_meta["route_name"])
+                    _record_prompt_run_metrics(
+                        prompt_meta["prompt_id"],
+                        prompt_meta["variant"],
+                        model_meta.get("version") or "unset",
+                        model_meta.get("latency_ms"),
+                        estimated_cost_usd,
+                        route_name=prompt_meta["route_name"],
+                    )
                     rca_duration_seconds.labels(service="rca_agent").observe(max(0.0, time.time() - _t0))
                     recommendations_created_total.labels(service="rca_agent").inc()
                 except Exception:
