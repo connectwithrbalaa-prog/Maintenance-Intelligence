@@ -28,3 +28,11 @@ Next:
   - MI_GENAI_TIMEOUT_S=25
   - MI_RUN_SUMMARY_DIR=outputs (JSON artifacts per run)
 - RCA agent includes model_version/tokens/latency in recommendation.model.
+
+## Database Migrations & Health Checks
+
+- Run migrations:
+  - python -m maintenance_intelligence.db.migrate
+- Health endpoint:
+  - GET /healthz (basic)
+  - GET /healthz?deep=true (PG + Kafka checks)
