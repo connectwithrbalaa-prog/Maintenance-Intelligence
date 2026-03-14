@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 import psycopg2
 from maintenance_intelligence.api.auth import require_role
-from maintenance_intelligence.multitenancy import TenantContext
+from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.context.assembler import with_pg
 
@@ -19,24 +19,25 @@ async def get_signals_summary(
     try:
         conn = with_pg(settings.pg_dsn)
         with conn, conn.cursor() as cur:
+            scope_enabled = org_scope_enabled(settings)
             # Get recent signals
             cur.execute("""
                 SELECT signal_id, signal_type, value, unit, timestamp, metadata
                 FROM signals
-                WHERE asset_id = %s
+                WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
                 ORDER BY timestamp DESC
                 LIMIT %s
-            """, (asset_id, limit))
+            """, (asset_id, scope_enabled, access.org_id, limit))
             signals = cur.fetchall()
 
             # Get latest rollups
             cur.execute("""
                 SELECT signal_type, period, mean_value, min_value, max_value, anomaly_flags, end_time
                 FROM signal_rollups
-                WHERE asset_id = %s
+                WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
                 ORDER BY end_time DESC
                 LIMIT 20
-            """, (asset_id,))
+            """, (asset_id, scope_enabled, access.org_id))
             rollups = cur.fetchall()
 
         return {

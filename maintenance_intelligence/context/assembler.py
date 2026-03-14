@@ -54,10 +54,10 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
                 cur.execute("""
                     SELECT signal_type, period, mean_value, min_value, max_value, anomaly_flags
                     FROM signal_rollups
-                    WHERE asset_id = %s AND end_time >= NOW() - INTERVAL '24 hours'
+                    WHERE asset_id = %s AND (%s = FALSE OR org_id = %s) AND end_time >= NOW() - INTERVAL '24 hours'
                     ORDER BY end_time DESC
                     LIMIT 10
-                """, (asset_id,))
+                """, (asset_id, org_scope_enabled(settings), effective_org_id))
                 rollups = cur.fetchall()
                 out["signal_rollups"] = [
                     {
@@ -74,10 +74,10 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
                 cur.execute("""
                     SELECT signal_id, signal_type, value, timestamp, metadata
                     FROM signals
-                    WHERE asset_id = %s AND timestamp >= NOW() - INTERVAL '1 hour'
+                    WHERE asset_id = %s AND (%s = FALSE OR org_id = %s) AND timestamp >= NOW() - INTERVAL '1 hour'
                     ORDER BY timestamp DESC
                     LIMIT 20
-                """, (asset_id,))
+                """, (asset_id, org_scope_enabled(settings), effective_org_id))
                 signals = cur.fetchall()
                 out["recent_signals"] = [
                     {
