@@ -211,6 +211,28 @@ Notes:
   - SQL fallback migration `009_pm_change_proposals_identity.sql`
 - The CMS handoff is intentionally a stub in `maintenance_intelligence/services/wo_bridge.py`; replace it with your planner or CMMS client before rollout.
 
+## Environment & Dev Mode
+
+- `MI_DEV_ALLOW_HEADERS` defaults to `false` and should only be enabled for local development or isolated test environments.
+- When enabled, `/api/v1/whoami` and the PM proposal endpoints may honor `X-Org-Id`, `X-Role`, and `X-Subject` for developer-controlled identity.
+- When disabled, real request-context auth is required; header-only identity returns null from `/api/v1/whoami` and PM proposal actions reject unauthenticated access.
+
+Local examples:
+
+- Run the API locally with guarded dev headers enabled:
+  - `MI_DEV_ALLOW_HEADERS=true uvicorn maintenance_intelligence.api.main:app --reload`
+- Run the focused auth and PM advisor tests with guarded dev headers enabled:
+  - `MI_DEV_ALLOW_HEADERS=true pytest tests/test_pm_advisor_identity.py tests/test_whoami.py tests/test_whoami_header_guard.py`
+- If you use the existing compose stack for local review, set the API service env override to `MI_DEV_ALLOW_HEADERS=true` only in your local override file.
+
+Staging / production checklist:
+
+- Ensure upstream auth middleware populates `request.state.user` before exposing the portal or PM approval endpoints.
+- Leave `MI_DEV_ALLOW_HEADERS` unset or explicitly set it to `false`.
+- Verify `GET /api/v1/whoami` returns real request-context identity without developer headers.
+- Verify the PM approval flow still works end to end through `/portal/pm-approvals` and the PM proposal API.
+- Confirm header-only requests do not gain identity in staging or production.
+
 ## Cost and Latency Dashboards v2
 
 - RCA runs now export `rca_cost_usd_total{model,prompt_id}` using a token-based estimate derived from `MI_RCA_MODEL_RATES`.
