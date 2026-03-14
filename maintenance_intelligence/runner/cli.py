@@ -62,4 +62,3 @@ def rag(path: str, asset_id: str = typer.Option(..., help="Associate ingested ch
     """
     from maintenance_intelligence.rag.ingest import ingest_path
     ingest_path(path, asset_id, chunk_size=chunk_size, bulk_mode=bulk_mode)
-\n
