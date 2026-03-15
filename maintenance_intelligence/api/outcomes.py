@@ -125,7 +125,13 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                     SELECT w.wo_id, w.workorder_created_at AS wo_ts,
                            e.occurred_at AS rec_ts, w.asset_id
                     FROM workorders w
-                    JOIN events e ON e.event_id = ANY( string_to_array(COALESCE(w.metadata->>'evidence_event_id',''), ',') ) OR e.asset_id = w.asset_id
+                    JOIN events e ON (
+                        e.event_id = ANY(string_to_array(COALESCE(w.metadata->>'evidence_event_id', ''), ','))
+                        OR (
+                            COALESCE(w.metadata->>'evidence_event_id', '') = ''
+                            AND e.asset_id = w.asset_id
+                        )
+                    )
                     WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                     LIMIT 500
                 """)

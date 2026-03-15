@@ -82,12 +82,12 @@ def test_migrate_module_adds_workorder_timestamp_columns() -> None:
             alembic_table = cur.fetchone()[0]
             if alembic_table == 'alembic_version':
                 cur.execute("SELECT version_num FROM alembic_version")
-                assert cur.fetchone()[0] == '003_add_workorder_timestamps'
+                assert cur.fetchone()[0] == '005_rca_feedback'
             else:
                 cur.execute(
                     "SELECT filename FROM mi_schema_migrations WHERE filename = %s",
-                    ('010_add_workorder_timestamps.sql',),
+                    ('011_rename_event_time_to_occurred_at.sql',),
                 )
-                assert cur.fetchone()[0] == '010_add_workorder_timestamps.sql'
+                assert cur.fetchone()[0] == '011_rename_event_time_to_occurred_at.sql'
     finally:
         conn.close()
