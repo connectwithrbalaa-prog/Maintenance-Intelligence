@@ -28,10 +28,26 @@ set -euo pipefail
 #       --data-urlencode "scope=$OKTA_SCOPE" | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')"
 #     BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh
 
-BASE_URL="${BASE_URL:-http://localhost:8000}"
+usage() {
+  cat <<'EOF'
+Usage: demo_pm_approval.sh [--use-existing-api] [--api-url URL]
+
+Options:
+  --use-existing-api  No-op compatibility flag. This script already targets an existing API.
+  --api-url URL       Base URL for the API.
+
+Environment:
+  BASE_URL            Base URL for the API.
+  API_URL             Alias for BASE_URL.
+  DEMO_PM_START_API   Accepted for compatibility. This script does not start uvicorn.
+EOF
+}
+
+BASE_URL="${BASE_URL:-${API_URL:-http://localhost:8000}}"
 AUTH_BEARER_TOKEN="${AUTH_BEARER_TOKEN:-}"
 API_KEY="${API_KEY:-}"
 MI_DEV_ALLOW_HEADERS="${MI_DEV_ALLOW_HEADERS:-false}"
+DEMO_PM_START_API="${DEMO_PM_START_API:-false}"
 ORG_ID="${ORG_ID:-default-org}"
 ROLE="${ROLE:-operator}"
 SUBJECT="${SUBJECT:-planner@example.com}"
@@ -43,6 +59,46 @@ RATIONALE="${RATIONALE:-Demo PM proposal generated from RCA review.}"
 APPROVAL_NOTES="${APPROVAL_NOTES:-Approved during staging demo.}"
 
 export RUN_ID RECOMMENDATION_ID ASSET_ID PROPOSAL_TITLE RATIONALE SUBJECT APPROVAL_NOTES
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --use-existing-api)
+      DEMO_PM_START_API="false"
+      shift
+      ;;
+    --api-url)
+      BASE_URL="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+pretty_print_json() {
+  if command -v jq >/dev/null 2>&1; then
+    jq . 2>/dev/null || cat
+    return
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    python -m json.tool 2>/dev/null || cat
+    return
+  fi
+
+  cat
+}
+
+if [[ "${DEMO_PM_START_API,,}" == "true" || "${DEMO_PM_START_API}" == "1" ]]; then
+  echo "NOTE: DEMO_PM_START_API is ignored on this branch; the script always targets an existing API at ${BASE_URL}" >&2
+fi
 
 AUTH_HEADERS=()
 if [[ -n "${AUTH_BEARER_TOKEN}" ]]; then
@@ -87,12 +143,12 @@ require_python
 echo
 echo "1) Health check"
 HEALTH_RESP="$(get_json "${BASE_URL}/healthz")"
-echo "${HEALTH_RESP}"
+printf '%s\n' "${HEALTH_RESP}" | pretty_print_json
 
 echo
 echo "2) Identity check"
 WHOAMI_RESP="$(get_json "${BASE_URL}/api/v1/whoami")"
-echo "${WHOAMI_RESP}"
+printf '%s\n' "${WHOAMI_RESP}" | pretty_print_json
 
 echo
 echo "3) Create PM proposal for ${ASSET_ID}"
@@ -118,7 +174,7 @@ print(json.dumps(payload))
 PY
 )"
 CREATE_RESP="$(post_json "${BASE_URL}/api/v1/agents/pm/advisor/analyze" "${CREATE_BODY}")"
-echo "${CREATE_RESP}"
+printf '%s\n' "${CREATE_RESP}" | pretty_print_json
 PROPOSAL_ID="$(printf '%s' "${CREATE_RESP}" | python -c 'import sys, json; print(json.load(sys.stdin).get("proposal_id", ""))')"
 
 if [[ -z "${PROPOSAL_ID}" ]]; then
@@ -129,7 +185,7 @@ fi
 echo
 echo "4) List PM proposals and confirm ${PROPOSAL_ID} is present"
 LIST_RESP="$(get_json "${BASE_URL}/api/v1/agents/pm/proposals?limit=10")"
-echo "${LIST_RESP}"
+printf '%s\n' "${LIST_RESP}" | pretty_print_json
 export PROPOSAL_ID
 LIST_CHECK="$(printf '%s' "${LIST_RESP}" | python -c 'import os, sys, json; proposals=json.load(sys.stdin); target=os.environ["PROPOSAL_ID"]; print("yes" if any(item.get("proposal_id") == target for item in proposals) else "no")')"
 if [[ "${LIST_CHECK}" != "yes" ]]; then
@@ -151,7 +207,7 @@ print(json.dumps(payload))
 PY
 )"
 APPROVE_RESP="$(post_json "${BASE_URL}/api/v1/agents/pm/proposals/${PROPOSAL_ID}/approve" "${APPROVE_BODY}")"
-echo "${APPROVE_RESP}"
+printf '%s\n' "${APPROVE_RESP}" | pretty_print_json
 
 echo
 echo "6) Summarize CMMS handoff"
