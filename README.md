@@ -234,6 +234,35 @@ Local examples:
 - JSON output is pretty-printed with `jq` when available and otherwise falls back to `python -m json.tool`.
 - Token-fetch examples for Keycloak-style and Okta-style flows are included in `scripts/demo_pm_approval.sh`; substitute your own token endpoint, client, and user credentials.
 
+Dev setup (recommended)
+
+1. Create and activate a virtual environment (recommended)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # macOS / Linux
+# or on Windows:
+# .venv\Scripts\activate
+```
+
+2. Install the project in editable mode
+
+```bash
+python -m pip install -e .
+```
+
+3. Run tools and tests
+
+- Use the editable-installed console scripts when the venv is active:
+  `mi-runner ...`           # available when the venv bin is on PATH
+- Or fall back to the module runner if the script name is not on PATH:
+  `python -m maintenance_intelligence.runner.cli ...`
+
+Notes
+
+- Installing into a system path (for example `/usr/local/...`) is possible but not recommended for development; prefer the per-worktree venv approach for reproducibility.
+- If you must use a global install, ensure the install location is on your `PATH` or invoke the script via its full path.
+
 Staging / production checklist:
 
 - Ensure upstream auth middleware populates `request.state.user` before exposing the portal or PM approval endpoints.
