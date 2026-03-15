@@ -1,0 +1,12 @@
+{
+  "name": "maintenance-intelligence-browser-tests",
+  "private": true,
+  "scripts": {
+    "playwright:install": "playwright install --with-deps chromium",
+    "test:portal:e2e": "playwright test --config=playwright.config.js",
+    "test:portal:e2e:headed": "playwright test --config=playwright.config.js --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}

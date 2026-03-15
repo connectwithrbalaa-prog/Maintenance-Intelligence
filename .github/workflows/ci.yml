@@ -12,6 +12,22 @@ jobs:
     - run: black --check .
     - run: pytest --ignore=tests/test_migration_smoke.py
 
+  portal-browser-smoke:
+    if: ${{ vars.RUN_PLAYWRIGHT == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      MI_DEV_ALLOW_HEADERS: "true"
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+    - uses: actions/setup-node@v4
+      with: { node-version: "20" }
+    - run: pip install --upgrade pip && pip install .[dev]
+    - run: npm install
+    - run: npx playwright install --with-deps chromium
+    - run: npm run test:portal:e2e
+
   migration-smoke:
     runs-on: ubuntu-latest
     steps:
