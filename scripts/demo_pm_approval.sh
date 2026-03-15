@@ -1,6 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Examples:
+#   Dev-header fallback (only when MI_DEV_ALLOW_HEADERS=true on the server):
+#     BASE_URL=http://localhost:8000 MI_DEV_ALLOW_HEADERS=true ROLE=operator SUBJECT=planner@example.com ./scripts/demo_pm_approval.sh
+#
+#   Existing bearer token:
+#     BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh
+#
+#   Keycloak-style token fetch:
+#     TOKEN="$(curl -sS -X POST "$KEYCLOAK_TOKEN_URL" \
+#       -H 'Content-Type: application/x-www-form-urlencoded' \
+#       --data-urlencode 'grant_type=password' \
+#       --data-urlencode "client_id=$KEYCLOAK_CLIENT_ID" \
+#       --data-urlencode "client_secret=$KEYCLOAK_CLIENT_SECRET" \
+#       --data-urlencode "username=$KEYCLOAK_USERNAME" \
+#       --data-urlencode "password=$KEYCLOAK_PASSWORD" | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')"
+#     BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh
+#
+#   Okta-style token fetch:
+#     TOKEN="$(curl -sS -X POST "$OKTA_TOKEN_URL" \
+#       -H 'Accept: application/json' \
+#       -H 'Content-Type: application/x-www-form-urlencoded' \
+#       --data-urlencode 'grant_type=client_credentials' \
+#       --data-urlencode "client_id=$OKTA_CLIENT_ID" \
+#       --data-urlencode "client_secret=$OKTA_CLIENT_SECRET" \
+#       --data-urlencode "scope=$OKTA_SCOPE" | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')"
+#     BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh
+
 BASE_URL="${BASE_URL:-http://localhost:8000}"
 AUTH_BEARER_TOKEN="${AUTH_BEARER_TOKEN:-}"
 API_KEY="${API_KEY:-}"
@@ -20,10 +47,12 @@ export RUN_ID RECOMMENDATION_ID ASSET_ID PROPOSAL_TITLE RATIONALE SUBJECT APPROV
 AUTH_HEADERS=()
 if [[ -n "${AUTH_BEARER_TOKEN}" ]]; then
   AUTH_HEADERS+=("-H" "Authorization: Bearer ${AUTH_BEARER_TOKEN}")
+  echo "NOTE: using bearer-token auth via AUTH_BEARER_TOKEN"
 fi
 
 if [[ -n "${API_KEY}" ]]; then
   AUTH_HEADERS+=("-H" "X-API-Key: ${API_KEY}")
+  echo "NOTE: using API key auth via X-API-Key"
 fi
 
 if [[ "${MI_DEV_ALLOW_HEADERS,,}" == "true" || "${MI_DEV_ALLOW_HEADERS}" == "1" ]]; then

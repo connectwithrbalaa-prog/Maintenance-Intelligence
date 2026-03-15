@@ -227,6 +227,9 @@ Local examples:
 - Run the focused auth and PM advisor tests with guarded dev headers enabled:
   - `MI_DEV_ALLOW_HEADERS=true pytest tests/test_pm_advisor_identity.py tests/test_whoami.py tests/test_whoami_header_guard.py`
 - If you use the existing compose stack for local review, set the API service env override to `MI_DEV_ALLOW_HEADERS=true` only in your local override file.
+- Run the demo helper with an existing bearer token:
+  - `BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh`
+- Token-fetch examples for Keycloak-style and Okta-style flows are included in `scripts/demo_pm_approval.sh`; substitute your own token endpoint, client, and user credentials.
 
 Staging / production checklist:
 
