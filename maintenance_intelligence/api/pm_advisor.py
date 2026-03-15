@@ -28,6 +28,10 @@ class AnalyzePayload(BaseModel):
     run_id: str = Field(..., description="Run id to inspect for PM proposal generation")
 
 
+class ApprovePayload(BaseModel):
+    admin_retry: bool = Field(default=False, description="Whether this approval call is an admin-initiated retry")
+
+
 connection_factory = with_pg
 adapter_factory = create_cmms_adapter
 
@@ -82,6 +86,7 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
     approved_by = _as_text(value.get("approved_by"))
     approved_at = _as_text(value.get("approved_at"))
     handoff_state = _as_text(value.get("handoff_state")) or "pending"
+    origin = _as_text(value.get("origin")) or "approval"
     connector_result = value.get("connector_result")
     if not isinstance(connector_result, dict):
         connector_result = value.get("result") if isinstance(value.get("result"), dict) else {}
@@ -102,6 +107,7 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
         "approved_by": approved_by or "",
         "approved_at": approved_at or "",
         "handoff_state": handoff_state,
+        "origin": origin,
         "result": result,
         "connector_result": connector_result,
         "error_message": error_message or "",
@@ -177,6 +183,8 @@ def _append_approval_metadata(
     existing_metadata: Any,
     approved_by: Optional[str],
     attempts: List[Dict[str, Any]],
+    *,
+    origin: str = "approval",
 ) -> Dict[str, Any]:
     existing = existing_metadata if isinstance(existing_metadata, dict) else {}
     accumulated = list(reversed(_approval_attempts(existing)))
@@ -194,6 +202,7 @@ def _append_approval_metadata(
                 "approved_by": approved_by,
                 "approved_at": approved_at,
                 "handoff_state": handoff_state,
+                "origin": _as_text(attempt.get("origin")) or origin,
                 "result": _as_text(attempt.get("result")) or ("success" if handoff_state == "success" else ("failure" if attempt.get("error_message") else "pending")),
                 "connector_result": attempt.get("connector_result") if isinstance(attempt.get("connector_result"), dict) else {},
                 "error_message": _as_text(attempt.get("error_message")) or "",
@@ -214,6 +223,7 @@ def _append_approval_metadata(
         "approved_at": latest.get("approved_at"),
         "attempted_at": latest.get("attempted_at"),
         "handoff_state": latest.get("handoff_state"),
+        "origin": latest.get("origin") or origin,
         "result": latest.get("connector_result") or {},
         "detail": latest.get("error_message") or None,
     }
@@ -260,6 +270,7 @@ def _approval_response(
         "retry_allowed": retry_fields["retry_allowed"],
         "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
         "last_attempt_info": latest_attempt,
+        "admin_retry_required": bool(attempts) and approval_status != "approved",
         "proposal_id": normalized_proposal.get("proposal_id"),
         "approved_by": approved_by,
         "approved_at": approved_at,
@@ -292,6 +303,15 @@ def _load_payload(path: Path) -> Optional[Dict[str, Any]]:
 def _identity_from_request(request: Request) -> Optional[str]:
     identity = get_identity(request)
     return identity.get("subject") if identity else None
+
+
+def _role_from_request(request: Request) -> Optional[str]:
+    identity = get_identity(request)
+    return _as_text(identity.get("role")) if identity else None
+
+
+def _is_admin_role(role: Optional[str]) -> bool:
+    return (role or "").strip().lower() in {"admin", "maintainer"}
 
 
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
@@ -579,13 +599,14 @@ def proposal_history(
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
+def approve_proposal(proposal_id: str, request: Request, approve_request: ApprovePayload = ApprovePayload()) -> Dict[str, Any]:
     found = _find_proposal_payload(proposal_id)
     payload = found["payload"]
     settings = Settings()
     max_attempts = _proposal_attempt_limit(settings)
     recommendation = _build_recommendation(payload)
     approved_by = _identity_from_request(request)
+    actor_role = _role_from_request(request)
     existing = None
     try:
         existing = _load_persisted_proposal(proposal_id)
@@ -606,6 +627,14 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     attempts_remaining = max(0, max_attempts - len(existing_attempts))
     if attempts_remaining <= 0:
         raise HTTPException(status_code=409, detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts")
+
+    manual_retry = bool(existing_attempts) and (existing or {}).get("status") != "approved"
+    attempt_origin = "admin" if approve_request.admin_retry else "approval"
+    if manual_retry:
+        if not approve_request.admin_retry:
+            raise HTTPException(status_code=403, detail="Manual retries require an admin or maintainer role")
+        if not _is_admin_role(actor_role):
+            raise HTTPException(status_code=403, detail="Admin retry requires admin or maintainer role")
 
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
@@ -631,7 +660,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 approved_by,
                 result.get("wo_id"),
                 status,
-                _append_approval_metadata(proposal.get("metadata"), approved_by, result.get("_attempts") or []),
+                _append_approval_metadata(proposal.get("metadata"), approved_by, result.get("_attempts") or [], origin=attempt_origin),
             )
         finally:
             try:
@@ -653,7 +682,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
                 )
             finally:
                 conn.close()
@@ -678,7 +707,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, exc.attempts),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, exc.attempts, origin=attempt_origin),
                 )
             finally:
                 conn.close()
@@ -704,7 +733,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
                 )
             finally:
                 conn.close()

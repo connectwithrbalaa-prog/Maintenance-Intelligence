@@ -760,12 +760,21 @@
 
 		function portalIdentityHeaders() {
 			const subject = window.localStorage.getItem("miPortalUserId") || "portal.user";
+			const role = window.localStorage.getItem("miPortalUserRole") || "planner";
 			return {
 				"Content-Type": "application/json",
 				Accept: "application/json",
 				"X-User-Id": subject,
-				"X-User-Role": "planner",
+				"X-User-Role": role,
 			};
+		}
+
+		function portalUserRole() {
+			return (window.localStorage.getItem("miPortalUserRole") || "planner").toLowerCase();
+		}
+
+		function portalUserIsAdmin() {
+			return ["admin", "maintainer"].includes(portalUserRole());
 		}
 
 		function metricMedianConfidence(runs) {
@@ -888,9 +897,12 @@
 			const auditBusy = state.auditLoadingById.has(run.run_id);
 			const proposalId = run.recommendation_id || run.run_id;
 			const retryState = getRetryState(approvalResult, approvalHistory);
-			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState });
+			const isAdmin = portalUserIsAdmin();
+			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin });
 			const actionHint = retryState.isRetry
-				? `Retry handoff attempts remaining: ${retryState.attemptsRemaining} of ${retryState.maxAttempts}.`
+				? (isAdmin
+					? `Admin retry attempts remaining: ${retryState.attemptsRemaining} of ${retryState.maxAttempts}.`
+					: "Manual retries require an admin or maintainer role.")
 				: "Approval uses the PM advisor analyze + approve flow for this run.";
 
 			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
@@ -969,7 +981,7 @@
 			const approveButton = document.getElementById("approvePmButton");
 			if (approveButton && canApprove && retryState.enabled) {
 				approveButton.addEventListener("click", () => {
-					approveRun(run, retryState);
+					approveRun(run, retryState, { adminRetry: isAdmin && retryState.isRetry });
 				});
 			}
 
@@ -1001,15 +1013,18 @@
 			};
 		}
 
-		function getApprovalActionLabel({ canApprove, approvalBusy, retryState }) {
+		function getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin }) {
 			if (!canApprove) {
 				return "Approve PM proposal";
 			}
 			if (approvalBusy) {
-				return retryState.isRetry ? "Retrying handoff..." : "Submitting approval...";
+				return retryState.isRetry ? (isAdmin ? "Admin retry in progress..." : "Retrying handoff...") : "Submitting approval...";
 			}
 			if (retryState.isRetry) {
-				return retryState.enabled ? "Retry Handoff" : "Retry limit reached";
+				if (!isAdmin) {
+					return "Admin Retry Only";
+				}
+				return retryState.enabled ? "Admin Retry" : "Retry limit reached";
 			}
 			return "Approve PM proposal";
 		}
@@ -1062,6 +1077,7 @@
 						<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
 						 · Attempt ${escapeHtml(attempt.attempt_number || "?")}
 						 · ${escapeHtml(attempt.approved_by || "Unknown approver")}
+						 · ${escapeHtml(attempt.origin || "approval")}
 						 · ${escapeHtml(attempt.attempted_at || "Unknown time")}
 						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
 						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
@@ -1167,12 +1183,13 @@
 			return body;
 		}
 
-		async function approveRun(run, retryState = getRetryState(state.approvalResultsById.get(run?.run_id), state.approvalHistoryById.get(run?.run_id))) {
+		async function approveRun(run, retryState = getRetryState(state.approvalResultsById.get(run?.run_id), state.approvalHistoryById.get(run?.run_id)), options = {}) {
 			if (!run?.run_id) {
 				return;
 			}
+			const adminRetry = Boolean(options.adminRetry);
 			const confirmation = retryState.isRetry
-				? `Retry the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.`
+				? `${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.`
 				: `Approve the PM proposal for ${run.run_id}?`;
 			if (!window.confirm(confirmation)) {
 				return;
@@ -1183,7 +1200,7 @@
 			try {
 				const analyze = await postJson("/api/v1/agents/pm/advisor/analyze", { run_id: run.run_id });
 				const proposalId = analyze?.proposal?.proposal_id || run.recommendation_id || run.run_id;
-				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, {});
+				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, adminRetry ? { admin_retry: true } : {});
 				state.approvalResultsById.set(run.run_id, approval);
 				await loadApprovalHistory({ ...run, recommendation_id: proposalId });
 				renderDetail({

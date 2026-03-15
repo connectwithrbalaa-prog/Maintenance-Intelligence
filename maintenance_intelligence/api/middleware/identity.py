@@ -28,7 +28,8 @@ def resolve_identity(request: Request, settings: Optional[Settings] = None) -> O
     if settings.dev_allow_headers:
         subject = request.headers.get("x-user-id") or request.headers.get("x-dev-user")
         if subject:
-            return {"subject": subject, "auth_source": "dev-header"}
+            role = request.headers.get("x-user-role") or "planner"
+            return {"subject": subject, "role": role, "auth_source": "dev-header"}
 
     return None
 

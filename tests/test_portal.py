@@ -196,10 +196,15 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
     assert "Approve PM proposal" in page.text
-    assert "Retry Handoff" in page.text
+    assert "Admin Retry" in page.text
+    assert "Admin Retry Only" in page.text
+    assert "Admin retry in progress..." in page.text
+    assert "Manual retries require an admin or maintainer role." in page.text
+    assert "miPortalUserRole" in page.text
+    assert "admin_retry" in page.text
+    assert "Admin retry attempts remaining:" in page.text
     assert "Retrying handoff..." in page.text
-    assert "Retry the PM handoff for" in page.text
-    assert "Retry handoff attempts remaining:" in page.text
+    assert '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.' in page.text
     assert "Retry limit reached" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text

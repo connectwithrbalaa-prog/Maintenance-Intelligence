@@ -374,7 +374,11 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert pending_response.status_code == 202
 
     monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: BadAdapter())
-    failed_response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-2"})
+    failed_response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        json={"admin_retry": True},
+        headers={"x-user-id": "planner-2", "x-user-role": "maintainer"},
+    )
     assert failed_response.status_code == 502
 
     history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
@@ -394,9 +398,11 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert len(payload["attempts"]) == 2
     assert payload["attempts"][0]["approved_by"] == "planner-2"
     assert payload["attempts"][0]["handoff_state"] == "failure"
+    assert payload["attempts"][0]["origin"] == "admin"
     assert payload["attempts"][0]["error_message"] == "CMMS backend returned malformed payload"
     assert payload["attempts"][1]["approved_by"] == "planner-1"
     assert payload["attempts"][1]["handoff_state"] == "pending"
+    assert payload["attempts"][1]["origin"] == "approval"
 
 
 def test_approve_proposal_is_idempotent_after_success(monkeypatch, tmp_path):
@@ -550,7 +556,7 @@ def test_approve_proposal_retry_appends_history_and_creates_single_workorder(mon
 
     client = TestClient(app)
     first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
-    second = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    second = client.post("/api/v1/agents/pm/proposals/REC-1/approve", json={"admin_retry": True}, headers={"x-user-id": "planner-1", "x-user-role": "admin"})
 
     assert first.status_code == 202
     assert second.status_code == 200
@@ -563,10 +569,80 @@ def test_approve_proposal_retry_appends_history_and_creates_single_workorder(mon
     history_payload = history.json()
     assert len(history_payload["attempts"]) == 2
     assert history_payload["attempts"][0]["handoff_state"] == "success"
+    assert history_payload["attempts"][0]["origin"] == "admin"
     assert history_payload["attempts"][1]["handoff_state"] == "pending"
+    assert history_payload["attempts"][1]["origin"] == "approval"
     workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
     assert len(workorder_calls) == 1
     assert adapter.calls == 2
+
+
+def test_manual_retry_requires_admin_role(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class PendingAdapter:
+        backend_name = "pending"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            return {"status": "queued", "backend": self.backend_name, "response": {"status": "queued"}}
+
+    adapter = PendingAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+    client = TestClient(app)
+
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1", "x-user-role": "planner"})
+    blocked = client.post("/api/v1/agents/pm/proposals/REC-1/approve", json={"admin_retry": True}, headers={"x-user-id": "planner-1", "x-user-role": "planner"})
+    missing_flag = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1", "x-user-role": "admin"})
+
+    assert first.status_code == 202
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Admin retry requires admin or maintainer role"
+    assert missing_flag.status_code == 403
+    assert missing_flag.json()["detail"] == "Manual retries require an admin or maintainer role"
+    assert adapter.calls == 1
+
+
+def test_admin_retry_after_success_reuses_existing_workorder(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class CountingAdapter:
+        backend_name = "counting"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
+
+    adapter = CountingAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+    client = TestClient(app)
+
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1", "x-user-role": "planner"})
+    second = client.post("/api/v1/agents/pm/proposals/REC-1/approve", json={"admin_retry": True}, headers={"x-user-id": "admin-1", "x-user-role": "admin"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["reused_result"] is True
+    assert adapter.calls == 1
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    assert len(history["attempts"]) == 1
+    assert history["attempts"][0]["origin"] == "approval"
 
 
 def test_approve_proposal_rejects_requests_after_proposal_attempt_limit(monkeypatch, tmp_path):
@@ -637,8 +713,16 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
     client = TestClient(app)
 
     assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}).status_code == 202
-    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-2"}).status_code == 502
-    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-3"}).status_code == 200
+    assert client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        json={"admin_retry": True},
+        headers={"x-user-id": "planner-2", "x-user-role": "admin"},
+    ).status_code == 502
+    assert client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        json={"admin_retry": True},
+        headers={"x-user-id": "planner-3", "x-user-role": "admin"},
+    ).status_code == 200
 
     first_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=2")
     assert first_page.status_code == 200
