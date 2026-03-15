@@ -52,6 +52,11 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 2), ("reject", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: (_ for _ in ()).throw(RuntimeError("join unavailable")),
+            "SELECT asset_id, occurred_at\n                    FROM events": lambda: [
+                ("PUMP-101", datetime(2026, 3, 13, 8, 0, tzinfo=timezone.utc)),
+                ("PUMP-101", datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)),
+                ("PUMP-101", datetime(2026, 3, 14, 12, 0, tzinfo=timezone.utc)),
+            ],
             "GROUP BY w.asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2)],
             "GROUP BY asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1, 1)],
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 4)],
@@ -70,7 +75,7 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert payload["feedback_total"] == 3
     assert payload["acceptance_rate"] == 2 / 3
     assert payload["ttr_seconds_avg"] is None
-    assert payload["mtbf_seconds_avg"] is None
+    assert payload["mtbf_seconds_avg"] == 50400.0
     assert payload["mttr_seconds_avg"] is None
     assert payload["top_assets_by_wo_volume"] == [{"asset_id": "PUMP-101", "count": 4}]
     assert "PUMP-101" in payload["asset_metrics"]
@@ -79,7 +84,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert len(payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]) == 30
     assert any(point["value"] == 0.5 for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"])
     assert payload["warnings"] == ["ttr aggregation unavailable: join unavailable"]
-    assert "mtbf_seconds_avg" in payload["placeholders"]
+    assert "mtbf_seconds_avg" not in payload["placeholders"]
+    assert "mttr_seconds_avg" in payload["placeholders"]
     assert fake_conn.rollback_calls == 1
     assert fake_conn.closed is True
 
@@ -89,6 +95,12 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 3), ("reject", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: [],
+            "SELECT asset_id, occurred_at\n                    FROM events": lambda: [
+                ("PUMP-101", datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc)),
+                ("PUMP-101", datetime(2026, 3, 13, 18, 0, tzinfo=timezone.utc)),
+                ("PUMP-102", datetime(2026, 3, 14, 6, 0, tzinfo=timezone.utc)),
+                ("PUMP-102", datetime(2026, 3, 15, 6, 0, tzinfo=timezone.utc)),
+            ],
             "GROUP BY w.asset_id, bucket_date": lambda: [
                 ("PUMP-101", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 3),
                 ("PUMP-102", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1),
@@ -108,7 +120,9 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
+    assert payload["mtbf_seconds_avg"] == 64800.0
     assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101", "PUMP-102"]
+    assert "mtbf_seconds_avg" not in payload["placeholders"]
 
     pump_101_volume = payload["asset_metrics"]["PUMP-101"]["workorder_volume"]
     pump_101_acceptance = payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]
@@ -125,6 +139,7 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: [],
+            "SELECT asset_id, occurred_at\n                    FROM events": lambda: (_ for _ in ()).throw(RuntimeError("event interval unavailable")),
             "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("wo trend unavailable")),
             "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("feedback trend unavailable")),
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [],
@@ -139,9 +154,12 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
     payload = response.json()
     assert payload["status"] == "partial"
     assert payload["asset_metrics"] == {}
+    assert payload["mtbf_seconds_avg"] is None
+    assert "mtbf_seconds_avg" in payload["placeholders"]
+    assert "mtbf aggregation unavailable: event interval unavailable" in payload["warnings"]
     assert "asset workorder trend unavailable: wo trend unavailable" in payload["warnings"]
     assert "asset acceptance trend unavailable: feedback trend unavailable" in payload["warnings"]
-    assert fake_conn.rollback_calls == 2
+    assert fake_conn.rollback_calls == 3
 
 
 def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):

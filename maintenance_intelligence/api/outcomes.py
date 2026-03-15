@@ -49,6 +49,12 @@ def _mark_partial(out: Dict[str, Any], message: str) -> None:
     out.setdefault("warnings", []).append(message)
 
 
+def _clear_placeholder(out: Dict[str, Any], metric_name: str) -> None:
+    placeholders = out.get("placeholders")
+    if isinstance(placeholders, dict):
+        placeholders.pop(metric_name, None)
+
+
 def _safe_rollback(conn: Any) -> None:
     try:
         conn.rollback()
@@ -136,6 +142,36 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"ttr aggregation unavailable: {exc}")
+
+            # Proxy MTBF: mean interval between successive events for the same asset.
+            # This uses event cadence as a precursor until explicit failure lifecycle data exists.
+            try:
+                cur.execute(f"""
+                    SELECT asset_id, occurred_at
+                    FROM events
+                    WHERE occurred_at > {_window_clause(window)}
+                      AND asset_id IS NOT NULL
+                    ORDER BY asset_id, occurred_at
+                """)
+                last_seen: Dict[str, Any] = {}
+                intervals: List[float] = []
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    event_ts = row[1]
+                    previous_ts = last_seen.get(asset_id)
+                    if previous_ts is not None:
+                        delta = (event_ts - previous_ts).total_seconds()
+                        if delta >= 0:
+                            intervals.append(delta)
+                    last_seen[asset_id] = event_ts
+                out["mtbf_seconds_avg"] = (sum(intervals) / len(intervals)) if intervals else None
+                if out["mtbf_seconds_avg"] is not None:
+                    _clear_placeholder(out, "mtbf_seconds_avg")
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"mtbf aggregation unavailable: {exc}")
 
             # Per-asset summary (top 10 by slowest TTR)
             # This is a placeholder; improve with real WO lifecycle timestamps.
