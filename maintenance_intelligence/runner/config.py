@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         default='{"rca":"rca-canary-v1"}', alias="MI_PROMPT_CANARY_DEFAULTS"
     )
     prompt_canary_ratio: float = Field(default=0.1, alias="MI_PROMPT_CANARY_RATIO")
+    rag_vector_alpha: float = Field(default=0.6, alias="MI_RAG_VECTOR_ALPHA")
     rca_model_rates_raw: str = Field(
         default='{"gpt-4.1":{"per_1k_tokens_usd":0.01},"unset":{"per_1k_tokens_usd":0.0}}',
         alias="MI_RCA_MODEL_RATES",

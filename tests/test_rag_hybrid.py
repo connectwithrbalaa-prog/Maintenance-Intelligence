@@ -16,13 +16,14 @@ def test_hybrid_retriever_combine_scores():
 
     combined = retriever._combine_scores(vector_results, bm25_results)
 
-    # Should have 3 results (1,2,3)
     assert len(combined) == 3
+    assert [chunk["chunk_id"] for chunk in combined] == ["1", "2", "3"]
 
-    # Check combined scores (0.7*0.9 + 0.3*0.7 = 0.63 + 0.21 = 0.84 for chunk 1)
     chunk_1 = next(c for c in combined if c["chunk_id"] == "1")
-    expected_score = 0.7 * 0.9 + 0.3 * 0.7
+    expected_score = 1.0
     assert abs(chunk_1["score"] - expected_score) < 0.01
+    assert chunk_1["vector_score_norm"] == 1.0
+    assert chunk_1["bm25_score_norm"] == 1.0
 
 
 def test_apply_token_budget():
