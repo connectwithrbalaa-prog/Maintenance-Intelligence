@@ -204,6 +204,7 @@ Notes:
   - Verify `/api/v1/whoami` returns the expected role from auth context or dev headers.
   - Switch fallback role state to `viewer` only when backend identity is unavailable and confirm approve actions are disabled.
   - Use an `operator` or `admin` identity, approve a proposal, and confirm the CMS handoff reference is shown.
+  - Use `scripts/demo_pm_approval.sh` for a curl-based end-to-end staging demo against the shipped PM advisor routes.
 - Schema:
   - Alembic revision `005_pm_change_proposals`
   - Alembic revision `006_pm_change_proposals_identity`
