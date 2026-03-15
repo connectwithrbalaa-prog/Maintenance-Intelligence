@@ -387,6 +387,10 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert payload["attempts_remaining"] == 1
     assert payload["max_attempts"] == 3
     assert payload["retry_allowed"] is True
+    assert payload["total_count"] == 2
+    assert payload["page"] == 1
+    assert payload["size"] == 3
+    assert payload["has_more"] is False
     assert len(payload["attempts"]) == 2
     assert payload["attempts"][0]["approved_by"] == "planner-2"
     assert payload["attempts"][0]["handoff_state"] == "failure"
@@ -604,3 +608,76 @@ def test_approve_proposal_rejects_requests_after_proposal_attempt_limit(monkeypa
     assert history.json()["attempt_count"] == 3
     assert history.json()["attempts_remaining"] == 0
     assert history.json()["retry_allowed"] is False
+
+
+def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_ATTEMPTS", "1")
+    fake_connection = FakeConnection()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+
+    outcomes = iter(
+        [
+            {"status": "queued", "backend": "history", "response": {"status": "queued"}},
+            "bad-payload",
+            {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": "history"},
+        ]
+    )
+
+    class SequenceAdapter:
+        backend_name = "history"
+
+        def create_work_order(self, recommendation):
+            return next(outcomes)
+
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: SequenceAdapter())
+    client = TestClient(app)
+
+    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}).status_code == 202
+    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-2"}).status_code == 502
+    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-3"}).status_code == 200
+
+    first_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=2")
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["total_count"] == 3
+    assert first_payload["page"] == 1
+    assert first_payload["size"] == 2
+    assert first_payload["has_more"] is True
+    assert [attempt["approved_by"] for attempt in first_payload["attempts"]] == ["planner-3", "planner-2"]
+
+    second_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=2&size=2")
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert second_payload["total_count"] == 3
+    assert second_payload["page"] == 2
+    assert second_payload["size"] == 2
+    assert second_payload["has_more"] is False
+    assert len(second_payload["attempts"]) == 1
+    assert second_payload["attempts"][0]["approved_by"] == "planner-1"
+
+    empty_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=3&size=2")
+    assert empty_page.status_code == 200
+    empty_payload = empty_page.json()
+    assert empty_payload["attempts"] == []
+    assert empty_payload["total_count"] == 3
+    assert empty_payload["has_more"] is False
+
+
+def test_proposal_history_validates_page_and_size_limits(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+
+    client = TestClient(app)
+
+    bad_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=0&size=3")
+    bad_size_low = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=0")
+    bad_size_high = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=26")
+
+    assert bad_page.status_code == 422
+    assert bad_size_low.status_code == 422
+    assert bad_size_high.status_code == 422

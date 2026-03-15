@@ -610,6 +610,7 @@
 			approvalResultsById: new Map(),
 			approvalInFlightById: new Set(),
 			approvalHistoryById: new Map(),
+			auditLoadingById: new Set(),
 			loading: false,
 		};
 
@@ -884,6 +885,7 @@
 			const approvalHistory = state.approvalHistoryById.get(run.run_id);
 			const canApprove = Array.isArray(run.pm_suggestions) && run.pm_suggestions.length > 0;
 			const approvalBusy = state.approvalInFlightById.has(run.run_id);
+			const auditBusy = state.auditLoadingById.has(run.run_id);
 			const proposalId = run.recommendation_id || run.run_id;
 			const retryState = getRetryState(approvalResult, approvalHistory);
 			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState });
@@ -951,7 +953,7 @@
 
 					<div class="section">
 						<h3>Approval history</h3>
-						${renderApprovalHistoryPanel(approvalHistory, proposalId)}
+						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
 					</div>
 
 					<div class="section">
@@ -968,6 +970,13 @@
 			if (approveButton && canApprove && retryState.enabled) {
 				approveButton.addEventListener("click", () => {
 					approveRun(run, retryState);
+				});
+			}
+
+			const loadMoreButton = document.getElementById("loadMoreAuditButton");
+			if (loadMoreButton && approvalHistory?.has_more && !auditBusy) {
+				loadMoreButton.addEventListener("click", () => {
+					loadApprovalHistory(run, { page: (approvalHistory.page || 1) + 1, size: approvalHistory.size || 3, append: true });
 				});
 			}
 		}
@@ -1035,17 +1044,20 @@
 			`;
 		}
 
-		function renderApprovalHistoryPanel(history, proposalId) {
+		function renderApprovalHistoryPanel(history, proposalId, auditBusy = false) {
 			const attempts = Array.isArray(history?.attempts) ? history.attempts : [];
 			if (!attempts.length) {
 				return `
 					<p class="muted">No approval attempts recorded yet.</p>
-					<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history" target="_blank" rel="noreferrer">View full audit</a></p>
+					<p class="footer-note">Showing 0 of ${escapeHtml(history?.total_count ?? 0)} attempts.</p>
+					<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">View full audit</a></p>
 				`;
 			}
-			const recent = attempts.slice(0, 3);
+			const loadMore = history?.has_more
+				? `<button id="loadMoreAuditButton" type="button">${auditBusy ? "Loading more audit..." : "Load more"}</button>`
+				: `<p class="footer-note">All recorded audit attempts are visible.</p>`;
 			return `
-				<ol class="list">${recent.map((attempt) => `
+				<ol class="list">${attempts.map((attempt) => `
 					<li>
 						<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
 						 · Attempt ${escapeHtml(attempt.attempt_number || "?")}
@@ -1054,9 +1066,14 @@
 						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
 						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
 					</li>
-				`).join("")}</ol>
+					`).join("")}</ol>
+				<p class="footer-note">Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts.</p>
 				<p class="footer-note">Retries remaining: ${escapeHtml(history.attempts_remaining ?? 0)} of ${escapeHtml(history.max_attempts ?? attempts.length)}</p>
-				<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history" target="_blank" rel="noreferrer">View full audit</a></p>
+				<div class="pm-actions">
+					${loadMore}
+					<span class="muted tiny">Paged audit uses the same normalized approval history API.</span>
+				</div>
+				<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=${encodeURIComponent(history?.size || 3)}" target="_blank" rel="noreferrer">View full audit</a></p>
 			`;
 		}
 
@@ -1201,19 +1218,54 @@
 			}
 		}
 
-		async function loadApprovalHistory(run) {
+		function appendApprovalHistoryPage(existingHistory, nextHistory) {
+			const existingAttempts = Array.isArray(existingHistory?.attempts) ? existingHistory.attempts : [];
+			const nextAttempts = Array.isArray(nextHistory?.attempts) ? nextHistory.attempts : [];
+			const seen = new Set(existingAttempts.map((attempt) => `${attempt.attempt_number || "?"}:${attempt.attempted_at || ""}`));
+			const mergedAttempts = existingAttempts.concat(
+				nextAttempts.filter((attempt) => {
+					const key = `${attempt.attempt_number || "?"}:${attempt.attempted_at || ""}`;
+					if (seen.has(key)) {
+						return false;
+					}
+					seen.add(key);
+					return true;
+				})
+			);
+			return {
+				...nextHistory,
+				attempts: mergedAttempts,
+			};
+		}
+
+		async function loadApprovalHistory(run, options = {}) {
 			const proposalId = run?.recommendation_id || run?.run_id;
 			if (!proposalId) {
 				return;
 			}
+			const page = Number.isFinite(options.page) ? Math.max(1, options.page) : 1;
+			const size = Number.isFinite(options.size) ? Math.max(1, options.size) : 3;
+			const append = Boolean(options.append);
+			state.auditLoadingById.add(run.run_id);
+			if (state.selectedRunId === run.run_id) {
+				renderDetail(run);
+			}
 			try {
-				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history`);
-				state.approvalHistoryById.set(run.run_id, history);
+				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`);
+				const nextHistory = append
+					? appendApprovalHistoryPage(state.approvalHistoryById.get(run.run_id), history)
+					: history;
+				state.approvalHistoryById.set(run.run_id, nextHistory);
 				if (state.selectedRunId === run.run_id) {
 					renderDetail(run);
 				}
 			} catch (error) {
 				void error;
+			} finally {
+				state.auditLoadingById.delete(run.run_id);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
 			}
 		}
 

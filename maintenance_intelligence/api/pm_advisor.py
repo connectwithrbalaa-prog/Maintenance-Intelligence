@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg2
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -149,6 +149,19 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
         "attempts_remaining": attempts_remaining,
         "max_attempts": max_attempts,
         "retry_allowed": retry_allowed,
+    }
+
+
+def _history_page(attempts: List[Dict[str, Any]], page: int, size: int) -> Dict[str, Any]:
+    total_count = len(attempts)
+    start = (page - 1) * size
+    end = start + size
+    return {
+        "attempts": attempts[start:end],
+        "total_count": total_count,
+        "page": page,
+        "size": size,
+        "has_more": end < total_count,
     }
 
 
@@ -529,7 +542,11 @@ def list_proposals() -> List[Dict[str, Any]]:
 
 
 @router.get("/proposals/{proposal_id}/history")
-def proposal_history(proposal_id: str) -> Dict[str, Any]:
+def proposal_history(
+    proposal_id: str,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=3, ge=1, le=25),
+) -> Dict[str, Any]:
     settings = Settings()
     proposal = None
     try:
@@ -542,12 +559,18 @@ def proposal_history(proposal_id: str) -> Dict[str, Any]:
         proposal = _proposal_from_summary(found["payload"], found["source_path"])
 
     retry_fields = _retry_fields(proposal, _proposal_attempt_limit(settings))
+    attempts = proposal.get("approval_history") or []
+    paged = _history_page(attempts, page, size)
     return {
         "proposal_id": proposal.get("proposal_id") or proposal_id,
         "last_approver": proposal.get("last_approver"),
         "last_attempt_time": proposal.get("last_attempt_time"),
         "handoff_state": proposal.get("handoff_state") or "pending",
-        "attempts": proposal.get("approval_history") or [],
+        "attempts": paged["attempts"],
+        "total_count": paged["total_count"],
+        "page": paged["page"],
+        "size": paged["size"],
+        "has_more": paged["has_more"],
         "attempt_count": retry_fields["attempt_count"],
         "attempts_remaining": retry_fields["attempts_remaining"],
         "max_attempts": retry_fields["max_attempts"],

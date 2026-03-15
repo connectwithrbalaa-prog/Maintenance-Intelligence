@@ -206,6 +206,13 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Approval history" in page.text
     assert "No approval attempts recorded yet." in page.text
     assert "View full audit" in page.text
+    assert "Load more" in page.text
+    assert "Loading more audit..." in page.text
+    assert "All recorded audit attempts are visible." in page.text
+    assert "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts." in page.text
+    assert "appendApprovalHistoryPage" in page.text
+    assert "existingAttempts.concat" in page.text
+    assert "history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}" in page.text
     assert "Attempt state:" in page.text
     assert "Reused existing CMMS handoff result." in page.text
     assert "Fresh handoff result." in page.text
