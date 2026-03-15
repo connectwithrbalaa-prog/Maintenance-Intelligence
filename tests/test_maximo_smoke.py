@@ -63,6 +63,7 @@ class FakeConnection:
                 record["work_order_id"] = existing["work_order_id"]
                 if existing["proposed_by"]:
                     record["proposed_by"] = existing["proposed_by"]
+                record["metadata"] = {**existing.get("metadata", {}), **record.get("metadata", {})}
             self.proposals[record["proposal_id"]] = record
             self._last_rows = [self._row(record)]
         elif normalized.startswith("UPDATE pm_proposals"):

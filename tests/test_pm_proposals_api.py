@@ -95,6 +95,7 @@ class FakeConnection:
                 record["work_order_id"] = existing["work_order_id"]
                 if existing["proposed_by"]:
                     record["proposed_by"] = existing["proposed_by"]
+                record["metadata"] = {**existing.get("metadata", {}), **record.get("metadata", {})}
             self.proposals[record["proposal_id"]] = record
             self._last_rows = [self._row(record)]
         elif normalized.startswith("SELECT proposal_id"):
@@ -321,3 +322,47 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     assert payload["proposal"]["approved_by"] == "dev-user"
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["detail"] == "CMMS backend returned malformed payload"
+    assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["handoff_state"] == "failure"
+
+
+def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+
+    class IncompleteAdapter:
+        backend_name = "incomplete"
+
+        def create_work_order(self, recommendation):
+            return {"status": "queued", "backend": self.backend_name, "response": {"status": "queued"}}
+
+    class BadAdapter:
+        backend_name = "bad"
+
+        def create_work_order(self, recommendation):
+            return "bad-payload"
+
+    client = TestClient(app)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: IncompleteAdapter())
+    pending_response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    assert pending_response.status_code == 202
+
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: BadAdapter())
+    failed_response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-2"})
+    assert failed_response.status_code == 502
+
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    assert history.status_code == 200
+    payload = history.json()
+    assert payload["proposal_id"] == "REC-1"
+    assert payload["last_approver"] == "planner-2"
+    assert payload["handoff_state"] == "failure"
+    assert len(payload["attempts"]) == 2
+    assert payload["attempts"][0]["approved_by"] == "planner-2"
+    assert payload["attempts"][0]["handoff_state"] == "failure"
+    assert payload["attempts"][0]["error_message"] == "CMMS backend returned malformed payload"
+    assert payload["attempts"][1]["approved_by"] == "planner-1"
+    assert payload["attempts"][1]["handoff_state"] == "pending"

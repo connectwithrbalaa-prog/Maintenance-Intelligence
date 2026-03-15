@@ -609,6 +609,7 @@
 			detailsById: new Map(),
 			approvalResultsById: new Map(),
 			approvalInFlightById: new Set(),
+			approvalHistoryById: new Map(),
 			loading: false,
 		};
 
@@ -880,8 +881,10 @@
 			const modelName = [model.name, model.version].filter(Boolean).join(" · ") || "-";
 			const summaryText = structured.summary || "This run summary is partial. Missing fields were left empty so the detail view can still load safely.";
 			const approvalResult = state.approvalResultsById.get(run.run_id);
+			const approvalHistory = state.approvalHistoryById.get(run.run_id);
 			const canApprove = Array.isArray(run.pm_suggestions) && run.pm_suggestions.length > 0;
 			const approvalBusy = state.approvalInFlightById.has(run.run_id);
+			const proposalId = run.recommendation_id || run.run_id;
 
 			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
 			elements.detailView.className = "";
@@ -942,6 +945,11 @@
 					</div>
 
 					<div class="section">
+						<h3>Approval history</h3>
+						${renderApprovalHistoryPanel(approvalHistory, proposalId)}
+					</div>
+
+					<div class="section">
 						<h3>Context metadata</h3>
 						${renderChips(contextMeta, "No context metadata was captured.")}
 					</div>
@@ -972,6 +980,28 @@
 					<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
 					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
 				</div>
+			`;
+		}
+
+		function renderApprovalHistoryPanel(history, proposalId) {
+			const attempts = Array.isArray(history?.attempts) ? history.attempts : [];
+			if (!attempts.length) {
+				return `
+					<p class="muted">No approval attempts recorded yet.</p>
+					<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history" target="_blank" rel="noreferrer">View full audit</a></p>
+				`;
+			}
+			const recent = attempts.slice(0, 3);
+			return `
+				<ol class="list">${recent.map((attempt) => `
+					<li>
+						<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
+						 · ${escapeHtml(attempt.approved_by || "Unknown approver")}
+						 · ${escapeHtml(attempt.attempted_at || "Unknown time")}
+						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
+					</li>
+				`).join("")}</ol>
+				<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history" target="_blank" rel="noreferrer">View full audit</a></p>
 			`;
 		}
 
@@ -1080,6 +1110,7 @@
 				const proposalId = analyze?.proposal?.proposal_id || run.recommendation_id || run.run_id;
 				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, {});
 				state.approvalResultsById.set(run.run_id, approval);
+				await loadApprovalHistory({ ...run, recommendation_id: proposalId });
 				renderDetail({
 					...run,
 					approved_by: approval.proposal?.approved_by || approval.approved_by,
@@ -1094,10 +1125,27 @@
 					proposal: { approved_by: "", approved_at: "", work_order_id: "" },
 					work_order: {},
 				});
+				await loadApprovalHistory(run);
 				renderDetail(run);
 			} finally {
 				state.approvalInFlightById.delete(run.run_id);
 				renderDetail(run);
+			}
+		}
+
+		async function loadApprovalHistory(run) {
+			const proposalId = run?.recommendation_id || run?.run_id;
+			if (!proposalId) {
+				return;
+			}
+			try {
+				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history`);
+				state.approvalHistoryById.set(run.run_id, history);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
+			} catch (error) {
+				void error;
 			}
 		}
 
@@ -1159,7 +1207,11 @@
 			renderRunList();
 
 			if (state.detailsById.has(runId)) {
-				renderDetail(state.detailsById.get(runId));
+				const cached = state.detailsById.get(runId);
+				renderDetail(cached);
+				if (!state.approvalHistoryById.has(runId)) {
+					await loadApprovalHistory(cached);
+				}
 				return;
 			}
 
@@ -1178,6 +1230,7 @@
 				const normalized = normalizeRun(detail);
 				state.detailsById.set(runId, normalized);
 				renderDetail(normalized);
+				await loadApprovalHistory(normalized);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				setError(message);

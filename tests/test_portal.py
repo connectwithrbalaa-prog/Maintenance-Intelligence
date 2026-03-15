@@ -198,3 +198,6 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Approve PM proposal" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text
+    assert "Approval history" in page.text
+    assert "No approval attempts recorded yet." in page.text
+    assert "View full audit" in page.text

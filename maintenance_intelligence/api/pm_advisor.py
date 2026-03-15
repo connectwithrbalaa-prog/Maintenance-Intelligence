@@ -49,7 +49,7 @@ def _approval_attempt_metadata(result: Optional[Dict[str, Any]], approved_by: Op
             "approved_by": approved_by,
             "approved_at": attempted_at if status == "approved" else None,
             "attempted_at": attempted_at,
-            "handoff_state": status,
+            "handoff_state": "success" if status == "approved" else "pending",
             "result": result or {},
         }
     }
@@ -66,10 +66,104 @@ def _approval_attempt_failure_metadata(
             "approved_by": approved_by,
             "approved_at": None,
             "attempted_at": attempted_at,
-            "handoff_state": status,
+            "handoff_state": "failure",
             "detail": detail,
             "result": {},
         }
+    }
+
+
+def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, dict):
+        return None
+    attempted_at = _as_text(value.get("attempted_at"))
+    approved_by = _as_text(value.get("approved_by"))
+    approved_at = _as_text(value.get("approved_at"))
+    handoff_state = _as_text(value.get("handoff_state")) or "pending"
+    connector_result = value.get("connector_result")
+    if not isinstance(connector_result, dict):
+        connector_result = value.get("result") if isinstance(value.get("result"), dict) else {}
+    error_message = _as_text(value.get("error_message")) or _as_text(value.get("detail"))
+    result = _as_text(value.get("result"))
+    if result not in {"success", "pending", "failure"}:
+        if handoff_state == "success":
+            result = "success"
+        elif handoff_state == "failure" or error_message:
+            result = "failure"
+        else:
+            result = "pending"
+    if not attempted_at and not approved_by and not approved_at and not connector_result and not error_message:
+        return None
+    return {
+        "attempted_at": attempted_at or "",
+        "approved_by": approved_by or "",
+        "approved_at": approved_at or "",
+        "handoff_state": handoff_state,
+        "result": result,
+        "connector_result": connector_result,
+        "error_message": error_message or "",
+    }
+
+
+def _approval_attempts(metadata: Any) -> List[Dict[str, Any]]:
+    if not isinstance(metadata, dict):
+        return []
+    attempts = metadata.get("approval_attempts")
+    normalized: List[Dict[str, Any]] = []
+    if isinstance(attempts, list):
+        for item in attempts:
+            entry = _normalize_attempt_entry(item)
+            if entry is not None:
+                normalized.append(entry)
+    if normalized:
+        return list(reversed(normalized))
+    fallback = _normalize_attempt_entry(metadata.get("approval"))
+    return [fallback] if fallback is not None else []
+
+
+def _proposal_audit_fields(metadata: Any) -> Dict[str, Any]:
+    attempts = _approval_attempts(metadata)
+    latest = attempts[0] if attempts else {}
+    return {
+        "approval_history": attempts,
+        "last_approver": latest.get("approved_by"),
+        "last_attempt_time": latest.get("attempted_at"),
+        "handoff_state": latest.get("handoff_state") or "pending",
+    }
+
+
+def _append_approval_metadata(
+    existing_metadata: Any,
+    approved_by: Optional[str],
+    status: str,
+    connector_result: Optional[Dict[str, Any]] = None,
+    detail: Optional[str] = None,
+) -> Dict[str, Any]:
+    existing = existing_metadata if isinstance(existing_metadata, dict) else {}
+    attempts = list(reversed(_approval_attempts(existing)))
+    attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    handoff_state = "failure" if detail else ("success" if status == "approved" else "pending")
+    attempt = {
+        "attempted_at": attempted_at,
+        "approved_by": approved_by,
+        "approved_at": attempted_at if status == "approved" else None,
+        "handoff_state": handoff_state,
+        "result": "failure" if detail else ("success" if status == "approved" else "pending"),
+        "connector_result": connector_result or {},
+        "error_message": detail,
+    }
+    attempts.append(attempt)
+    approval = {
+        "approved_by": approved_by,
+        "approved_at": attempt["approved_at"],
+        "attempted_at": attempted_at,
+        "handoff_state": handoff_state,
+        "result": connector_result or {},
+        "detail": detail,
+    }
+    return {
+        "approval": approval,
+        "approval_attempts": attempts,
     }
 
 
@@ -132,7 +226,8 @@ def _identity_from_request(request: Request) -> Optional[str]:
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
-    approval = _approval_fields(payload.get("metadata") or {})
+    metadata = payload.get("metadata") or {}
+    approval = _approval_fields(metadata)
     return {
         "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
@@ -146,7 +241,8 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
         "source_file": source_path.name,
         "approved_by": approval.get("approved_by"),
         "approved_at": approval.get("approved_at"),
-        "metadata": payload.get("metadata") or {},
+        "metadata": metadata,
+        **_proposal_audit_fields(metadata),
     }
 
 
@@ -220,6 +316,7 @@ def _proposal_from_row(row: Any) -> Dict[str, Any]:
         "approved_at": approval.get("approved_at"),
         "work_order_id": row[12],
         "metadata": metadata,
+        **_proposal_audit_fields(metadata),
     }
 
 
@@ -241,7 +338,7 @@ def _upsert_proposal(conn, proposal: Dict[str, Any]) -> Dict[str, Any]:
                 confidence = EXCLUDED.confidence,
                 source_file = EXCLUDED.source_file,
                 proposed_by = COALESCE(pm_proposals.proposed_by, EXCLUDED.proposed_by),
-                metadata = EXCLUDED.metadata,
+                metadata = COALESCE(pm_proposals.metadata, '{}'::jsonb) || EXCLUDED.metadata,
                 updated_at = now()
             RETURNING proposal_id, run_id, recommendation_id, event_id, asset_id, title, rationale,
                       confidence, status, source_file, proposed_by, approved_by, work_order_id, metadata
@@ -314,6 +411,17 @@ def _with_proposal_connection():
     return connection_factory(settings.pg_dsn)
 
 
+def _load_persisted_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
+    conn = _with_proposal_connection()
+    try:
+        for proposal in _list_persisted_proposals(conn):
+            if proposal_id in {proposal.get("proposal_id"), proposal.get("recommendation_id"), proposal.get("run_id")}:
+                return proposal
+    finally:
+        conn.close()
+    return None
+
+
 @router.post("/advisor/analyze")
 def analyze_run(payload: AnalyzePayload, request: Request):
     found = _find_proposal_payload(payload.run_id)
@@ -362,6 +470,27 @@ def list_proposals() -> List[Dict[str, Any]]:
     return items
 
 
+@router.get("/proposals/{proposal_id}/history")
+def proposal_history(proposal_id: str) -> Dict[str, Any]:
+    proposal = None
+    try:
+        proposal = _load_persisted_proposal(proposal_id)
+    except Exception:
+        proposal = None
+
+    if proposal is None:
+        found = _find_proposal_payload(proposal_id)
+        proposal = _proposal_from_summary(found["payload"], found["source_path"])
+
+    return {
+        "proposal_id": proposal.get("proposal_id") or proposal_id,
+        "last_approver": proposal.get("last_approver"),
+        "last_attempt_time": proposal.get("last_attempt_time"),
+        "handoff_state": proposal.get("handoff_state") or "pending",
+        "attempts": proposal.get("approval_history") or [],
+    }
+
+
 @router.post("/proposals/{proposal_id}/approve")
 def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     found = _find_proposal_payload(proposal_id)
@@ -373,11 +502,12 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
 
+    proposal: Dict[str, Any] = {}
     try:
         conn = connection_factory(settings.pg_dsn)
         try:
             proposal = _proposal_record_from_summary(payload, found["source_path"])
-            _upsert_proposal(conn, proposal)
+            proposal = _upsert_proposal(conn, proposal)
             adapter = adapter_factory(settings)
             result = process_recommendation({"recommendation": recommendation}, conn, adapter)
             status = "approved" if result.get("handoff_complete") else "pending"
@@ -387,7 +517,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 approved_by,
                 result.get("wo_id"),
                 status,
-                _approval_attempt_metadata(result, approved_by, status),
+                _append_approval_metadata(proposal.get("metadata"), approved_by, status, connector_result=result),
             )
         finally:
             try:
@@ -408,7 +538,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _approval_attempt_failure_metadata(approved_by, detail),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, "pending", detail=detail),
                 )
             finally:
                 conn.close()
@@ -427,7 +557,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _approval_attempt_failure_metadata(approved_by, detail),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, "pending", detail=detail),
                 )
             finally:
                 conn.close()
