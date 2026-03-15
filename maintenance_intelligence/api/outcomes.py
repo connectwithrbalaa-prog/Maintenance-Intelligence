@@ -173,6 +173,43 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 _safe_rollback(conn)
                 _mark_partial(out, f"mtbf aggregation unavailable: {exc}")
 
+            # Proxy MTTR: terminal workorders with completion-like timestamps embedded in
+            # persisted CMMS response payloads. This remains a proxy until explicit repair
+            # lifecycle timestamps are stored as first-class columns.
+            try:
+                cur.execute(f"""
+                    SELECT w.wo_id,
+                           COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) AS created_ts,
+                           COALESCE(
+                               NULLIF(w.metadata->'response'->>'actfinish', ''),
+                               NULLIF(w.metadata->'response'->>'statusdate', ''),
+                               NULLIF(w.metadata->'response'->>'changedate', ''),
+                               NULLIF(w.metadata->'raw_response'->>'actfinish', ''),
+                               NULLIF(w.metadata->'raw_response'->>'statusdate', ''),
+                               NULLIF(w.metadata->'raw_response'->>'changedate', '')
+                           )::timestamptz AS completed_ts,
+                           w.status
+                    FROM workorders w
+                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                      AND UPPER(COALESCE(w.status, '')) IN ('COMP', 'COMPLETE', 'COMPLETED', 'CLOSE', 'CLOSED', 'DONE')
+                """)
+                mttrs = []
+                for row in cur.fetchall() or []:
+                    if not row:
+                        continue
+                    created_ts = row[1]
+                    completed_ts = row[2]
+                    if created_ts and completed_ts:
+                        delta = (completed_ts - created_ts).total_seconds()
+                        if delta >= 0:
+                            mttrs.append(delta)
+                out["mttr_seconds_avg"] = (sum(mttrs) / len(mttrs)) if mttrs else None
+                if out["mttr_seconds_avg"] is not None:
+                    _clear_placeholder(out, "mttr_seconds_avg")
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"mttr aggregation unavailable: {exc}")
+
             # Per-asset summary (top 10 by slowest TTR)
             # This is a placeholder; improve with real WO lifecycle timestamps.
             try:
