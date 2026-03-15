@@ -46,17 +46,25 @@ def test_mock_adapter_returns_normalized_work_order():
     assert result["wo_id"] == "WO-REC-1234"
     assert result["status"] == "DRAFT"
     assert result["backend"] == "mock"
+    assert result["workorder_created_at"] == result["created_at"]
+    assert result["handoff_completed_at"] == result["created_at"]
+    assert result["workorder_completed_at"] is None
 
 
 def test_maximo_adapter_maps_and_parses_response(monkeypatch):
     class FakeResponse:
-        content = b'{"wonum":"MX-1001","status":"WAPPR"}'
+        content = b'{"wonum":"MX-1001","status":"COMP","statusdate":"2026-03-15T10:30:00Z","actfinish":"2026-03-15T11:00:00Z"}'
 
         def raise_for_status(self):
             return None
 
         def json(self):
-            return {"wonum": "MX-1001", "status": "WAPPR"}
+            return {
+                "wonum": "MX-1001",
+                "status": "COMP",
+                "statusdate": "2026-03-15T10:30:00Z",
+                "actfinish": "2026-03-15T11:00:00Z",
+            }
 
     class FakeClient:
         def __init__(self):
@@ -88,6 +96,8 @@ def test_maximo_adapter_maps_and_parses_response(monkeypatch):
     assert client.calls[0]["headers"]["x-api-key"] == "secret"
     assert result["wo_id"] == "MX-1001"
     assert result["backend"] == "maximo"
+    assert result["handoff_completed_at"] == "2026-03-15T10:30:00Z"
+    assert result["workorder_completed_at"] == "2026-03-15T11:00:00Z"
 
 
 def test_maximo_adapter_rejects_invalid_json(monkeypatch):

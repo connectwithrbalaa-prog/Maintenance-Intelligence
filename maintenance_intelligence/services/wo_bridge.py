@@ -16,7 +16,45 @@ def with_pg(dsn: str):
             time.sleep(1)
 
 
+def _lifecycle_timestamps(result):
+    response = result.get("response") if isinstance(result.get("response"), dict) else {}
+    raw_response = result.get("raw_response") if isinstance(result.get("raw_response"), dict) else {}
+    workorder_created_at = (
+        result.get("workorder_created_at")
+        or result.get("created_at")
+        or response.get("workorder_created_at")
+        or response.get("created_at")
+        or raw_response.get("workorder_created_at")
+        or raw_response.get("created_at")
+    )
+    handoff_completed_at = (
+        result.get("handoff_completed_at")
+        or response.get("handoff_completed_at")
+        or raw_response.get("handoff_completed_at")
+        or response.get("statusdate")
+        or response.get("changedate")
+        or raw_response.get("statusdate")
+        or raw_response.get("changedate")
+        or (workorder_created_at if result.get("handoff_complete") else None)
+    )
+    workorder_completed_at = (
+        result.get("workorder_completed_at")
+        or response.get("workorder_completed_at")
+        or response.get("actfinish")
+        or response.get("completed_at")
+        or response.get("closed_at")
+        or response.get("finishdate")
+        or raw_response.get("workorder_completed_at")
+        or raw_response.get("actfinish")
+        or raw_response.get("completed_at")
+        or raw_response.get("closed_at")
+        or raw_response.get("finishdate")
+    )
+    return workorder_created_at, handoff_completed_at, workorder_completed_at
+
+
 def persist_work_order(conn, recommendation, result):
+    workorder_created_at, handoff_completed_at, workorder_completed_at = _lifecycle_timestamps(result)
     metadata = {
         "source": f"agent-wo-bridge-{result.get('backend', 'unknown')}",
         "created_at": result.get("created_at", dt.datetime.utcnow().isoformat() + "Z"),
@@ -27,9 +65,18 @@ def persist_work_order(conn, recommendation, result):
     with conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO workorders (wo_id, asset_id, status, title, description, priority, metadata) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb) "
-                "ON CONFLICT (wo_id) DO NOTHING",
+                "INSERT INTO workorders (wo_id, asset_id, status, title, description, priority, metadata, workorder_created_at, handoff_completed_at, workorder_completed_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s) "
+                "ON CONFLICT (wo_id) DO UPDATE SET "
+                "asset_id = COALESCE(workorders.asset_id, EXCLUDED.asset_id), "
+                "status = COALESCE(EXCLUDED.status, workorders.status), "
+                "title = COALESCE(workorders.title, EXCLUDED.title), "
+                "description = COALESCE(workorders.description, EXCLUDED.description), "
+                "priority = COALESCE(workorders.priority, EXCLUDED.priority), "
+                "metadata = COALESCE(workorders.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb), "
+                "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at), "
+                "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at), "
+                "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)",
                 (
                     result.get("wo_id"),
                     recommendation.get("asset_id"),
@@ -38,6 +85,9 @@ def persist_work_order(conn, recommendation, result):
                     recommendation.get("rationale"),
                     recommendation.get("priority", "MEDIUM"),
                     json.dumps(metadata),
+                    workorder_created_at,
+                    handoff_completed_at,
+                    workorder_completed_at,
                 ),
             )
 

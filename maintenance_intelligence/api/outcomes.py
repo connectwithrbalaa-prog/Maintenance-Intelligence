@@ -119,16 +119,14 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 _safe_rollback(conn)
                 _mark_partial(out, f"feedback aggregation unavailable: {exc}")
 
-            # Approx TTR: recommendation -> WO created_at delta (metadata.created_at)
-            # TODO: Replace with true WO lifecycle delta when status timestamps are available
-            # NOTE: This is a proxy; refine when WO lifecycle/status timestamps exist.
+            # Approx TTR: recommendation -> canonical workorder creation timestamp.
             try:
                 cur.execute(f"""
-                    SELECT w.wo_id, (w.metadata->>'created_at')::timestamptz AS wo_ts,
+                    SELECT w.wo_id, w.workorder_created_at AS wo_ts,
                            e.occurred_at AS rec_ts, w.asset_id
                     FROM workorders w
                     JOIN events e ON e.event_id = ANY( string_to_array(COALESCE(w.metadata->>'evidence_event_id',''), ',') ) OR e.asset_id = w.asset_id
-                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                     LIMIT 500
                 """)
                 ttrs = []
@@ -173,24 +171,15 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 _safe_rollback(conn)
                 _mark_partial(out, f"mtbf aggregation unavailable: {exc}")
 
-            # Proxy MTTR: terminal workorders with completion-like timestamps embedded in
-            # persisted CMMS response payloads. This remains a proxy until explicit repair
-            # lifecycle timestamps are stored as first-class columns.
+            # Proxy MTTR: terminal workorders with canonical lifecycle timestamps.
             try:
                 cur.execute(f"""
                     SELECT w.wo_id,
-                           COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) AS created_ts,
-                           COALESCE(
-                               NULLIF(w.metadata->'response'->>'actfinish', ''),
-                               NULLIF(w.metadata->'response'->>'statusdate', ''),
-                               NULLIF(w.metadata->'response'->>'changedate', ''),
-                               NULLIF(w.metadata->'raw_response'->>'actfinish', ''),
-                               NULLIF(w.metadata->'raw_response'->>'statusdate', ''),
-                               NULLIF(w.metadata->'raw_response'->>'changedate', '')
-                           )::timestamptz AS completed_ts,
+                           w.workorder_created_at AS created_ts,
+                           w.workorder_completed_at AS completed_ts,
                            w.status
                     FROM workorders w
-                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                       AND UPPER(COALESCE(w.status, '')) IN ('COMP', 'COMPLETE', 'COMPLETED', 'CLOSE', 'CLOSED', 'DONE')
                 """)
                 mttrs = []
@@ -216,7 +205,7 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 cur.execute(f"""
                     SELECT w.asset_id, COUNT(*) AS n
                     FROM workorders w
-                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                     GROUP BY w.asset_id
                     ORDER BY n DESC
                     LIMIT 10
@@ -229,10 +218,10 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
             try:
                 cur.execute(f"""
                     SELECT w.asset_id,
-                           DATE_TRUNC('day', COALESCE((w.metadata->>'created_at')::timestamptz, NOW()))::date AS bucket_date,
+                           DATE_TRUNC('day', COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()))::date AS bucket_date,
                            COUNT(*) AS n
                     FROM workorders w
-                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                     GROUP BY w.asset_id, bucket_date
                     ORDER BY w.asset_id, bucket_date
                 """)

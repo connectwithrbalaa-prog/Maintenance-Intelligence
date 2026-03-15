@@ -57,7 +57,7 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 ("PUMP-101", datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)),
                 ("PUMP-101", datetime(2026, 3, 14, 12, 0, tzinfo=timezone.utc)),
             ],
-            "COALESCE(\n                               NULLIF(w.metadata->'response'->>'actfinish'": lambda: [
+            "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: [
                 ("WO-1", datetime(2026, 3, 14, 8, 0, tzinfo=timezone.utc), datetime(2026, 3, 14, 14, 0, tzinfo=timezone.utc), "COMPLETE"),
                 ("WO-2", datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc), datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc), "CLOSED"),
             ],
@@ -105,7 +105,7 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 ("PUMP-102", datetime(2026, 3, 14, 6, 0, tzinfo=timezone.utc)),
                 ("PUMP-102", datetime(2026, 3, 15, 6, 0, tzinfo=timezone.utc)),
             ],
-            "COALESCE(\n                               NULLIF(w.metadata->'response'->>'actfinish'": lambda: [
+            "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: [
                 ("WO-1", datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc), datetime(2026, 3, 13, 9, 0, tzinfo=timezone.utc), "COMP"),
                 ("WO-2", datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc), datetime(2026, 3, 15, 10, 30, tzinfo=timezone.utc), "DONE"),
             ],
@@ -150,7 +150,7 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: [],
             "SELECT asset_id, occurred_at\n                    FROM events": lambda: (_ for _ in ()).throw(RuntimeError("event interval unavailable")),
-            "COALESCE(\n                               NULLIF(w.metadata->'response'->>'actfinish'": lambda: (_ for _ in ()).throw(RuntimeError("terminal wo timestamps unavailable")),
+            "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: (_ for _ in ()).throw(RuntimeError("terminal wo timestamps unavailable")),
             "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("wo trend unavailable")),
             "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("feedback trend unavailable")),
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [],

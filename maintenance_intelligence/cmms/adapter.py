@@ -10,6 +10,9 @@ from loguru import logger
 from maintenance_intelligence.runner.config import Settings
 
 
+TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
+
+
 class CMMSAdapterError(RuntimeError):
     pass
 
@@ -47,6 +50,22 @@ def _as_text(value: Any) -> Optional[str]:
     return None
 
 
+def _as_timestamp_text(value: Any) -> Optional[str]:
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.timezone.utc)
+        return value.isoformat()
+    return _as_text(value)
+
+
+def _first_timestamp(*values: Any) -> Optional[str]:
+    for value in values:
+        text = _as_timestamp_text(value)
+        if text:
+            return text
+    return None
+
+
 def normalize_work_order_result(
     result: Any,
     *,
@@ -63,17 +82,63 @@ def normalize_work_order_result(
         raise CMMSPayloadError("CMMS backend returned malformed payload")
 
     backend = _as_text(result.get("backend")) or backend_name or "unknown"
+    response_payload = _as_dict(result.get("response"))
+    raw_response = result if isinstance(result, dict) else {}
+    workorder_created_at = _first_timestamp(
+        result.get("workorder_created_at"),
+        result.get("created_at"),
+        response_payload.get("workorder_created_at"),
+        response_payload.get("created_at"),
+        raw_response.get("workorder_created_at"),
+        raw_response.get("created_at"),
+    )
+    handoff_completed_at = _first_timestamp(
+        result.get("handoff_completed_at"),
+        response_payload.get("handoff_completed_at"),
+        raw_response.get("handoff_completed_at"),
+        response_payload.get("statusdate"),
+        response_payload.get("changedate"),
+        raw_response.get("statusdate"),
+        raw_response.get("changedate"),
+        workorder_created_at,
+    )
+    workorder_status = (_as_text(result.get("status")) or "PENDING").upper()
+    explicit_completed_at = _first_timestamp(
+        result.get("workorder_completed_at"),
+        response_payload.get("workorder_completed_at"),
+        response_payload.get("actfinish"),
+        response_payload.get("completed_at"),
+        response_payload.get("closed_at"),
+        response_payload.get("finishdate"),
+        raw_response.get("workorder_completed_at"),
+        raw_response.get("actfinish"),
+        raw_response.get("completed_at"),
+        raw_response.get("closed_at"),
+        raw_response.get("finishdate"),
+    )
+    if explicit_completed_at is None and workorder_status in TERMINAL_WORK_ORDER_STATUSES:
+        explicit_completed_at = _first_timestamp(
+            response_payload.get("statusdate"),
+            response_payload.get("changedate"),
+            raw_response.get("statusdate"),
+            raw_response.get("changedate"),
+        )
     normalized = {
         "wo_id": _as_text(result.get("wo_id")),
         "status": _as_text(result.get("status")) or "PENDING",
         "backend": backend,
         "created_at": _as_text(result.get("created_at")),
         "request": _as_dict(result.get("request")),
-        "response": _as_dict(result.get("response")),
+        "response": response_payload,
         "raw_response": result,
         "message": _as_text(result.get("message")),
+        "workorder_created_at": workorder_created_at,
+        "handoff_completed_at": handoff_completed_at,
+        "workorder_completed_at": explicit_completed_at,
     }
     normalized["handoff_complete"] = bool(normalized["wo_id"])
+    if not normalized["handoff_complete"]:
+        normalized["handoff_completed_at"] = None
     if not normalized["handoff_complete"]:
         logger.warning(
             "cmms.adapter.handoff_incomplete backend={} recommendation_id={} raw_payload={}",

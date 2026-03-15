@@ -63,11 +63,15 @@ class FakeAdapter:
         self.calls.append(recommendation)
         return {
             "wo_id": "WO-REC-1234",
-            "status": "DRAFT",
+            "status": "COMP",
             "backend": "mock",
             "created_at": "2026-03-15T12:00:00Z",
             "request": {"asset_id": recommendation.get("asset_id")},
-            "response": {"source": "mock"},
+            "response": {
+                "source": "mock",
+                "statusdate": "2026-03-15T12:05:00Z",
+                "actfinish": "2026-03-15T13:00:00Z",
+            },
         }
 
 
@@ -103,9 +107,44 @@ def test_wo_bridge_loop_invokes_adapter_and_persists_result():
     _query, params = fake_connection.executed[0]
     assert params[0] == "WO-REC-1234"
     assert params[1] == "PUMP-101"
-    assert params[2] == "DRAFT"
+    assert params[2] == "COMP"
     metadata = json.loads(params[6])
     assert metadata["source"] == "agent-wo-bridge-mock"
     assert metadata["request"]["asset_id"] == "PUMP-101"
+    assert params[7] == "2026-03-15T12:00:00Z"
+    assert params[8] == "2026-03-15T12:05:00Z"
+    assert params[9] == "2026-03-15T13:00:00Z"
     assert fake_consumer.closed is True
     assert fake_connection.closed is True
+
+
+def test_persist_work_order_uses_guarded_upsert_for_canonical_timestamps():
+    fake_connection = FakeConnection()
+
+    wo_bridge_mod.persist_work_order(
+        fake_connection,
+        {
+            "asset_id": "PUMP-101",
+            "title": "Inspect seal",
+            "rationale": "Elevated vibration",
+            "priority": "HIGH",
+        },
+        {
+            "wo_id": "WO-REC-1234",
+            "status": "COMP",
+            "backend": "mock",
+            "created_at": "2026-03-15T12:00:00Z",
+            "handoff_complete": True,
+            "response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
+            "raw_response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
+        },
+    )
+
+    query, params = fake_connection.executed[0]
+    assert "ON CONFLICT (wo_id) DO UPDATE SET" in query
+    assert "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at)" in query
+    assert "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at)" in query
+    assert "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)" in query
+    assert params[7] == "2026-03-15T12:00:00Z"
+    assert params[8] == "2026-03-15T12:05:00Z"
+    assert params[9] == "2026-03-15T13:00:00Z"
