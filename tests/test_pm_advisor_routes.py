@@ -191,3 +191,94 @@ def test_pm_advisor_routes(monkeypatch):
     assert approved.status_code == 200
     assert approved.json()["cms_result"]["cms_reference"] == "CMS-123"
     assert approved.json()["proposer_subject"] == "anonymous"
+
+
+def test_list_pm_proposals_coerces_malformed_nested_fields(monkeypatch):
+    state = {
+        "proposal": {
+            "proposal_id": 987,
+            "org_id": "default-org",
+            "proposer_subject": "anonymous",
+            "run_id": ["RUN-1"],
+            "recommendation_id": True,
+            "asset_id": "PUMP-101",
+            "proposal_title": ["bad-title"],
+            "proposal_summary": {"bad": "summary"},
+            "recommended_actions": "not-a-list",
+            "playbook_refs": ["bad-playbook", {"playbook_id": "PB-STUB-001"}],
+            "status": ["draft"],
+            "approved_by": {"user": "planner"},
+            "approved_at": None,
+            "cms_reference": 44,
+            "metadata": "not-a-dict",
+            "created_at": dt.datetime(2026, 3, 14, 18, 0, 0),
+            "updated_at": dt.datetime(2026, 3, 14, 18, 0, 0),
+        }
+    }
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+
+    client = TestClient(app)
+
+    listed = client.get("/api/v1/agents/pm/proposals")
+
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert payload[0]["proposal_id"] == "987"
+    assert payload[0]["run_id"] is None
+    assert payload[0]["recommendation_id"] is None
+    assert payload[0]["proposal_title"] is None
+    assert payload[0]["proposal_summary"] is None
+    assert payload[0]["recommended_actions"] == []
+    assert payload[0]["playbook_refs"] == [{"playbook_id": "PB-STUB-001"}]
+    assert payload[0]["status"] == "unknown"
+    assert payload[0]["approved_by"] is None
+    assert payload[0]["cms_reference"] == "44"
+    assert payload[0]["metadata"] == {}
+
+
+def test_approve_pm_proposal_coerces_malformed_nested_fields(monkeypatch):
+    state = {
+        "proposal": {
+            "proposal_id": "PMP-1",
+            "org_id": "default-org",
+            "proposer_subject": "anonymous",
+            "run_id": ["RUN-1"],
+            "recommendation_id": 77,
+            "asset_id": "PUMP-101",
+            "proposal_title": ["bad-title"],
+            "proposal_summary": {"bad": "summary"},
+            "recommended_actions": "not-a-list",
+            "playbook_refs": ["bad-playbook"],
+            "status": "draft",
+            "approved_by": None,
+            "approved_at": None,
+            "cms_reference": None,
+            "metadata": "not-a-dict",
+            "created_at": dt.datetime(2026, 3, 14, 18, 0, 0),
+            "updated_at": dt.datetime(2026, 3, 14, 18, 0, 0),
+        }
+    }
+    captured = {}
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+    monkeypatch.setattr(
+        pm_mod,
+        "push_work_order_to_cms",
+        lambda proposal, approved_by=None, notes=None: captured.setdefault("proposal", proposal)
+        or {"status": "queued", "cms_reference": "CMS-123", "approved_by": approved_by, "notes": notes},
+    )
+
+    client = TestClient(app)
+
+    approved = client.post(
+        "/api/v1/agents/pm/proposals/PMP-1/approve",
+        json={"approved_by": "planner@example.com", "notes": "Create work order draft"},
+    )
+
+    assert approved.status_code == 200
+    assert captured["proposal"]["run_id"] is None
+    assert captured["proposal"]["recommendation_id"] == "77"
+    assert captured["proposal"]["proposal_title"] is None
+    assert captured["proposal"]["proposal_summary"] is None
+    assert captured["proposal"]["recommended_actions"] == []
+    assert captured["proposal"]["playbook_refs"] == []
+    assert captured["proposal"]["metadata"] == {}

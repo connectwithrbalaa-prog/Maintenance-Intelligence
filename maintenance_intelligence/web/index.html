@@ -408,6 +408,17 @@
         messageNode.className = isError ? "message error" : "message";
       }
 
+      async function fetchJson(response, fallbackValue) {
+        try {
+          return await response.json();
+        } catch (error) {
+          if (response.ok) {
+            throw new Error("Portal API returned invalid JSON");
+          }
+          return fallbackValue;
+        }
+      }
+
       function escapeHtml(value) {
         return String(value ?? "")
           .replaceAll("&", "&amp;")
@@ -425,7 +436,7 @@
           const response = await fetch("/api/v1/whoami", {
             headers: { Accept: "application/json", ...identityHeaders() },
           });
-          const payload = await response.json().catch(() => ({}));
+          const payload = await fetchJson(response, {});
           if (!response.ok || !payload.role) {
             throw new Error(payload.detail || "Backend identity is required for this portal view.");
           }
@@ -469,7 +480,7 @@
               notes: notesNode.value || "Approve and send to planner queue.",
             }),
           });
-          const payload = await response.json().catch(() => ({}));
+          const payload = await fetchJson(response, {});
           if (!response.ok) {
             throw new Error(payload.detail || "Approval request failed");
           }
@@ -544,14 +555,14 @@
           const response = await fetch(`/api/v1/agents/pm/proposals${statusQuery}`, {
             headers: identityHeaders(),
           });
-          const payload = await response.json().catch(() => []);
+          const payload = await fetchJson(response, []);
           if (!response.ok) {
             throw new Error(payload.detail || "Unable to fetch PM proposals");
           }
           if (!Array.isArray(payload) || payload.length === 0) {
             queueNode.innerHTML = "";
             emptyNode.hidden = false;
-            setMessage("Queue loaded.");
+            setMessage(includeApproved ? "No PM proposals available." : "No draft PM proposals available.");
             return;
           }
           queueNode.innerHTML = payload.map(renderProposal).join("");

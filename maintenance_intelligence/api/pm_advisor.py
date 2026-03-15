@@ -16,6 +16,46 @@ from maintenance_intelligence.services.wo_bridge import push_work_order_to_cms
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
 
+def _as_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _as_string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    items: List[str] = []
+    for item in value:
+        text = _as_text(item)
+        if text is not None:
+            items.append(text)
+    return items
+
+
+def _as_playbook_refs(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    refs: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            refs.append(item)
+    return refs
+
+
+def _isoformat(value: Any) -> Optional[str]:
+    return value.isoformat() if value else None
+
+
 class PMAdvisorRequest(BaseModel):
     run_id: str
     recommendation_id: str
@@ -170,23 +210,23 @@ def list_pm_proposals(
     for row in rows:
         proposals.append(
             {
-                "proposal_id": row[0],
-                "org_id": row[1],
-                "proposer_subject": row[2],
-                "run_id": row[3],
-                "recommendation_id": row[4],
-                "asset_id": row[5],
-                "proposal_title": row[6],
-                "proposal_summary": row[7],
-                "recommended_actions": row[8] or [],
-                "playbook_refs": row[9] or [],
-                "status": row[10],
-                "approved_by": row[11],
-                "approved_at": row[12].isoformat() if row[12] else None,
-                "cms_reference": row[13],
-                "metadata": row[14] or {},
-                "created_at": row[15].isoformat() if row[15] else None,
-                "updated_at": row[16].isoformat() if row[16] else None,
+                "proposal_id": _as_text(row[0]),
+                "org_id": _as_text(row[1]),
+                "proposer_subject": _as_text(row[2]),
+                "run_id": _as_text(row[3]),
+                "recommendation_id": _as_text(row[4]),
+                "asset_id": _as_text(row[5]),
+                "proposal_title": _as_text(row[6]),
+                "proposal_summary": _as_text(row[7]),
+                "recommended_actions": _as_string_list(row[8]),
+                "playbook_refs": _as_playbook_refs(row[9]),
+                "status": _as_text(row[10]) or "unknown",
+                "approved_by": _as_text(row[11]),
+                "approved_at": _isoformat(row[12]),
+                "cms_reference": _as_text(row[13]),
+                "metadata": _as_dict(row[14]),
+                "created_at": _isoformat(row[15]),
+                "updated_at": _isoformat(row[16]),
             }
         )
     return proposals
@@ -215,17 +255,17 @@ def approve_pm_proposal(
                 raise HTTPException(status_code=404, detail="Proposal not found")
 
             proposal = {
-                "proposal_id": row[0],
-                "org_id": row[1],
-                "proposer_subject": row[2],
-                "run_id": row[3],
-                "recommendation_id": row[4],
-                "asset_id": row[5],
-                "proposal_title": row[6],
-                "proposal_summary": row[7],
-                "recommended_actions": row[8] or [],
-                "playbook_refs": row[9] or [],
-                "metadata": row[10] or {},
+                "proposal_id": _as_text(row[0]),
+                "org_id": _as_text(row[1]),
+                "proposer_subject": _as_text(row[2]),
+                "run_id": _as_text(row[3]),
+                "recommendation_id": _as_text(row[4]),
+                "asset_id": _as_text(row[5]),
+                "proposal_title": _as_text(row[6]),
+                "proposal_summary": _as_text(row[7]),
+                "recommended_actions": _as_string_list(row[8]),
+                "playbook_refs": _as_playbook_refs(row[9]),
+                "metadata": _as_dict(row[10]),
             }
             try:
                 cms_result = push_work_order_to_cms(
