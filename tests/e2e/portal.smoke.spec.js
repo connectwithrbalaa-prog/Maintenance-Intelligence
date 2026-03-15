@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('portal smoke: role toggle, PM approval banner, and load more audit history', async ({ page }) => {
+test('portal smoke: role toggle, PM approval banner, outcomes trends, and load more audit history', async ({ page }) => {
   let historyPageOneCalls = 0;
 
   await page.route('**/api/v1/whoami', async (route) => {
@@ -70,6 +70,44 @@ test('portal smoke: role toggle, PM approval banner, and load more audit history
         context_meta: { asset_id: 'PUMP-101', event_kind: 'anomaly' },
         updated_at: '2026-03-15T10:00:00Z',
         source_file: 'RUN-123.json',
+      }),
+    });
+  });
+
+  await page.route('**/api/v1/reports/rca-outcomes?window=30', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        window_days: 30,
+        status: 'ok',
+        warnings: [],
+        asset_metrics: {
+          'PUMP-101': {
+            workorder_volume: [
+              { date: '2026-03-13', value: 2 },
+              { date: '2026-03-14', value: 4 },
+              { date: '2026-03-15', value: 3 },
+            ],
+            acceptance_rate: [
+              { date: '2026-03-13', value: 0.5 },
+              { date: '2026-03-14', value: 1.0 },
+              { date: '2026-03-15', value: 0.75 },
+            ],
+          },
+          'PUMP-202': {
+            workorder_volume: [
+              { date: '2026-03-13', value: 0 },
+              { date: '2026-03-14', value: 2 },
+              { date: '2026-03-15', value: 6 },
+            ],
+            acceptance_rate: [
+              { date: '2026-03-13', value: 0.2 },
+              { date: '2026-03-14', value: 0.4 },
+              { date: '2026-03-15', value: 0.8 },
+            ],
+          },
+        },
       }),
     });
   });
@@ -237,6 +275,19 @@ test('portal smoke: role toggle, PM approval banner, and load more audit history
   await expect(page.locator('#identityControls')).toBeVisible();
   await expect(page.locator('#identityBadge')).toContainText('portal.user');
   await expect(page.getByRole('button', { name: 'Approve PM proposal' })).toBeVisible();
+  await expect(page.getByText('Asset trend snapshot')).toBeVisible();
+  await expect(page.getByText('Workorder volume')).toBeVisible();
+  await expect(page.getByText('Acceptance rate')).toBeVisible();
+  await expect(page.locator('#outcomesAssetSelect')).toHaveValue('PUMP-101');
+  await expect(page.locator('.chart-svg')).toHaveCount(2);
+
+  await page.locator('#outcomesAssetSelect').selectOption('PUMP-202');
+  await expect(page.locator('#outcomesAssetSelect')).toHaveValue('PUMP-202');
+  await expect(page.getByText('No trend series was found for PUMP-101. Showing PUMP-202 instead.')).toBeVisible();
+  await expect(page.getByText('Peak daily volume 6 · Low 0.')).toBeVisible();
+  await expect(page.getByText('Range 20% to 80% across the current window.')).toBeVisible();
+  await expect(page.locator('.chart-stat').filter({ hasText: '6' })).toBeVisible();
+  await expect(page.locator('.chart-stat').filter({ hasText: '80%' })).toBeVisible();
 
   await page.locator('#identitySubjectInput').fill('demo.admin');
   await page.locator('#identityRoleSelect').selectOption('admin');

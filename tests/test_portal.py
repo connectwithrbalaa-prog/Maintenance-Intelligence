@@ -247,3 +247,30 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Attempt ${attemptNumber} of ${attemptCount}" in page.text
     assert "Retries remaining:" in page.text
     assert "Connector:" in page.text
+    assert "Asset trend snapshot" in page.text
+    assert "Compact outcomes view for demos in the portal." in page.text
+    assert "outcomesAssetSelect" in page.text
+    assert "Select asset trend series" in page.text
+    assert "Asset selector" in page.text
+    assert "Source outcomes.asset_metrics" in page.text
+    assert "Last ${escapeHtml(outcomesWindow)} days" in page.text
+    assert "renderOutcomesPanel" in page.text
+    assert "ensureOutcomesReport" in page.text
+    assert "resetOutcomesReport" in page.text
+    assert "No asset trend data is available yet for the current outcomes window." in page.text
+    assert "Loading outcomes trends for the last" in page.text
+    assert "Unable to load outcomes trends:" in page.text
+    assert "Partial outcomes report:" in page.text
+    assert "No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead." in page.text
+    assert "Workorder volume" in page.text
+    assert "Acceptance rate" in page.text
+    assert "Peak daily volume" in page.text
+    assert "Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window." in page.text
+    assert "No accept or reject feedback was recorded for this asset in the current window." in page.text
+    assert "No work orders were recorded for this asset in the current window." in page.text
+    assert "No acceptance decisions yet" in page.text
+    assert "No work order volume yet" in page.text
+    assert "chart-line" in page.text
+    assert "chart-dot" in page.text
+    assert "buildTrendSegments" in page.text
+    assert "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}" in page.text
