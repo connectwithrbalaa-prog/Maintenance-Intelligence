@@ -219,6 +219,10 @@ Utilities:
 - scripts/cron_rca_test.sh (cron-friendly)
 - make demo-pm-approval
 
+CLI note:
+- `mi-runner` is available after `python -m pip install -e .` when the active virtualenv's `bin` directory is on `PATH`.
+- If the script name is not on `PATH`, use `python -m maintenance_intelligence.runner.cli ...` instead.
+
 PM demo flow:
 - Starts the API with local header-based identity enabled
 - Seeds a demo RCA run summary and analyzes it by `run_id` unless `--run-id` is provided
