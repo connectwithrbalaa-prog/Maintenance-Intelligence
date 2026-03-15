@@ -8,7 +8,7 @@ from loguru import logger
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope
 from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.services.cmms import get_cmms_adapter
+from maintenance_intelligence.services.cmms import get_cmms_adapter, normalize_connector_result
 
 
 def with_pg(dsn: str):
@@ -23,7 +23,12 @@ def with_pg(dsn: str):
 
 def push_work_order_to_cms(proposal: dict, approved_by: str | None = None, notes: str | None = None):
     connector = get_cmms_adapter(Settings())
-    return connector.submit_proposal(proposal, approved_by=approved_by, notes=notes)
+    result = connector.submit_proposal(proposal, approved_by=approved_by, notes=notes)
+    return normalize_connector_result(
+        result,
+        proposal_id=str(proposal.get("proposal_id") or "unknown"),
+        connector_name=getattr(connector, "connector_name", None),
+    )
 
 
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str):

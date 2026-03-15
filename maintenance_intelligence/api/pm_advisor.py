@@ -3,13 +3,15 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.multitenancy import TenantContext, normalize_role, role_allows
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.api.whoami import resolve_request_identity
-from maintenance_intelligence.services.playbook_agent import search_playbooks
+from maintenance_intelligence.services.cmms import CMMSConnectorPayloadError, CMMSConnectorUnavailableError
+from maintenance_intelligence.services.playbook_agent import normalize_playbook_results, search_playbooks
 from maintenance_intelligence.services.pm_advisor_agent import analyze_pm_strategy
 from maintenance_intelligence.services.wo_bridge import push_work_order_to_cms
 
@@ -54,6 +56,55 @@ def _as_playbook_refs(value: Any) -> List[Dict[str, Any]]:
 
 def _isoformat(value: Any) -> Optional[str]:
     return value.isoformat() if value else None
+
+
+def _normalize_playbook_refs(value: Any, asset_id: Optional[str]) -> List[Dict[str, Any]]:
+    return normalize_playbook_results(value, asset_id=asset_id)
+
+
+def _proposal_is_actionable(proposal: Dict[str, Any]) -> bool:
+    return bool(proposal.get("proposal_id") and proposal.get("asset_id"))
+
+
+def _approval_metadata(notes: Optional[str], cms_result: Optional[Dict[str, Any]], status: str) -> Dict[str, Any]:
+    return {
+        "approval_notes": notes,
+        "cms_result": cms_result or {},
+        "handoff_state": status,
+    }
+
+
+def _persist_approval_result(
+    cur,
+    *,
+    proposal_id: str,
+    org_id: str,
+    status: str,
+    approved_by: Optional[str],
+    cms_reference: Optional[str],
+    metadata: Dict[str, Any],
+) -> None:
+    cur.execute(
+        """
+        UPDATE pm_change_proposals
+        SET status = %s,
+            approved_by = %s,
+            approved_at = CASE WHEN %s = 'approved' THEN NOW() ELSE approved_at END,
+            cms_reference = %s,
+            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+            updated_at = NOW()
+        WHERE proposal_id = %s AND org_id = %s
+        """,
+        (
+            status,
+            approved_by,
+            status,
+            cms_reference,
+            json.dumps(metadata),
+            proposal_id,
+            org_id,
+        ),
+    )
 
 
 class PMAdvisorRequest(BaseModel):
@@ -123,8 +174,9 @@ def create_pm_proposal(
         context=payload.metadata,
         identity={"org_id": access.org_id, "role": access.role, "subject": access.subject},
     )
-    playbooks = search_playbooks(
-        analysis.get("playbook_query", payload.title), asset_id=payload.asset_id, limit=3
+    playbooks = _normalize_playbook_refs(
+        search_playbooks(analysis.get("playbook_query", payload.title), asset_id=payload.asset_id, limit=3),
+        asset_id=payload.asset_id,
     )
     proposal_id = "PMP-" + uuid.uuid4().hex[:12]
     metadata = {**analysis.get("metadata", {}), **payload.metadata}
@@ -267,41 +319,65 @@ def approve_pm_proposal(
                 "playbook_refs": _as_playbook_refs(row[9]),
                 "metadata": _as_dict(row[10]),
             }
+            if not _proposal_is_actionable(proposal):
+                _persist_approval_result(
+                    cur,
+                    proposal_id=proposal_id,
+                    org_id=access.org_id,
+                    status="pending",
+                    approved_by=payload.approved_by or access.subject,
+                    cms_reference=None,
+                    metadata=_approval_metadata(payload.notes, None, "pending"),
+                )
+                raise HTTPException(status_code=422, detail="Proposal payload is malformed")
             try:
                 cms_result = push_work_order_to_cms(
                     proposal,
                     approved_by=payload.approved_by or access.subject,
                     notes=payload.notes,
                 )
-            except ValueError as exc:
+            except CMMSConnectorPayloadError as exc:
+                _persist_approval_result(
+                    cur,
+                    proposal_id=proposal_id,
+                    org_id=access.org_id,
+                    status="pending",
+                    approved_by=payload.approved_by or access.subject,
+                    cms_reference=None,
+                    metadata=_approval_metadata(payload.notes, None, "pending"),
+                )
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            except (CMMSConnectorUnavailableError, ValueError) as exc:
+                _persist_approval_result(
+                    cur,
+                    proposal_id=proposal_id,
+                    org_id=access.org_id,
+                    status="pending",
+                    approved_by=payload.approved_by or access.subject,
+                    cms_reference=None,
+                    metadata=_approval_metadata(payload.notes, None, "pending"),
+                )
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
-            cur.execute(
-                """
-                UPDATE pm_change_proposals
-                SET status = %s,
-                    approved_by = %s,
-                    approved_at = NOW(),
-                    cms_reference = %s,
-                    metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
-                    updated_at = NOW()
-                WHERE proposal_id = %s AND org_id = %s
-                """,
-                (
-                    "approved",
-                    payload.approved_by or access.subject,
-                    cms_result.get("cms_reference"),
-                    json.dumps({"approval_notes": payload.notes, "cms_result": cms_result}),
-                    proposal_id,
-                    access.org_id,
-                ),
+            approval_status = "approved" if cms_result.get("handoff_complete") else "pending"
+            _persist_approval_result(
+                cur,
+                proposal_id=proposal_id,
+                org_id=access.org_id,
+                status=approval_status,
+                approved_by=payload.approved_by or access.subject,
+                cms_reference=cms_result.get("cms_reference"),
+                metadata=_approval_metadata(payload.notes, cms_result, approval_status),
             )
     finally:
         conn.close()
 
-    return {
+    response = {
         "proposal_id": proposal_id,
-        "status": "approved",
+        "status": "approved" if cms_result.get("handoff_complete") else "pending",
         "org_id": access.org_id,
         "proposer_subject": proposal.get("proposer_subject"),
         "cms_result": cms_result,
     }
+    if cms_result.get("handoff_complete"):
+        return response
+    return JSONResponse(status_code=202, content=response)

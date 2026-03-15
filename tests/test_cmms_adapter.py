@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.services.cmms import MockCMMSConnector, get_cmms_adapter
+from maintenance_intelligence.services.cmms import CMMSConnectorUnavailableError, MockCMMSConnector, get_cmms_adapter
 
 
 def test_mock_cmms_connector_generates_draft_payload():
@@ -42,5 +42,5 @@ def test_mock_cmms_connector_generates_draft_payload():
 def test_get_cmms_adapter_rejects_unknown_backend():
     settings = Settings(MI_PM_CONNECTOR_BACKEND="unsupported")
 
-    with pytest.raises(ValueError, match="Unsupported PM connector backend"):
+    with pytest.raises(CMMSConnectorUnavailableError, match="Unsupported PM connector backend"):
         get_cmms_adapter(settings)

@@ -100,7 +100,7 @@ class FakeCursor:
             if proposal:
                 proposal["status"] = params[0]
                 proposal["approved_by"] = params[1]
-                proposal["cms_reference"] = params[2]
+                proposal["cms_reference"] = params[3]
 
     def fetchall(self):
         return self.rows
@@ -155,6 +155,7 @@ def smoke_client(monkeypatch):
             "approved_by": approved_by,
             "notes": notes,
             "proposal_id": proposal.get("proposal_id"),
+            "handoff_complete": True,
         },
     )
     return TestClient(app), state

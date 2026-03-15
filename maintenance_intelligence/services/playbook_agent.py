@@ -1,5 +1,51 @@
 from typing import Any, Dict, List, Optional
 
+from loguru import logger
+
+
+def _as_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _as_score(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def normalize_playbook_results(results: Any, asset_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    if not isinstance(results, list):
+        logger.warning("playbook.search.payload_malformed asset_id={} raw_payload={}", asset_id, results)
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    for item in results:
+        if not isinstance(item, dict):
+            logger.warning("playbook.search.item_malformed asset_id={} raw_payload={}", asset_id, item)
+            continue
+        playbook_id = _as_text(item.get("playbook_id"))
+        title = _as_text(item.get("title"))
+        summary = _as_text(item.get("summary"))
+        if not any([playbook_id, title, summary]):
+            logger.warning("playbook.search.item_empty asset_id={} raw_payload={}", asset_id, item)
+            continue
+        entry = {
+            "playbook_id": playbook_id,
+            "title": title,
+            "summary": summary,
+            "asset_id": _as_text(item.get("asset_id")) or asset_id,
+            "score": _as_score(item.get("score")),
+        }
+        normalized.append({key: value for key, value in entry.items() if value is not None})
+    return normalized
+
 
 def search_playbooks(query: str, asset_id: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
     trimmed_query = (query or "planned maintenance").strip() or "planned maintenance"
@@ -26,4 +72,4 @@ def search_playbooks(query: str, asset_id: Optional[str] = None, limit: int = 5)
             "score": 0.76,
         },
     ]
-    return results[:limit]
+    return normalize_playbook_results(results[:limit], asset_id=asset_id)

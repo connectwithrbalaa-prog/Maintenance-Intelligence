@@ -144,7 +144,10 @@ def test_pm_advisor_identity_header_fallback(monkeypatch):
     monkeypatch.setattr(
         pm_mod,
         "push_work_order_to_cms",
-        lambda proposal, approved_by=None, notes=None: {"cms_reference": "WO-ID-001"},
+        lambda proposal, approved_by=None, notes=None: {
+            "cms_reference": "WO-ID-001",
+            "handoff_complete": True,
+        },
     )
 
     client = TestClient(app)

@@ -1,5 +1,6 @@
 import importlib
 import datetime as dt
+import json
 import sys
 from pathlib import Path
 
@@ -37,13 +38,13 @@ class FakeCursor:
                 "asset_id": params[5],
                 "proposal_title": params[6],
                 "proposal_summary": params[7],
-                "recommended_actions": ["Inspect bearings"],
-                "playbook_refs": [{"playbook_id": "PB-STUB-001"}],
+                "recommended_actions": json.loads(params[8]),
+                "playbook_refs": json.loads(params[9]),
                 "status": params[10],
                 "approved_by": None,
                 "approved_at": None,
                 "cms_reference": None,
-                "metadata": {"source": "test"},
+                "metadata": json.loads(params[11]),
                 "created_at": dt.datetime(2026, 3, 14, 18, 0, 0),
                 "updated_at": dt.datetime(2026, 3, 14, 18, 0, 0),
             }
@@ -94,8 +95,10 @@ class FakeCursor:
             proposal = self.state["proposal"]
             proposal["status"] = params[0]
             proposal["approved_by"] = params[1]
-            proposal["approved_at"] = dt.datetime(2026, 3, 14, 18, 5, 0)
-            proposal["cms_reference"] = params[2]
+            proposal["approved_at"] = dt.datetime(2026, 3, 14, 18, 5, 0) if params[2] == "approved" else proposal["approved_at"]
+            proposal["cms_reference"] = params[3]
+            existing_metadata = proposal.get("metadata") if isinstance(proposal.get("metadata"), dict) else {}
+            proposal["metadata"] = {**existing_metadata, **json.loads(params[4])}
             proposal["updated_at"] = dt.datetime(2026, 3, 14, 18, 5, 0)
 
     def fetchall(self):
@@ -149,6 +152,7 @@ def test_pm_advisor_routes(monkeypatch):
             "cms_reference": "CMS-123",
             "approved_by": approved_by,
             "notes": notes,
+            "handoff_complete": True,
         },
     )
 
@@ -259,13 +263,19 @@ def test_approve_pm_proposal_coerces_malformed_nested_fields(monkeypatch):
         }
     }
     captured = {}
+
+    def fake_push_work_order_to_cms(proposal, approved_by=None, notes=None):
+        captured["proposal"] = proposal
+        return {
+            "status": "queued",
+            "cms_reference": "CMS-123",
+            "approved_by": approved_by,
+            "notes": notes,
+            "handoff_complete": True,
+        }
+
     monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
-    monkeypatch.setattr(
-        pm_mod,
-        "push_work_order_to_cms",
-        lambda proposal, approved_by=None, notes=None: captured.setdefault("proposal", proposal)
-        or {"status": "queued", "cms_reference": "CMS-123", "approved_by": approved_by, "notes": notes},
-    )
+    monkeypatch.setattr(pm_mod, "push_work_order_to_cms", fake_push_work_order_to_cms)
 
     client = TestClient(app)
 
@@ -282,3 +292,144 @@ def test_approve_pm_proposal_coerces_malformed_nested_fields(monkeypatch):
     assert captured["proposal"]["recommended_actions"] == []
     assert captured["proposal"]["playbook_refs"] == []
     assert captured["proposal"]["metadata"] == {}
+
+
+def test_create_pm_proposal_filters_partial_playbook_payloads(monkeypatch):
+    state = {}
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+    monkeypatch.setattr(
+        pm_mod,
+        "analyze_pm_strategy",
+        lambda recommendation, context=None, identity=None: {
+            "proposal_title": "PM plan for PUMP-101",
+            "proposal_summary": "Schedule inspection and bearing swap.",
+            "recommended_actions": ["Inspect bearings"],
+            "playbook_query": "bearing swap",
+            "metadata": {"source": "test"},
+        },
+    )
+    monkeypatch.setattr(
+        pm_mod,
+        "search_playbooks",
+        lambda query, asset_id=None, limit=5: [
+            "bad-item",
+            {"playbook_id": "PB-STUB-001", "title": "bearing swap"},
+            {"summary": "partial but usable"},
+            {},
+        ],
+    )
+
+    client = TestClient(app)
+    analyze = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        json={
+            "run_id": "RUN-1",
+            "recommendation_id": "REC-1",
+            "asset_id": "PUMP-101",
+            "title": "Bearing wear",
+        },
+    )
+
+    assert analyze.status_code == 200
+    assert analyze.json()["playbooks"] == [
+        {"playbook_id": "PB-STUB-001", "title": "bearing swap", "asset_id": "PUMP-101"},
+        {"summary": "partial but usable", "asset_id": "PUMP-101"},
+    ]
+
+
+def test_approve_pm_proposal_returns_202_when_handoff_is_incomplete(monkeypatch):
+    state = {}
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+    monkeypatch.setattr(
+        pm_mod,
+        "analyze_pm_strategy",
+        lambda recommendation, context=None, identity=None: {
+            "proposal_title": "PM plan for PUMP-101",
+            "proposal_summary": "Schedule inspection and bearing swap.",
+            "recommended_actions": ["Inspect bearings"],
+            "playbook_query": "bearing swap",
+            "metadata": {"source": "test"},
+        },
+    )
+    monkeypatch.setattr(pm_mod, "search_playbooks", lambda query, asset_id=None, limit=5: [])
+    monkeypatch.setattr(
+        pm_mod,
+        "push_work_order_to_cms",
+        lambda proposal, approved_by=None, notes=None: {
+            "status": "queued",
+            "connector": "recording",
+            "approved_by": approved_by,
+            "notes": notes,
+            "proposal_id": proposal.get("proposal_id"),
+            "handoff_complete": False,
+            "raw_response": {"status": "queued"},
+        },
+    )
+
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        json={
+            "run_id": "RUN-1",
+            "recommendation_id": "REC-1",
+            "asset_id": "PUMP-101",
+            "title": "Bearing wear",
+        },
+    )
+    proposal_id = created.json()["proposal_id"]
+
+    approved = client.post(
+        f"/api/v1/agents/pm/proposals/{proposal_id}/approve",
+        json={"approved_by": "planner@example.com", "notes": "Queue for next outage"},
+    )
+
+    assert approved.status_code == 202
+    assert approved.json()["status"] == "pending"
+    assert state["proposal"]["status"] == "pending"
+    assert state["proposal"]["cms_reference"] is None
+    assert state["proposal"]["metadata"]["handoff_state"] == "pending"
+
+
+def test_approve_pm_proposal_returns_502_for_malformed_connector_payload(monkeypatch):
+    state = {}
+    monkeypatch.setattr(pm_mod, "with_pg", lambda dsn: FakeConnection(state))
+    monkeypatch.setattr(
+        pm_mod,
+        "analyze_pm_strategy",
+        lambda recommendation, context=None, identity=None: {
+            "proposal_title": "PM plan for PUMP-101",
+            "proposal_summary": "Schedule inspection and bearing swap.",
+            "recommended_actions": ["Inspect bearings"],
+            "playbook_query": "bearing swap",
+            "metadata": {"source": "test"},
+        },
+    )
+    monkeypatch.setattr(pm_mod, "search_playbooks", lambda query, asset_id=None, limit=5: [])
+    monkeypatch.setattr(
+        pm_mod,
+        "push_work_order_to_cms",
+        lambda proposal, approved_by=None, notes=None: (_ for _ in ()).throw(
+            pm_mod.CMMSConnectorPayloadError("Connector returned malformed payload")
+        ),
+    )
+
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        json={
+            "run_id": "RUN-1",
+            "recommendation_id": "REC-1",
+            "asset_id": "PUMP-101",
+            "title": "Bearing wear",
+        },
+    )
+    proposal_id = created.json()["proposal_id"]
+
+    approved = client.post(
+        f"/api/v1/agents/pm/proposals/{proposal_id}/approve",
+        json={"approved_by": "planner@example.com"},
+    )
+
+    assert approved.status_code == 502
+    assert approved.json()["detail"] == "Connector returned malformed payload"
+    assert state["proposal"]["status"] == "pending"
