@@ -48,12 +48,13 @@ class FakeConnection:
 
 
 def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(monkeypatch):
-    now = datetime.now(timezone.utc)
     fake_conn = FakeConnection(
         {
-            "FROM rca_feedback": lambda: [("accept", 2), ("reject", 1)],
+            "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 2), ("reject", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: (_ for _ in ()).throw(RuntimeError("join unavailable")),
-            "GROUP BY w.asset_id": lambda: [("PUMP-101", 4)],
+            "GROUP BY w.asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2)],
+            "GROUP BY asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1, 1)],
+            "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 4)],
         }
     )
     monkeypatch.setattr(outcomes_mod, "with_pg", lambda _dsn: fake_conn)
@@ -72,10 +73,75 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert payload["mtbf_seconds_avg"] is None
     assert payload["mttr_seconds_avg"] is None
     assert payload["top_assets_by_wo_volume"] == [{"asset_id": "PUMP-101", "count": 4}]
+    assert "PUMP-101" in payload["asset_metrics"]
+    assert len(payload["asset_metrics"]["PUMP-101"]["workorder_volume"]) == 30
+    assert any(point["value"] == 2 for point in payload["asset_metrics"]["PUMP-101"]["workorder_volume"])
+    assert len(payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]) == 30
+    assert any(point["value"] == 0.5 for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"])
     assert payload["warnings"] == ["ttr aggregation unavailable: join unavailable"]
     assert "mtbf_seconds_avg" in payload["placeholders"]
     assert fake_conn.rollback_calls == 1
     assert fake_conn.closed is True
+
+
+def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(monkeypatch):
+    fake_conn = FakeConnection(
+        {
+            "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 3), ("reject", 1)],
+            "FROM workorders w\n                    JOIN events e": lambda: [],
+            "GROUP BY w.asset_id, bucket_date": lambda: [
+                ("PUMP-101", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 3),
+                ("PUMP-102", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1),
+            ],
+            "GROUP BY asset_id, bucket_date": lambda: [
+                ("PUMP-101", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 2, 1),
+                ("PUMP-102", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 0, 1),
+            ],
+            "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 3), ("PUMP-102", 1)],
+        }
+    )
+    monkeypatch.setattr(outcomes_mod, "with_pg", lambda _dsn: fake_conn)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/reports/rca-outcomes?window=30")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101", "PUMP-102"]
+
+    pump_101_volume = payload["asset_metrics"]["PUMP-101"]["workorder_volume"]
+    pump_101_acceptance = payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]
+    assert len(pump_101_volume) == 30
+    assert len(pump_101_acceptance) == 30
+    assert any(point["value"] == 3 for point in pump_101_volume)
+    assert any(point["value"] == 2 / 3 for point in pump_101_acceptance)
+    assert any(point["value"] == 0 for point in payload["asset_metrics"]["PUMP-102"]["workorder_volume"])
+    assert any(point["value"] is None for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"])
+
+
+def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypatch):
+    fake_conn = FakeConnection(
+        {
+            "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 1)],
+            "FROM workorders w\n                    JOIN events e": lambda: [],
+            "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("wo trend unavailable")),
+            "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("feedback trend unavailable")),
+            "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [],
+        }
+    )
+    monkeypatch.setattr(outcomes_mod, "with_pg", lambda _dsn: fake_conn)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/reports/rca-outcomes?window=30")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "partial"
+    assert payload["asset_metrics"] == {}
+    assert "asset workorder trend unavailable: wo trend unavailable" in payload["warnings"]
+    assert "asset acceptance trend unavailable: feedback trend unavailable" in payload["warnings"]
+    assert fake_conn.rollback_calls == 2
 
 
 def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
@@ -93,6 +159,18 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
             "mtbf_seconds_avg": None,
             "mttr_seconds_avg": None,
             "top_assets_by_wo_volume": [{"asset_id": "PUMP-7", "count": 2}],
+            "asset_metrics": {
+                "PUMP-7": {
+                    "workorder_volume": [
+                        {"date": "2026-03-14", "value": 2},
+                        {"date": "2026-03-15", "value": 0},
+                    ],
+                    "acceptance_rate": [
+                        {"date": "2026-03-14", "value": 0.5},
+                        {"date": "2026-03-15", "value": None},
+                    ],
+                }
+            },
             "placeholders": {},
         },
     )
@@ -114,3 +192,7 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     assert metrics["mtbf_seconds_avg"] == ""
     assert metrics["mttr_seconds_avg"] == ""
     assert metrics["top_asset_PUMP-7_wo_count"] == "2"
+    assert metrics["asset_PUMP-7_workorder_volume_2026-03-14"] == "2"
+    assert metrics["asset_PUMP-7_workorder_volume_2026-03-15"] == "0"
+    assert metrics["asset_PUMP-7_acceptance_rate_2026-03-14"] == "0.5"
+    assert metrics["asset_PUMP-7_acceptance_rate_2026-03-15"] == ""

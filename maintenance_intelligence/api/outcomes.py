@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Response
-from typing import Dict, Any
+from typing import Dict, Any, List
+from datetime import datetime, timedelta, timezone
 import io, csv
 import psycopg2
 from maintenance_intelligence.runner.config import Settings
@@ -38,6 +39,7 @@ def _base_outcomes(window: int) -> Dict[str, Any]:
         "mtbf_seconds_avg": None,
         "mttr_seconds_avg": None,
         "top_assets_by_wo_volume": [],
+        "asset_metrics": {},
         "placeholders": dict(PLACEHOLDER_NOTES),
     }
 
@@ -53,6 +55,35 @@ def _safe_rollback(conn: Any) -> None:
     except Exception:
         pass
 
+
+def _bucket_dates(window: int, now: datetime | None = None) -> List[str]:
+    anchor = now or datetime.now(timezone.utc)
+    start = (anchor - timedelta(days=max(0, int(window) - 1))).date()
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(int(window))]
+
+
+def _empty_asset_series(bucket_dates: List[str], *, empty_value: Any) -> List[Dict[str, Any]]:
+    return [{"date": bucket_date, "value": empty_value} for bucket_date in bucket_dates]
+
+
+def _series_to_rows(values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any) -> Dict[str, List[Dict[str, Any]]]:
+    rows: Dict[str, List[Dict[str, Any]]] = {}
+    for asset_id, per_day in values.items():
+        rows[asset_id] = [
+            {"date": bucket_date, "value": per_day.get(bucket_date, empty_value)}
+            for bucket_date in bucket_dates
+        ]
+    return rows
+
+
+def _set_asset_metric_series(out: Dict[str, Any], metric_name: str, series: Dict[str, List[Dict[str, Any]]], bucket_dates: List[str]) -> None:
+    asset_metrics = out.setdefault("asset_metrics", {})
+    asset_ids = set(asset_metrics) | set(series)
+    for asset_id in sorted(asset_ids):
+        asset_entry = asset_metrics.setdefault(asset_id, {})
+        empty_value = 0 if metric_name == "workorder_volume" else None
+        asset_entry[metric_name] = series.get(asset_id, _empty_asset_series(bucket_dates, empty_value=empty_value))
+
 @router.get("/rca-outcomes")
 def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
     if window > 365:
@@ -64,6 +95,7 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     try:
         out = _base_outcomes(window)
+        bucket_dates = _bucket_dates(window)
         with conn.cursor() as cur:
             # Feedback counts by action (accept/reject/edited)
             try:
@@ -121,6 +153,66 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 _safe_rollback(conn)
                 _mark_partial(out, f"asset volume aggregation unavailable: {exc}")
 
+            try:
+                cur.execute(f"""
+                    SELECT w.asset_id,
+                           DATE_TRUNC('day', COALESCE((w.metadata->>'created_at')::timestamptz, NOW()))::date AS bucket_date,
+                           COUNT(*) AS n
+                    FROM workorders w
+                    WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
+                    GROUP BY w.asset_id, bucket_date
+                    ORDER BY w.asset_id, bucket_date
+                """)
+                workorder_volume: Dict[str, Dict[str, int]] = {}
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    workorder_volume.setdefault(asset_id, {})[bucket_date] = int(row[2] or 0)
+                _set_asset_metric_series(
+                    out,
+                    "workorder_volume",
+                    _series_to_rows(workorder_volume, bucket_dates, empty_value=0),
+                    bucket_dates,
+                )
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"asset workorder trend unavailable: {exc}")
+
+            try:
+                cur.execute(f"""
+                    SELECT asset_id,
+                           DATE_TRUNC('day', created_at)::date AS bucket_date,
+                           SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accepted_count,
+                           SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected_count
+                    FROM rca_feedback
+                    WHERE created_at > {_window_clause(window)}
+                      AND action IN ('accept', 'reject')
+                      AND asset_id IS NOT NULL
+                    GROUP BY asset_id, bucket_date
+                    ORDER BY asset_id, bucket_date
+                """)
+                acceptance_rate: Dict[str, Dict[str, float | None]] = {}
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    accepted_count = int(row[2] or 0)
+                    rejected_count = int(row[3] or 0)
+                    total = accepted_count + rejected_count
+                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (accepted_count / total) if total > 0 else None
+                _set_asset_metric_series(
+                    out,
+                    "acceptance_rate",
+                    _series_to_rows(acceptance_rate, bucket_dates, empty_value=None),
+                    bucket_dates,
+                )
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"asset acceptance trend unavailable: {exc}")
+
         return out
     finally:
         conn.close()
@@ -144,6 +236,17 @@ def rca_outcomes_csv(window: int = Query(30, ge=1, le=365)):
     # Asset highlights as separate rows for easier slicing
     for a in rep.get("top_assets_by_wo_volume") or []:
         rows.append({"metric": f"top_asset_{a['asset_id']}_wo_count", "value": a["count"]})
+    for asset_id, asset_metrics in (rep.get("asset_metrics") or {}).items():
+        for point in asset_metrics.get("workorder_volume") or []:
+            rows.append({
+                "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
+                "value": point.get("value", 0),
+            })
+        for point in asset_metrics.get("acceptance_rate") or []:
+            rows.append({
+                "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
+                "value": point.get("value"),
+            })
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["metric", "value"])
