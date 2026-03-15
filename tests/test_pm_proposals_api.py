@@ -245,8 +245,13 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     payload = response.json()
     assert payload["proposal_id"] == "REC-1"
     assert payload["status"] == "approved"
+    assert payload["handoff_state"] == "success"
+    assert payload["attempt_status"] == "success"
+    assert payload["attempt_count"] == 1
+    assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "PM proposal approved and handed off to the CMMS backend"
     assert payload["approved"] is True
+    assert payload["reused_result"] is False
     assert payload["approved_by"] == "dev-user"
     assert payload["approved_at"]
     assert payload["proposal"]["approved_at"] == payload["approved_at"]
@@ -287,6 +292,9 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     payload = response.json()
     assert payload["status"] == "pending"
     assert payload["handoff_state"] == "pending"
+    assert payload["attempt_status"] == "pending"
+    assert payload["attempt_count"] == 1
+    assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
     assert payload["approved"] is False
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
@@ -320,6 +328,9 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     payload = response.json()
     assert payload["status"] == "pending"
     assert payload["handoff_state"] == "failure"
+    assert payload["attempt_status"] == "failure"
+    assert payload["attempt_count"] == 1
+    assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "CMMS backend returned malformed payload"
     assert payload["approved"] is False
     assert payload["proposal"]["approved_by"] == "dev-user"
@@ -399,6 +410,8 @@ def test_approve_proposal_is_idempotent_after_success(monkeypatch, tmp_path):
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json()["detail"] == "PM proposal already approved; returning the existing handoff result"
+    assert second.json()["reused_result"] is True
+    assert second.json()["attempt_count"] == 1
     assert adapter.calls == 1
     workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
     assert len(workorder_calls) == 1
@@ -435,6 +448,10 @@ def test_approve_proposal_retries_transient_failures_before_success(monkeypatch,
     assert response.status_code == 200
     payload = response.json()
     assert payload["handoff_state"] == "success"
+    assert payload["attempt_status"] == "success"
+    assert payload["attempt_count"] == 3
+    assert payload["last_attempt_info"]["attempt_number"] == 3
+    assert payload["reused_result"] is False
     assert adapter.calls == 3
     history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
     assert len(history["attempts"]) == 3
@@ -473,6 +490,9 @@ def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypat
     payload = response.json()
     assert payload["status"] == "pending"
     assert payload["handoff_state"] == "failure"
+    assert payload["attempt_status"] == "failure"
+    assert payload["attempt_count"] == 2
+    assert payload["last_attempt_info"]["attempt_number"] == 2
     assert payload["detail"] == "temporary outage"
     assert adapter.calls == 2
     history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()

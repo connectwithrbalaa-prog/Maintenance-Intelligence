@@ -975,10 +975,20 @@
 			const workOrderId = result.work_order?.wo_id || result.proposal?.work_order_id || "-";
 			const approvedBy = result.approved_by || result.proposal?.approved_by || "Unknown approver";
 			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
+			const lastAttempt = result.last_attempt_info && typeof result.last_attempt_info === "object" ? result.last_attempt_info : {};
+			const attemptCount = typeof result.attempt_count === "number" ? result.attempt_count : 0;
+			const attemptNumber = typeof lastAttempt.attempt_number === "number" ? lastAttempt.attempt_number : attemptCount;
+			const connectorMessage = lastAttempt.connector_result?.message || lastAttempt.error_message || result.detail || "Approval update recorded";
+			const connectorStatus = lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
+			const reuseLine = result.reused_result ? "Reused existing CMMS handoff result." : "Fresh handoff result.";
+			const attemptSummary = attemptCount > 0 ? `Attempt ${attemptNumber} of ${attemptCount}` : "No attempts recorded";
 			return `
 				<div class="result-banner ${tone}">
 					<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
-					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
+					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Attempt state: ${escapeHtml(result.attempt_status || result.handoff_state || "unknown")} · ${escapeHtml(attemptSummary)}</div>
+					<div class="footer-note">Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
+					<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Connector: ${escapeHtml(connectorStatus)} · ${escapeHtml(connectorMessage)}</div>
+					<div class="footer-note">${escapeHtml(reuseLine)}</div>
 				</div>
 			`;
 		}
@@ -996,8 +1006,10 @@
 				<ol class="list">${recent.map((attempt) => `
 					<li>
 						<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
+						 · Attempt ${escapeHtml(attempt.attempt_number || "?")}
 						 · ${escapeHtml(attempt.approved_by || "Unknown approver")}
 						 · ${escapeHtml(attempt.attempted_at || "Unknown time")}
+						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
 						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
 					</li>
 				`).join("")}</ol>
@@ -1120,6 +1132,11 @@
 				const message = error instanceof Error ? error.message : "Unknown approval error";
 				state.approvalResultsById.set(run.run_id, {
 					status: "error",
+					handoff_state: "failure",
+					attempt_status: "failure",
+					attempt_count: 0,
+					last_attempt_info: { attempted_at: "", attempt_number: 0, connector_result: {}, error_message: message },
+					reused_result: false,
 					approved: false,
 					detail: message,
 					proposal: { approved_by: "", approved_at: "", work_order_id: "" },

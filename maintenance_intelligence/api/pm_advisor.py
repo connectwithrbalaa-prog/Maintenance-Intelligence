@@ -77,6 +77,7 @@ def _approval_attempt_failure_metadata(
 def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(value, dict):
         return None
+    attempt_number = value.get("attempt_number")
     attempted_at = _as_text(value.get("attempted_at"))
     approved_by = _as_text(value.get("approved_by"))
     approved_at = _as_text(value.get("approved_at"))
@@ -96,6 +97,7 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
     if not attempted_at and not approved_by and not approved_at and not connector_result and not error_message:
         return None
     return {
+        "attempt_number": attempt_number,
         "attempted_at": attempted_at or "",
         "approved_by": approved_by or "",
         "approved_at": approved_at or "",
@@ -203,6 +205,8 @@ def _approval_response(
     result: Optional[Dict[str, Any]],
     status_code: int,
     detail: str,
+    *,
+    reused_result: bool = False,
 ) -> JSONResponse:
     approval = _approval_fields(proposal.get("metadata") or {})
     approval_status = proposal.get("status") or ("approved" if result and result.get("handoff_complete") else "pending")
@@ -210,11 +214,17 @@ def _approval_response(
     approved_at = proposal.get("approved_at") or approval.get("approved_at")
     normalized_proposal = {**proposal, "approved_by": approved_by, "approved_at": approved_at}
     handoff_state = normalized_proposal.get("handoff_state") or approval.get("handoff_state") or ("success" if normalized_proposal.get("status") == "approved" else "pending")
+    attempts = normalized_proposal.get("approval_history") or _approval_attempts(normalized_proposal.get("metadata") or {})
+    latest_attempt = attempts[0] if attempts else {}
     body = {
         "status": approval_status,
         "handoff_state": handoff_state,
         "detail": detail,
         "approved": approval_status == "approved",
+        "reused_result": reused_result,
+        "attempt_count": len(attempts),
+        "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
+        "last_attempt_info": latest_attempt,
         "proposal_id": normalized_proposal.get("proposal_id"),
         "approved_by": approved_by,
         "approved_at": approved_at,
@@ -536,6 +546,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
             _latest_connector_result(existing.get("metadata")),
             200,
             "PM proposal already approved; returning the existing handoff result",
+            reused_result=True,
         )
 
     if not _recommendation_is_actionable(recommendation):
