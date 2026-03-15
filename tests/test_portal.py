@@ -195,3 +195,6 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "No hypotheses were stored for this run." in page.text
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
+    assert "Approve PM proposal" in page.text
+    assert "No approval attempt recorded for this run in this browser session." in page.text
+    assert "Approve the PM proposal for" in page.text

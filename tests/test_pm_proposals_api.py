@@ -243,7 +243,12 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert response.status_code == 200
     payload = response.json()
     assert payload["proposal_id"] == "REC-1"
+    assert payload["status"] == "approved"
+    assert payload["detail"] == "PM proposal approved and handed off to the CMMS backend"
+    assert payload["approved"] is True
     assert payload["approved_by"] == "dev-user"
+    assert payload["approved_at"]
+    assert payload["proposal"]["approved_at"] == payload["approved_at"]
     assert payload["work_order"]["wo_id"] == "WO-REC-1"
     workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
     assert len(workorder_calls) == 1
@@ -254,6 +259,7 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert fake_connection.proposals["REC-1"]["status"] == "approved"
     assert fake_connection.proposals["REC-1"]["approved_by"] == "dev-user"
     assert fake_connection.proposals["REC-1"]["work_order_id"] == "WO-REC-1"
+    assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["approved_at"] == payload["approved_at"]
     assert fake_connection.closed is True
 
 
@@ -276,10 +282,14 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"})
 
     assert response.status_code == 202
-    assert response.json()["status"] == "pending"
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
+    assert payload["approved"] is False
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
     assert fake_connection.proposals["REC-1"]["work_order_id"] is None
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["handoff_state"] == "pending"
+    assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["attempted_at"]
     workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
     assert workorder_calls == []
 
@@ -288,6 +298,7 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     summaries = tmp_path / "outputs"
     _write_summary(summaries)
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
     fake_connection = FakeConnection()
 
     class BadAdapter:
@@ -303,5 +314,10 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"})
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "CMMS backend returned malformed payload"
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["detail"] == "CMMS backend returned malformed payload"
+    assert payload["approved"] is False
+    assert payload["proposal"]["approved_by"] == "dev-user"
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
+    assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["detail"] == "CMMS backend returned malformed payload"

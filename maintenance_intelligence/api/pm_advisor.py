@@ -1,4 +1,5 @@
 import json
+import datetime as dt
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -42,13 +43,65 @@ def _as_text(value: Any) -> Optional[str]:
 
 
 def _approval_attempt_metadata(result: Optional[Dict[str, Any]], approved_by: Optional[str], status: str) -> Dict[str, Any]:
+    attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
     return {
         "approval": {
             "approved_by": approved_by,
+            "approved_at": attempted_at if status == "approved" else None,
+            "attempted_at": attempted_at,
             "handoff_state": status,
             "result": result or {},
         }
     }
+
+
+def _approval_attempt_failure_metadata(
+    approved_by: Optional[str],
+    detail: str,
+    status: str = "pending",
+) -> Dict[str, Any]:
+    attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    return {
+        "approval": {
+            "approved_by": approved_by,
+            "approved_at": None,
+            "attempted_at": attempted_at,
+            "handoff_state": status,
+            "detail": detail,
+            "result": {},
+        }
+    }
+
+
+def _approval_fields(metadata: Any) -> Dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    approval = metadata.get("approval")
+    return approval if isinstance(approval, dict) else {}
+
+
+def _approval_response(
+    proposal: Dict[str, Any],
+    result: Optional[Dict[str, Any]],
+    status_code: int,
+    detail: str,
+) -> JSONResponse:
+    approval = _approval_fields(proposal.get("metadata") or {})
+    approval_status = proposal.get("status") or ("approved" if result and result.get("handoff_complete") else "pending")
+    approved_by = proposal.get("approved_by") or approval.get("approved_by")
+    approved_at = proposal.get("approved_at") or approval.get("approved_at")
+    normalized_proposal = {**proposal, "approved_by": approved_by, "approved_at": approved_at}
+    body = {
+        "status": approval_status,
+        "detail": detail,
+        "approved": approval_status == "approved",
+        "proposal_id": normalized_proposal.get("proposal_id"),
+        "approved_by": approved_by,
+        "approved_at": approved_at,
+        "proposal": normalized_proposal,
+        "work_order": result or {},
+    }
+    return JSONResponse(status_code=status_code, content=body)
 
 
 def _run_summary_root() -> Path:
@@ -79,6 +132,7 @@ def _identity_from_request(request: Request) -> Optional[str]:
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
+    approval = _approval_fields(payload.get("metadata") or {})
     return {
         "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
@@ -90,6 +144,9 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
         "confidence": structured.get("confidence"),
         "updated_at": source_path.stat().st_mtime,
         "source_file": source_path.name,
+        "approved_by": approval.get("approved_by"),
+        "approved_at": approval.get("approved_at"),
+        "metadata": payload.get("metadata") or {},
     }
 
 
@@ -145,6 +202,8 @@ def _find_proposal_payload(proposal_id: str) -> Dict[str, Any]:
 
 
 def _proposal_from_row(row: Any) -> Dict[str, Any]:
+    metadata = row[13] or {}
+    approval = _approval_fields(metadata)
     return {
         "proposal_id": row[0],
         "run_id": row[1],
@@ -158,8 +217,9 @@ def _proposal_from_row(row: Any) -> Dict[str, Any]:
         "source_file": row[9],
         "proposed_by": row[10],
         "approved_by": row[11],
+        "approved_at": approval.get("approved_at"),
         "work_order_id": row[12],
-        "metadata": row[13] or {},
+        "metadata": metadata,
     }
 
 
@@ -321,7 +381,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
             adapter = adapter_factory(settings)
             result = process_recommendation({"recommendation": recommendation}, conn, adapter)
             status = "approved" if result.get("handoff_complete") else "pending"
-            _update_proposal_status(
+            persisted = _update_proposal_status(
                 conn,
                 proposal_id,
                 approved_by,
@@ -337,46 +397,44 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     except UnsupportedBackendError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except CMMSPayloadError as exc:
+        detail = str(exc)
+        persisted: Dict[str, Any] = {}
         try:
             conn = connection_factory(settings.pg_dsn)
             try:
-                _update_proposal_status(
+                persisted = _update_proposal_status(
                     conn,
                     proposal_id,
                     approved_by,
                     None,
                     "pending",
-                    _approval_attempt_metadata(None, approved_by, "pending"),
+                    _approval_attempt_failure_metadata(approved_by, detail),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 502, detail)
     except (CMMSUnavailableError, CMMSAdapterError) as exc:
+        detail = str(exc)
+        persisted = {}
         try:
             conn = connection_factory(settings.pg_dsn)
             try:
-                _update_proposal_status(
+                persisted = _update_proposal_status(
                     conn,
                     proposal_id,
                     approved_by,
                     None,
                     "pending",
-                    _approval_attempt_metadata(None, approved_by, "pending"),
+                    _approval_attempt_failure_metadata(approved_by, detail),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 503, detail)
 
-    response = {
-        "status": "ok",
-        "proposal_id": proposal_id,
-        "approved_by": approved_by,
-        "work_order": result,
-    }
     if result.get("handoff_complete"):
-        return response
-    return JSONResponse(status_code=202, content={**response, "status": "pending"})
+        return _approval_response(persisted, result, 200, "PM proposal approved and handed off to the CMMS backend")
+    return _approval_response(persisted, result, 202, "PM proposal saved, but the CMMS handoff is still pending")

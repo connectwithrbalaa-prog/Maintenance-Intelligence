@@ -420,6 +420,52 @@
 			color: var(--muted);
 		}
 
+		.result-banner {
+			margin: 16px 0 0;
+			padding: 14px 16px;
+			border-radius: 16px;
+			border: 1px solid var(--line);
+			background: rgba(24, 34, 38, 0.04);
+		}
+
+		.result-banner.success {
+			background: rgba(14, 124, 102, 0.12);
+			border-color: rgba(14, 124, 102, 0.28);
+		}
+
+		.result-banner.warn {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.24);
+		}
+
+		.result-banner.error {
+			background: rgba(166, 59, 45, 0.12);
+			border-color: rgba(166, 59, 45, 0.24);
+		}
+
+		.pm-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 12px;
+			align-items: center;
+			margin-top: 12px;
+		}
+
+		.pm-actions button {
+			padding: 12px 14px;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: var(--accent);
+			color: #fff;
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.pm-actions button[disabled] {
+			opacity: 0.6;
+			cursor: progress;
+		}
+
 		.pulse {
 			width: 72px;
 			height: 72px;
@@ -561,6 +607,8 @@
 			filteredRuns: [],
 			selectedRunId: null,
 			detailsById: new Map(),
+			approvalResultsById: new Map(),
+			approvalInFlightById: new Set(),
 			loading: false,
 		};
 
@@ -708,6 +756,16 @@
 			return { label: status, className: "unknown" };
 		}
 
+		function portalIdentityHeaders() {
+			const subject = window.localStorage.getItem("miPortalUserId") || "portal.user";
+			return {
+				"Content-Type": "application/json",
+				Accept: "application/json",
+				"X-User-Id": subject,
+				"X-User-Role": "planner",
+			};
+		}
+
 		function metricMedianConfidence(runs) {
 			const values = runs
 				.map((run) => run.confidence)
@@ -821,6 +879,9 @@
 			const eventKind = contextMeta.event_kind || contextMeta.kind || "-";
 			const modelName = [model.name, model.version].filter(Boolean).join(" · ") || "-";
 			const summaryText = structured.summary || "This run summary is partial. Missing fields were left empty so the detail view can still load safely.";
+			const approvalResult = state.approvalResultsById.get(run.run_id);
+			const canApprove = Array.isArray(run.pm_suggestions) && run.pm_suggestions.length > 0;
+			const approvalBusy = state.approvalInFlightById.has(run.run_id);
 
 			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
 			elements.detailView.className = "";
@@ -871,6 +932,13 @@
 					<div class="section">
 						<h3>PM suggestions</h3>
 						${renderList(run.pm_suggestions, "No PM suggestions were stored for this run.")}
+						<div class="pm-actions">
+							<button id="approvePmButton" type="button" ${canApprove ? "" : "disabled"}>
+								${approvalBusy ? "Submitting approval..." : "Approve PM proposal"}
+							</button>
+							<span class="muted tiny">Approval uses the PM advisor analyze + approve flow for this run.</span>
+						</div>
+						${renderApprovalBanner(approvalResult)}
 					</div>
 
 					<div class="section">
@@ -880,6 +948,29 @@
 
 					<pre class="json-box">${escapeHtml(JSON.stringify(structured, null, 2))}</pre>
 					<div class="footer-note">Source: ${escapeHtml(run.date || "-")}/${escapeHtml(run.source_file || "-")}</div>
+				</div>
+			`;
+
+			const approveButton = document.getElementById("approvePmButton");
+			if (approveButton && canApprove) {
+				approveButton.addEventListener("click", () => {
+					approveRun(run);
+				});
+			}
+		}
+
+		function renderApprovalBanner(result) {
+			if (!result) {
+				return `<p class="muted tiny">No approval attempt recorded for this run in this browser session.</p>`;
+			}
+			const tone = result.approved ? "success" : result.status === "pending" ? "warn" : "error";
+			const workOrderId = result.work_order?.wo_id || result.proposal?.work_order_id || "-";
+			const approvedBy = result.approved_by || result.proposal?.approved_by || "Unknown approver";
+			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
+			return `
+				<div class="result-banner ${tone}">
+					<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
+					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
 				</div>
 			`;
 		}
@@ -952,6 +1043,61 @@
 			} catch (error) {
 				void error;
 				throw new Error("Portal API returned invalid JSON");
+			}
+		}
+
+		async function postJson(url, payload) {
+			const response = await fetch(url, {
+				method: "POST",
+				headers: portalIdentityHeaders(),
+				body: JSON.stringify(payload),
+			});
+			let body = {};
+			try {
+				body = await response.json();
+			} catch (error) {
+				void error;
+			}
+			if (!response.ok) {
+				const detail = body && body.detail ? body.detail : `${response.status} ${response.statusText}`;
+				throw new Error(detail);
+			}
+			return body;
+		}
+
+		async function approveRun(run) {
+			if (!run?.run_id) {
+				return;
+			}
+			if (!window.confirm(`Approve the PM proposal for ${run.run_id}?`)) {
+				return;
+			}
+
+			state.approvalInFlightById.add(run.run_id);
+			renderDetail(run);
+			try {
+				const analyze = await postJson("/api/v1/agents/pm/advisor/analyze", { run_id: run.run_id });
+				const proposalId = analyze?.proposal?.proposal_id || run.recommendation_id || run.run_id;
+				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, {});
+				state.approvalResultsById.set(run.run_id, approval);
+				renderDetail({
+					...run,
+					approved_by: approval.proposal?.approved_by || approval.approved_by,
+					approved_at: approval.proposal?.approved_at || approval.approved_at,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown approval error";
+				state.approvalResultsById.set(run.run_id, {
+					status: "error",
+					approved: false,
+					detail: message,
+					proposal: { approved_by: "", approved_at: "", work_order_id: "" },
+					work_order: {},
+				});
+				renderDetail(run);
+			} finally {
+				state.approvalInFlightById.delete(run.run_id);
+				renderDetail(run);
 			}
 		}
 
