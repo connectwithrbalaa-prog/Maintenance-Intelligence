@@ -173,6 +173,7 @@ def test_maximo_smoke_approval_flow(httpserver, monkeypatch, tmp_path):
 
     assert approve_response.status_code == 200
     payload = approve_response.json()
+    assert payload["handoff_state"] == "success"
     assert payload["approved_by"] == "approver-1"
     assert payload["work_order"]["wo_id"] == "MX-1001"
     assert payload["work_order"]["status"] == "WAPPR"

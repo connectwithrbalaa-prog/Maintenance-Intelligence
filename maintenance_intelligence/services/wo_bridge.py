@@ -1,9 +1,9 @@
 import json, datetime as dt
-import backoff
+import time
 from kafka import KafkaConsumer
 import psycopg2
 from loguru import logger
-from maintenance_intelligence.cmms.adapter import CMMSUnavailableError, create_cmms_adapter, normalize_work_order_result
+from maintenance_intelligence.cmms.adapter import create_cmms_adapter, submit_work_order_with_retry
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.runner.config import Settings
 
@@ -14,11 +14,6 @@ def with_pg(dsn: str):
             return psycopg2.connect(dsn)
         except Exception:
             time.sleep(1)
-
-
-@backoff.on_exception(backoff.expo, CMMSUnavailableError, max_tries=3, max_time=30)
-def submit_work_order(adapter, recommendation):
-    return adapter.create_work_order(recommendation)
 
 
 def persist_work_order(conn, recommendation, result):
@@ -47,12 +42,14 @@ def persist_work_order(conn, recommendation, result):
             )
 
 
-def process_recommendation(message_value, conn, adapter):
+def process_recommendation(message_value, conn, adapter, retry_attempts: int = 3, retry_interval_s: float = 1.0, sleep_fn=time.sleep):
     recommendation = message_value.get("recommendation", {})
-    result = normalize_work_order_result(
-        submit_work_order(adapter, recommendation),
-        recommendation=recommendation,
-        backend_name=getattr(adapter, "backend_name", None),
+    result = submit_work_order_with_retry(
+        adapter,
+        recommendation,
+        retry_attempts=retry_attempts,
+        retry_interval_s=retry_interval_s,
+        sleep_fn=sleep_fn,
     )
     if result.get("handoff_complete"):
         persist_work_order(conn, recommendation, result)
@@ -75,7 +72,13 @@ def wo_bridge(kafka_bootstrap: str, pg_dsn: str, settings: Settings | None = Non
     )
     try:
         for msg in cons:
-            process_recommendation(msg.value, conn, adapter)
+            process_recommendation(
+                msg.value,
+                conn,
+                adapter,
+                retry_attempts=settings.pm_handoff_retry_attempts,
+                retry_interval_s=settings.pm_handoff_retry_interval_s,
+            )
     finally:
         try:
             cons.close()

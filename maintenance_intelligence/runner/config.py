@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     run_summary_dir: str = Field(default="outputs")
     pm_connector_backend: str = Field(default="mock")
     dev_allow_headers: bool = Field(default=False)
+    pm_handoff_retry_attempts: int = Field(default=3)
+    pm_handoff_retry_interval_s: float = Field(default=1.0)
     maximo_base_url: str | None = Field(default=None)
     maximo_site: str = Field(default="BEDFORD")
     maximo_api_key: str | None = Field(default=None)

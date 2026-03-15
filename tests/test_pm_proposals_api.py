@@ -268,6 +268,7 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     summaries = tmp_path / "outputs"
     _write_summary(summaries)
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
     fake_connection = FakeConnection()
 
     class IncompleteAdapter:
@@ -285,6 +286,7 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     assert response.status_code == 202
     payload = response.json()
     assert payload["status"] == "pending"
+    assert payload["handoff_state"] == "pending"
     assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
     assert payload["approved"] is False
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
@@ -317,6 +319,7 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     assert response.status_code == 502
     payload = response.json()
     assert payload["status"] == "pending"
+    assert payload["handoff_state"] == "failure"
     assert payload["detail"] == "CMMS backend returned malformed payload"
     assert payload["approved"] is False
     assert payload["proposal"]["approved_by"] == "dev-user"
@@ -366,3 +369,112 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert payload["attempts"][0]["error_message"] == "CMMS backend returned malformed payload"
     assert payload["attempts"][1]["approved_by"] == "planner-1"
     assert payload["attempts"][1]["handoff_state"] == "pending"
+
+
+def test_approve_proposal_is_idempotent_after_success(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class CountingAdapter:
+        backend_name = "counting"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
+
+    adapter = CountingAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    second = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["detail"] == "PM proposal already approved; returning the existing handoff result"
+    assert adapter.calls == 1
+    workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
+    assert len(workorder_calls) == 1
+
+
+def test_approve_proposal_retries_transient_failures_before_success(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_ATTEMPTS", "3")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_INTERVAL_S", "0")
+    fake_connection = FakeConnection()
+
+    class FlakyAdapter:
+        backend_name = "flaky"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            if self.calls < 3:
+                raise pm_mod.CMMSUnavailableError("temporary outage")
+            return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
+
+    adapter = FlakyAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["handoff_state"] == "success"
+    assert adapter.calls == 3
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    assert len(history["attempts"]) == 3
+    assert history["attempts"][0]["handoff_state"] == "success"
+    assert history["attempts"][1]["handoff_state"] == "failure"
+    assert history["attempts"][2]["handoff_state"] == "failure"
+
+
+def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_ATTEMPTS", "2")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_INTERVAL_S", "0")
+    fake_connection = FakeConnection()
+
+    class DownAdapter:
+        backend_name = "down"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            raise pm_mod.CMMSUnavailableError("temporary outage")
+
+    adapter = DownAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["handoff_state"] == "failure"
+    assert payload["detail"] == "temporary outage"
+    assert adapter.calls == 2
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    assert len(history["attempts"]) == 2
+    assert all(attempt["handoff_state"] == "failure" for attempt in history["attempts"])

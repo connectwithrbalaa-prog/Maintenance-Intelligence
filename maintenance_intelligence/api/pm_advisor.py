@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapterError,
     CMMSPayloadError,
+    CMMSRetryExhaustedError,
     CMMSUnavailableError,
     UnsupportedBackendError,
     create_cmms_adapter,
@@ -132,38 +133,61 @@ def _proposal_audit_fields(metadata: Any) -> Dict[str, Any]:
     }
 
 
+def _latest_connector_result(metadata: Any) -> Dict[str, Any]:
+    attempts = _approval_attempts(metadata)
+    if not attempts:
+        return {}
+    connector_result = attempts[0].get("connector_result")
+    return connector_result if isinstance(connector_result, dict) else {}
+
+
 def _append_approval_metadata(
     existing_metadata: Any,
     approved_by: Optional[str],
-    status: str,
-    connector_result: Optional[Dict[str, Any]] = None,
-    detail: Optional[str] = None,
+    attempts: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     existing = existing_metadata if isinstance(existing_metadata, dict) else {}
-    attempts = list(reversed(_approval_attempts(existing)))
-    attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
-    handoff_state = "failure" if detail else ("success" if status == "approved" else "pending")
-    attempt = {
-        "attempted_at": attempted_at,
+    accumulated = list(reversed(_approval_attempts(existing)))
+    normalized_attempts: List[Dict[str, Any]] = []
+    for attempt in attempts:
+        handoff_state = _as_text(attempt.get("handoff_state")) or "pending"
+        attempted_at = _as_text(attempt.get("attempted_at")) or dt.datetime.now(dt.timezone.utc).isoformat()
+        approved_at = _as_text(attempt.get("approved_at"))
+        if approved_at is None and handoff_state == "success":
+            approved_at = attempted_at
+        normalized_attempts.append(
+            {
+                "attempt_number": attempt.get("attempt_number"),
+                "attempted_at": attempted_at,
+                "approved_by": approved_by,
+                "approved_at": approved_at,
+                "handoff_state": handoff_state,
+                "result": _as_text(attempt.get("result")) or ("success" if handoff_state == "success" else ("failure" if attempt.get("error_message") else "pending")),
+                "connector_result": attempt.get("connector_result") if isinstance(attempt.get("connector_result"), dict) else {},
+                "error_message": _as_text(attempt.get("error_message")) or "",
+            }
+        )
+    accumulated.extend(normalized_attempts)
+    latest = normalized_attempts[-1] if normalized_attempts else (accumulated[-1] if accumulated else {
+        "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "approved_by": approved_by,
-        "approved_at": attempted_at if status == "approved" else None,
-        "handoff_state": handoff_state,
-        "result": "failure" if detail else ("success" if status == "approved" else "pending"),
-        "connector_result": connector_result or {},
-        "error_message": detail,
-    }
-    attempts.append(attempt)
+        "approved_at": None,
+        "handoff_state": "pending",
+        "result": "pending",
+        "connector_result": {},
+        "error_message": "",
+    })
     approval = {
-        "approved_by": approved_by,
-        "approved_at": attempt["approved_at"],
-        "attempted_at": attempted_at,
-        "handoff_state": handoff_state,
-        "result": connector_result or {},
-        "detail": detail,
+        "approved_by": latest.get("approved_by"),
+        "approved_at": latest.get("approved_at"),
+        "attempted_at": latest.get("attempted_at"),
+        "handoff_state": latest.get("handoff_state"),
+        "result": latest.get("connector_result") or {},
+        "detail": latest.get("error_message") or None,
     }
     return {
         "approval": approval,
-        "approval_attempts": attempts,
+        "approval_attempts": accumulated,
     }
 
 
@@ -185,8 +209,10 @@ def _approval_response(
     approved_by = proposal.get("approved_by") or approval.get("approved_by")
     approved_at = proposal.get("approved_at") or approval.get("approved_at")
     normalized_proposal = {**proposal, "approved_by": approved_by, "approved_at": approved_at}
+    handoff_state = normalized_proposal.get("handoff_state") or approval.get("handoff_state") or ("success" if normalized_proposal.get("status") == "approved" else "pending")
     body = {
         "status": approval_status,
+        "handoff_state": handoff_state,
         "detail": detail,
         "approved": approval_status == "approved",
         "proposal_id": normalized_proposal.get("proposal_id"),
@@ -498,6 +524,19 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     settings = Settings()
     recommendation = _build_recommendation(payload)
     approved_by = _identity_from_request(request)
+    existing = None
+    try:
+        existing = _load_persisted_proposal(proposal_id)
+    except Exception:
+        existing = None
+
+    if existing and existing.get("status") == "approved" and existing.get("work_order_id"):
+        return _approval_response(
+            existing,
+            _latest_connector_result(existing.get("metadata")),
+            200,
+            "PM proposal already approved; returning the existing handoff result",
+        )
 
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
@@ -509,7 +548,13 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
             proposal = _proposal_record_from_summary(payload, found["source_path"])
             proposal = _upsert_proposal(conn, proposal)
             adapter = adapter_factory(settings)
-            result = process_recommendation({"recommendation": recommendation}, conn, adapter)
+            result = process_recommendation(
+                {"recommendation": recommendation},
+                conn,
+                adapter,
+                retry_attempts=settings.pm_handoff_retry_attempts,
+                retry_interval_s=settings.pm_handoff_retry_interval_s,
+            )
             status = "approved" if result.get("handoff_complete") else "pending"
             persisted = _update_proposal_status(
                 conn,
@@ -517,7 +562,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 approved_by,
                 result.get("wo_id"),
                 status,
-                _append_approval_metadata(proposal.get("metadata"), approved_by, status, connector_result=result),
+                _append_approval_metadata(proposal.get("metadata"), approved_by, result.get("_attempts") or []),
             )
         finally:
             try:
@@ -529,6 +574,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     except CMMSPayloadError as exc:
         detail = str(exc)
         persisted: Dict[str, Any] = {}
+        attempts = getattr(exc, "attempts", [])
         try:
             conn = connection_factory(settings.pg_dsn)
             try:
@@ -538,14 +584,14 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, "pending", detail=detail),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
         return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 502, detail)
-    except (CMMSUnavailableError, CMMSAdapterError) as exc:
+    except CMMSRetryExhaustedError as exc:
         detail = str(exc)
         persisted = {}
         try:
@@ -557,7 +603,27 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, "pending", detail=detail),
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, exc.attempts),
+                )
+            finally:
+                conn.close()
+        except Exception:
+            pass
+        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 503, detail)
+    except (CMMSUnavailableError, CMMSAdapterError) as exc:
+        detail = str(exc)
+        persisted = {}
+        attempts = getattr(exc, "attempts", [])
+        try:
+            conn = connection_factory(settings.pg_dsn)
+            try:
+                persisted = _update_proposal_status(
+                    conn,
+                    proposal_id,
+                    approved_by,
+                    None,
+                    "pending",
+                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts),
                 )
             finally:
                 conn.close()
