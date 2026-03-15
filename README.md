@@ -223,6 +223,12 @@ Utilities:
 - scripts/cron_rca_test.sh (cron-friendly)
 - make demo-pm-approval
 
+Release helpers:
+- Dry-run the fixed v0.2.0 merge set: `bash merge_v0_2_0.sh --dry-run`
+- Dry-run generic merges from a fixture file: `bash merge_prs.sh --dry-run --pr-data-file /tmp/pull-requests.json`
+- Merge a filtered batch only: `bash merge_prs.sh --dry-run --base main --label release --search stabilization --batch-size 5 --batch-index 2`
+- `merge_prs.sh` also accepts explicit `--pr <number>` values, or it can query GitHub with filters such as `--state`, `--base`, `--head`, `--author`, `--label`, and `--search`
+
 CLI note:
 - `mi-runner` is available after `python -m pip install -e .` when the active virtualenv's `bin` directory is on `PATH`.
 - If the script name is not on `PATH`, use `python -m maintenance_intelligence.runner.cli ...` instead.
