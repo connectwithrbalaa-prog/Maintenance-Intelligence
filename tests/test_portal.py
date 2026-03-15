@@ -192,10 +192,24 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
 
     page = client.get("/portal")
     assert page.status_code == 200
+    assert "Current identity" in page.text
+    assert "Role badge refreshes from whoami when available." in page.text
+    assert "Apply demo identity" in page.text
+    assert "miPortalOrgId" in page.text
+    assert "miPortalDevMode" in page.text
+    assert "/api/v1/whoami" in page.text
+    assert "identityBadgeText" in page.text
+    assert "renderIdentityPanel" in page.text
+    assert "refreshIdentity" in page.text
+    assert "Operator" in page.text
+    assert "Maintainer" in page.text
+    assert "Admin" in page.text
     assert "No hypotheses were stored for this run." in page.text
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
     assert "Approve PM proposal" in page.text
+    assert "Role planner" in page.text
+    assert "Org demo-org" in page.text
     assert "Admin Retry" in page.text
     assert "Admin Retry Only" in page.text
     assert "Admin retry in progress..." in page.text

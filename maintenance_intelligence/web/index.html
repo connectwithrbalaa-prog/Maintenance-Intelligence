@@ -132,6 +132,76 @@
 			z-index: 1;
 		}
 
+		.identity-panel {
+			margin-top: 18px;
+			padding: 16px;
+			border-radius: var(--radius-lg);
+			background: rgba(255, 255, 255, 0.68);
+			border: 1px solid var(--line);
+			position: relative;
+			z-index: 1;
+		}
+
+		.identity-row {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.identity-badge {
+			display: inline-flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+		}
+
+		.identity-badge strong {
+			font-family: var(--font-display);
+			font-size: 1rem;
+		}
+
+		.dev-toggle {
+			display: grid;
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			gap: 10px;
+			margin-top: 14px;
+		}
+
+		.dev-toggle label {
+			display: grid;
+			gap: 6px;
+			font-size: 12px;
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+		}
+
+		.dev-toggle input,
+		.dev-toggle select,
+		.dev-toggle button {
+			width: 100%;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			font: inherit;
+		}
+
+		.dev-toggle input,
+		.dev-toggle select {
+			padding: 10px 12px;
+			background: rgba(255, 255, 255, 0.8);
+			color: var(--text);
+		}
+
+		.dev-toggle button {
+			align-self: end;
+			padding: 12px 14px;
+			background: var(--text);
+			color: #fff;
+			cursor: pointer;
+		}
+
 		.hero-metrics {
 			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -545,6 +615,38 @@
 				<p class="hero-copy">
 					Inspect the latest RCA runs, compare confidence and action sets, and drill into the structured payload that was persisted for each recommendation.
 				</p>
+				<div class="identity-panel" aria-label="portal identity">
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Current identity</div>
+							<div id="identityBadge" class="identity-badge">
+								<strong>Portal user</strong>
+								<span class="chip">Role planner</span>
+								<span class="chip">Org demo-org</span>
+							</div>
+						</div>
+						<span id="identityHint" class="muted tiny">Role badge refreshes from whoami when available.</span>
+					</div>
+					<form id="identityControls" class="dev-toggle" hidden>
+						<label>
+							Subject
+							<input id="identitySubjectInput" type="text" value="portal.user">
+						</label>
+						<label>
+							Role
+							<select id="identityRoleSelect">
+								<option value="planner">Operator</option>
+								<option value="maintainer">Maintainer</option>
+								<option value="admin">Admin</option>
+							</select>
+						</label>
+						<label>
+							Org
+							<input id="identityOrgInput" type="text" value="demo-org">
+						</label>
+						<button id="identityApplyButton" type="submit">Apply demo identity</button>
+					</form>
+				</div>
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
 				<article class="metric">
@@ -611,6 +713,14 @@
 			approvalInFlightById: new Set(),
 			approvalHistoryById: new Map(),
 			auditLoadingById: new Set(),
+			session: {
+				subject: "portal.user",
+				role: "planner",
+				orgId: "demo-org",
+				authenticated: false,
+				authSource: "local-storage",
+				devMode: false,
+			},
 			loading: false,
 		};
 
@@ -625,7 +735,105 @@
 			metricUpdated: document.getElementById("metricUpdated"),
 			searchInput: document.getElementById("searchInput"),
 			refreshButton: document.getElementById("refreshButton"),
+			identityBadge: document.getElementById("identityBadge"),
+			identityHint: document.getElementById("identityHint"),
+			identityControls: document.getElementById("identityControls"),
+			identitySubjectInput: document.getElementById("identitySubjectInput"),
+			identityRoleSelect: document.getElementById("identityRoleSelect"),
+			identityOrgInput: document.getElementById("identityOrgInput"),
+			identityApplyButton: document.getElementById("identityApplyButton"),
 		};
+
+		function portalDevFlagEnabled() {
+			const params = new URLSearchParams(window.location.search);
+			return params.get("portalDev") === "1" || window.localStorage.getItem("miPortalDevMode") === "true";
+		}
+
+		function readPortalIdentity() {
+			const subject = window.localStorage.getItem("miPortalUserId") || "portal.user";
+			const role = window.localStorage.getItem("miPortalUserRole") || "planner";
+			const orgId = window.localStorage.getItem("miPortalOrgId") || "demo-org";
+			const devMode = portalDevFlagEnabled();
+			if (devMode) {
+				window.localStorage.setItem("miPortalDevMode", "true");
+			}
+			return {
+				subject,
+				role,
+				orgId,
+				authenticated: false,
+				authSource: "local-storage",
+				devMode,
+			};
+		}
+
+		function writePortalIdentity(nextIdentity) {
+			window.localStorage.setItem("miPortalUserId", nextIdentity.subject);
+			window.localStorage.setItem("miPortalUserRole", nextIdentity.role);
+			window.localStorage.setItem("miPortalOrgId", nextIdentity.orgId);
+			if (nextIdentity.devMode) {
+				window.localStorage.setItem("miPortalDevMode", "true");
+			}
+		}
+
+		function syncIdentityInputs(identity = state.session) {
+			elements.identitySubjectInput.value = identity.subject || "portal.user";
+			elements.identityRoleSelect.value = identity.role || "planner";
+			elements.identityOrgInput.value = identity.orgId || "demo-org";
+		}
+
+		function identityBadgeText(identity = state.session) {
+			const roleLabel = (identity.role || "planner").toLowerCase();
+			const orgLabel = identity.orgId || "demo-org";
+			return {
+				title: identity.subject || "portal.user",
+				role: `Role ${roleLabel}`,
+				org: `Org ${orgLabel}`,
+			};
+		}
+
+		function renderIdentityPanel() {
+			const identity = state.session;
+			const badge = identityBadgeText(identity);
+			elements.identityBadge.innerHTML = `
+				<strong>${escapeHtml(badge.title)}</strong>
+				<span class="chip">${escapeHtml(badge.role)}</span>
+				<span class="chip">${escapeHtml(badge.org)}</span>
+			`;
+			elements.identityHint.textContent = identity.authenticated
+				? `Authenticated via ${identity.authSource || "identity middleware"}.`
+				: "Role badge is using local demo identity.";
+			elements.identityControls.hidden = !(identity.devMode || identity.authSource === "dev-header");
+			syncIdentityInputs(identity);
+		}
+
+		async function refreshIdentity() {
+			const localIdentity = readPortalIdentity();
+			state.session = localIdentity;
+			renderIdentityPanel();
+			try {
+				const whoami = await fetchJson("/api/v1/whoami");
+				const user = whoami?.user && typeof whoami.user === "object" ? whoami.user : {};
+				state.session = {
+					subject: user.subject || localIdentity.subject,
+					role: user.role || localIdentity.role,
+					orgId: user.org_id || localIdentity.orgId,
+					authenticated: Boolean(whoami?.authenticated),
+					authSource: user.auth_source || localIdentity.authSource,
+					devMode: localIdentity.devMode || user.auth_source === "dev-header",
+				};
+				writePortalIdentity(state.session);
+				renderIdentityPanel();
+				if (state.selectedRunId) {
+					const selected = state.detailsById.get(state.selectedRunId);
+					if (selected) {
+						renderDetail(selected);
+					}
+				}
+			} catch (error) {
+				void error;
+			}
+		}
 
 		function escapeHtml(value) {
 			return String(value ?? "")
@@ -759,18 +967,18 @@
 		}
 
 		function portalIdentityHeaders() {
-			const subject = window.localStorage.getItem("miPortalUserId") || "portal.user";
-			const role = window.localStorage.getItem("miPortalUserRole") || "planner";
+			const identity = readPortalIdentity();
 			return {
 				"Content-Type": "application/json",
 				Accept: "application/json",
-				"X-User-Id": subject,
-				"X-User-Role": role,
+				"X-User-Id": identity.subject,
+				"X-User-Role": identity.role,
+				"X-Org-Id": identity.orgId,
 			};
 		}
 
 		function portalUserRole() {
-			return (window.localStorage.getItem("miPortalUserRole") || "planner").toLowerCase();
+			return (state.session.role || readPortalIdentity().role || "planner").toLowerCase();
 		}
 
 		function portalUserIsAdmin() {
@@ -1379,7 +1587,24 @@
 			state.detailsById.clear();
 			await loadRuns();
 		});
+		elements.identityControls.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			state.session = {
+				...state.session,
+				subject: elements.identitySubjectInput.value.trim() || "portal.user",
+				role: elements.identityRoleSelect.value || "planner",
+				orgId: elements.identityOrgInput.value.trim() || "demo-org",
+				devMode: true,
+				authSource: state.session.authSource || "local-storage",
+			};
+			writePortalIdentity(state.session);
+			renderIdentityPanel();
+			await refreshIdentity();
+		});
 
+		state.session = readPortalIdentity();
+		renderIdentityPanel();
+		refreshIdentity();
 		loadRuns();
 	</script>
 </body>
