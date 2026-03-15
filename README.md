@@ -214,6 +214,7 @@ Copy .env.example to .env and set values as needed.
 
 Testing:
 - make test
+- make test-migrations
 
 Utilities:
 - mi-runner rca --event-id E123

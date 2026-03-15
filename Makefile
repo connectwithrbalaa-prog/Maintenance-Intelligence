@@ -1,39 +1,48 @@
-.PHONY: setup dev-install fmt lint test api run-sim run-ingest run-rca run-wo export-bad-actors migrate
+.PHONY: setup dev-install fmt lint test test-migrations api run-sim run-ingest run-rca run-wo run-signals export-bad-actors migrate demo-pm-approval
 
 setup:
-\tpython -m pip install --upgrade pip
-\tpip install -e .[dev]
+	python -m pip install --upgrade pip
+	pip install -e .[dev,ops]
 
 dev-install: setup
 
 fmt:
-\tblack .
-\truff check . --fix
+	black .
+	ruff check . --fix
 
 lint:
-\truff check .
-\tblack --check .
+	ruff check .
+	black --check .
 
 test:
-\tpytest
+	pytest
+
+test-migrations:
+	pytest tests/test_migrate_import.py tests/test_migration_smoke.py
 
 api:
-\tuvicorn maintenance_intelligence.api.main:app --reload
+	uvicorn maintenance_intelligence.api.main:app --reload
 
 run-sim:
-\tpython -m maintenance_intelligence.services.simulator
+	python -m maintenance_intelligence.services.simulator
 
 run-ingest:
-\tpython -m maintenance_intelligence.services.ingestion
+	python -m maintenance_intelligence.services.ingestion
 
 run-rca:
-\tpython -m maintenance_intelligence.services.rca_agent
+	python -m maintenance_intelligence.services.rca_agent
 
 run-wo:
-\tpython -m maintenance_intelligence.services.wo_bridge
+	python -m maintenance_intelligence.services.wo_bridge
+
+run-signals:
+	python -m maintenance_intelligence.services.signals
 
 export-bad-actors:
-\tmi-runner export-bad-actors --limit 50
+	mi-runner export-bad-actors --limit 50
 
 migrate:
-\tpython -m maintenance_intelligence.db.migrate
+	python -m maintenance_intelligence.db.migrate
+
+demo-pm-approval:
+	bash scripts/demo_pm_approval.sh
