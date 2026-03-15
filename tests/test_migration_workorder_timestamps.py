@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 import psycopg2
 import pytest
@@ -17,8 +18,23 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_migrate_module_adds_workorder_timestamp_columns() -> None:
+    parsed = urlparse(DATABASE_URL)
     env = os.environ.copy()
     env["DATABASE_URL"] = DATABASE_URL
+    env.update(
+        {
+            "POSTGRES_DB": (parsed.path or "/maintenance").lstrip("/") or "maintenance",
+            "POSTGRES_USER": parsed.username or "postgres",
+            "POSTGRES_PASSWORD": parsed.password or "postgres",
+            "POSTGRES_HOST": parsed.hostname or "127.0.0.1",
+            "POSTGRES_PORT": str(parsed.port or 5432),
+            "MI_POSTGRES_DB": (parsed.path or "/maintenance").lstrip("/") or "maintenance",
+            "MI_POSTGRES_USER": parsed.username or "postgres",
+            "MI_POSTGRES_PASSWORD": parsed.password or "postgres",
+            "MI_POSTGRES_HOST": parsed.hostname or "127.0.0.1",
+            "MI_POSTGRES_PORT": str(parsed.port or 5432),
+        }
+    )
 
     result = subprocess.run(
         [sys.executable, "-m", "maintenance_intelligence.db.migrate"],
@@ -32,7 +48,13 @@ def test_migrate_module_adds_workorder_timestamp_columns() -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(
+        dbname=(parsed.path or "/maintenance").lstrip("/") or "maintenance",
+        user=parsed.username or "postgres",
+        password=parsed.password or "postgres",
+        host=parsed.hostname or "127.0.0.1",
+        port=str(parsed.port or 5432),
+    )
     try:
         with conn.cursor() as cur:
             cur.execute(

@@ -77,24 +77,46 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
                     SELECT
                         to_regclass('public.events'),
                         to_regclass('public.pm_proposals'),
+                        to_regclass('public.workorders'),
                         to_regclass('public.alembic_version'),
                         to_regclass('public.mi_schema_migrations')
                     """
                 )
-                events_table, pm_proposals_table, alembic_table, fallback_table = cur.fetchone()
+                events_table, pm_proposals_table, workorders_table, alembic_table, fallback_table = cur.fetchone()
 
                 assert events_table == "events"
                 assert pm_proposals_table == "pm_proposals"
+                assert workorders_table == "workorders"
                 assert alembic_table == "alembic_version" or fallback_table == "mi_schema_migrations"
+
+                cur.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'workorders'
+                      AND column_name IN (
+                          'workorder_created_at',
+                          'handoff_completed_at',
+                          'workorder_completed_at'
+                      )
+                    ORDER BY column_name
+                    """
+                )
+                assert [row[0] for row in cur.fetchall()] == [
+                    'handoff_completed_at',
+                    'workorder_completed_at',
+                    'workorder_created_at',
+                ]
 
                 if alembic_table == "alembic_version":
                     cur.execute("SELECT version_num FROM alembic_version")
-                    assert cur.fetchone()[0] == "002_pm_proposals"
+                    assert cur.fetchone()[0] == "003_add_workorder_timestamps"
                 else:
                     cur.execute(
                         "SELECT filename FROM mi_schema_migrations WHERE filename = %s",
-                        ("005_pm_proposals.sql",),
+                        ("010_add_workorder_timestamps.sql",),
                     )
-                    assert cur.fetchone()[0] == "005_pm_proposals.sql"
+                    assert cur.fetchone()[0] == "010_add_workorder_timestamps.sql"
         finally:
             conn.close()
