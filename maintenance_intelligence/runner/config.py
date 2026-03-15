@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     pg_user: str = Field(default="postgres", alias="POSTGRES_USER")
     pg_password: str = Field(default="postgres", alias="POSTGRES_PASSWORD")
     pg_host: str = Field(default="timescaledb", alias="POSTGRES_HOST")
+    pg_port: int = Field(default=5432, alias="POSTGRES_PORT")
     genai_model: str = Field(default="gpt-4.1")
     genai_timeout_s: int = Field(default=25)
     run_summary_dir: str = Field(default="outputs")
@@ -22,7 +23,14 @@ class Settings(BaseSettings):
 
     @property
     def pg_dsn(self) -> str:
-        return f"dbname={self.pg_db} user={self.pg_user} password={self.pg_password} host={self.pg_host} port=5432"
+        return (
+            f"dbname={self.pg_db} user={self.pg_user} password={self.pg_password} "
+            f"host={self.pg_host} port={self.pg_port}"
+        )
+
+    @property
+    def sqlalchemy_url(self) -> str:
+        return f"postgresql://{self.pg_user}:{self.pg_password}@{self.pg_host}:{self.pg_port}/{self.pg_db}"
 
     class Config:
         env_prefix = "MI_"

@@ -10,4 +10,14 @@ jobs:
     - run: pip install --upgrade pip && pip install .[dev]
     - run: ruff check .
     - run: black --check .
-    - run: pytest
+    - run: pytest --ignore=tests/test_migration_smoke.py
+
+  migration-smoke:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+    - run: pip install --upgrade pip && pip install .[dev,ops]
+    - run: docker info
+    - run: pytest tests/test_migration_smoke.py

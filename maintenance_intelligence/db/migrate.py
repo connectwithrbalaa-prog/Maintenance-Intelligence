@@ -11,12 +11,13 @@ def run():
 
         # Get database URL
         settings = Settings()
-        db_url = settings.pg_dsn
+        db_url = settings.sqlalchemy_url
 
         # Configure Alembic
         alembic_cfg = Config()
         alembic_cfg.set_main_option("script_location", "maintenance_intelligence/db/alembic")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        os.environ["DATABASE_URL"] = db_url
 
         # Run migrations
         logger.info({"event": "migration.start", "using": "alembic"})

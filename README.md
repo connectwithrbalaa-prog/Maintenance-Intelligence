@@ -81,6 +81,7 @@ Context assembler now uses hybrid retrieval with event-based queries for better 
 
 - Run migrations:
   - python -m maintenance_intelligence.db.migrate
+- Dev compose runs the one-shot `migrator` service before starting the API.
 - Health endpoint:
   - GET /healthz (basic)
   - GET /healthz?deep=true (PG + Kafka checks)
@@ -120,7 +121,8 @@ Environment:
 ## Local Dev Stack (Compose) + Alerts
 
 - Start stack: `docker compose -f docker-compose.dev.yml up -d`
-  - Services: Kafka/ZooKeeper, Postgres, API, Prometheus, Alertmanager, Grafana
+  - Services: Kafka/ZooKeeper, Postgres, migrator, API, Prometheus, Alertmanager, Grafana
+- The `migrator` service waits for Postgres, applies Alembic migrations, then the API starts.
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 (admin/admin)
 - Import `dashboards/observability-starter.json` in Grafana
@@ -129,7 +131,7 @@ Environment:
   - Alertmanager at http://localhost:9093 (configure real receivers in `deploy/alertmanager/alertmanager.yml`)
 
 Note:
-- The API service in compose expects the repo code mounted at /app and runs uvicorn.
+- The API and migrator services use the repo code mounted at /app and install the app in-container at startup.
 - For real RCA runs and RAG, set `OPENAI_API_KEY` in the api service environment or via a compose override.
   - `MI_CRON_LOG_DIR` (default: `logs`)
 
@@ -176,6 +178,7 @@ Kafka / Postgres:
 - POSTGRES_USER (default: postgres)
 - POSTGRES_PASSWORD (default: postgres)
 - POSTGRES_HOST (default: timescaledb)
+- POSTGRES_PORT (default: 5432)
 
 GenAI:
 - OPENAI_API_KEY (required for live GenAI RCA)

@@ -65,8 +65,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Get database URL from environment or config
-    db_url = os.getenv("DATABASE_URL")
+    db_url = config.get_main_option("sqlalchemy.url")
+    if not db_url:
+        db_url = os.getenv("DATABASE_URL")
     if not db_url:
         # Try to construct from individual components
         db_host = os.getenv("MI_DB_HOST", "localhost")
