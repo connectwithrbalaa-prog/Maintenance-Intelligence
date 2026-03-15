@@ -230,6 +230,7 @@ Local examples:
 - Run the demo helper with an existing bearer token:
   - `BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh`
 - The demo helper also accepts `API_URL` as an alias for `BASE_URL` and `--api-url` on the command line.
+- The demo helper accepts `RUN_ID` or `--run-id` to choose the RCA run id sent to the PM advisor API.
 - `--use-existing-api` and `DEMO_PM_START_API=false` are accepted for compatibility; this branch's demo script always targets a running API instead of starting uvicorn.
 - JSON output is pretty-printed with `jq` when available and otherwise falls back to `python -m json.tool`.
 - Token-fetch examples for Keycloak-style and Okta-style flows are included in `scripts/demo_pm_approval.sh`; substitute your own token endpoint, client, and user credentials.

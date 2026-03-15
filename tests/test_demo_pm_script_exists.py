@@ -13,6 +13,7 @@ def test_demo_pm_script_exists() -> None:
     assert script.exists()
     assert contents.startswith("#!/usr/bin/env bash")
     assert "--use-existing-api" in contents
+    assert "--run-id" in contents
     assert "pretty_print_json" in contents
 
 
@@ -77,11 +78,12 @@ def test_demo_pm_script_can_use_existing_api() -> None:
     try:
         script = Path("scripts/demo_pm_approval.sh")
         base_url = f"http://127.0.0.1:{server.server_port}"
+        run_id = "RUN-DEMO-CLI"
         env = os.environ.copy()
         env["DEMO_PM_START_API"] = "true"
 
         result = subprocess.run(
-            ["bash", str(script), "--use-existing-api", "--api-url", base_url],
+            ["bash", str(script), "--use-existing-api", "--api-url", base_url, "--run-id", run_id],
             cwd=Path.cwd(),
             env=env,
             check=False,
@@ -95,6 +97,9 @@ def test_demo_pm_script_can_use_existing_api() -> None:
         thread.join(timeout=5)
 
     assert result.returncode == 0, result.stderr
+    analyze_body = next(body for method, path, body in requests if method == "POST" and path == "/api/v1/agents/pm/advisor/analyze")
+    analyze_payload = json.loads(analyze_body)
+    assert analyze_payload["run_id"] == "RUN-DEMO-CLI"
     assert "1) Health check" in result.stdout
     assert "3) Create PM proposal" in result.stdout
     assert '"proposal_id": "demo-proposal"' in result.stdout

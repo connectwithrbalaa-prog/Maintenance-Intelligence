@@ -30,15 +30,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: demo_pm_approval.sh [--use-existing-api] [--api-url URL]
+Usage: demo_pm_approval.sh [--use-existing-api] [--api-url URL] [--run-id RUN_ID]
 
 Options:
   --use-existing-api  No-op compatibility flag. This script already targets an existing API.
   --api-url URL       Base URL for the API.
+  --run-id RUN_ID     Run id to send in the PM advisor request.
 
 Environment:
   BASE_URL            Base URL for the API.
   API_URL             Alias for BASE_URL.
+  RUN_ID              Run id to send in the PM advisor request.
   DEMO_PM_START_API   Accepted for compatibility. This script does not start uvicorn.
 EOF
 }
@@ -68,6 +70,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --api-url)
       BASE_URL="$2"
+      shift 2
+      ;;
+    --run-id)
+      RUN_ID="$2"
       shift 2
       ;;
     --help|-h)
