@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 import psycopg2
 from loguru import logger
@@ -18,6 +19,69 @@ def with_pg(dsn: str):
             last_error = exc
             time.sleep(0.2)
     raise last_error
+
+
+def _normalize_doc_chunks(rows: List[Any]) -> List[Dict[str, Any]]:
+    return [{"chunk_id": row[0], "title": row[1]} for row in rows if row]
+
+
+def _flatten_detail_value(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        parts: List[str] = []
+        for key in sorted(value):
+            parts.extend(_flatten_detail_value(value[key]))
+        return parts
+    if isinstance(value, (list, tuple, set)):
+        parts: List[str] = []
+        values = sorted(value, key=str) if isinstance(value, set) else value
+        for item in values:
+            parts.extend(_flatten_detail_value(item))
+        return parts
+    return [str(value)]
+
+
+def _build_rag_query(event: Dict[str, Any]) -> str:
+    event_details = event.get("details", {})
+    event_kind = event.get("kind", "")
+    event_summary = event.get("summary", "")
+    detail_values = " ".join(
+        part for key in sorted(event_details) for part in _flatten_detail_value(event_details[key])
+    )
+    return " ".join(part for part in [event_kind, event_summary, detail_values] if part).strip()
+
+
+def _tokenize_fallback_query(query: str) -> List[str]:
+    return [token for token in re.sub(r"[^\w\s]", " ", query.lower()).split() if token]
+
+
+def _score_fallback_doc_chunk(row: Any, query_terms: List[str]) -> tuple[int, float, str]:
+    title = str(row[1] or "")
+    content = str(row[2] or "") if len(row) > 2 else ""
+    title_text = title.lower()
+    content_text = content.lower()
+
+    if not query_terms:
+        created_at = row[3].timestamp() if len(row) > 3 and row[3] else 0.0
+        return (0, created_at, str(row[0]))
+
+    title_hits = sum(title_text.count(term) for term in query_terms)
+    content_hits = sum(content_text.count(term) for term in query_terms)
+    lexical_score = (title_hits * 3) + content_hits
+    created_at = row[3].timestamp() if len(row) > 3 and row[3] else 0.0
+    return (lexical_score, created_at, str(row[0]))
+
+
+def _rank_fallback_doc_chunks(rows: List[Any], query: str, limit: int = 3) -> List[Dict[str, Any]]:
+    query_terms = _tokenize_fallback_query(query)
+
+    def sort_key(row: Any) -> tuple[int, float, str]:
+        lexical_score, created_at, chunk_id = _score_fallback_doc_chunk(row, query_terms)
+        return (-lexical_score, -created_at, chunk_id)
+
+    ranked_rows = sorted(rows, key=sort_key)
+    return _normalize_doc_chunks(ranked_rows[:limit])
 
 
 def get_event_context(
@@ -117,13 +181,7 @@ def get_event_context(
         try:
             from maintenance_intelligence.rag.retrieval import HybridRetriever
 
-            # Create a query from event details for better retrieval
-            event_details = event.get("details", {})
-            event_kind = event.get("kind", "")
-            event_summary = event.get("summary", "")
-            query = (
-                f"{event_kind} {event_summary} {' '.join(str(v) for v in event_details.values())}"
-            )
+            query = _build_rag_query(event)
 
             retriever = HybridRetriever(settings.pg_dsn)
             chunks = retriever.retrieve(
@@ -132,21 +190,19 @@ def get_event_context(
             out["doc_chunks"] = [{"chunk_id": c["chunk_id"], "title": c["title"]} for c in chunks]
         except Exception as e:
             logger.debug({"event": "ctx.hybrid_rag.skip", "err": str(e)})
-            # Fallback to random selection
             try:
                 with conn, conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT chunk_id, title FROM doc_chunks
+                        SELECT chunk_id, title, content, created_at FROM doc_chunks
                         WHERE asset_id = %s
                         AND (%s = FALSE OR org_id = %s)
-                        ORDER BY RANDOM()
-                        LIMIT 3
+                        ORDER BY created_at DESC, chunk_id ASC
+                        LIMIT 25
                         """,
                         (asset_id, org_scope_enabled(settings), effective_org_id),
                     )
-                    rows = cur.fetchall()
-                    out["doc_chunks"] = [{"chunk_id": r[0], "title": r[1]} for r in rows if r]
+                    out["doc_chunks"] = _rank_fallback_doc_chunks(cur.fetchall(), query)
             except Exception as e2:
                 logger.debug({"event": "ctx.docs.skip", "err": str(e2)})
                 out["doc_chunks"] = []
