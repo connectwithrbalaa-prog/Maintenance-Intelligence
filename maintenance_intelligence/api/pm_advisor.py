@@ -135,6 +135,23 @@ def _proposal_audit_fields(metadata: Any) -> Dict[str, Any]:
     }
 
 
+def _proposal_attempt_limit(settings: Settings) -> int:
+    return max(1, int(settings.pm_handoff_max_attempts_per_proposal))
+
+
+def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]:
+    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    attempt_count = len(attempts)
+    attempts_remaining = max(0, max_attempts - attempt_count)
+    retry_allowed = proposal.get("status") != "approved" and attempts_remaining > 0
+    return {
+        "attempt_count": attempt_count,
+        "attempts_remaining": attempts_remaining,
+        "max_attempts": max_attempts,
+        "retry_allowed": retry_allowed,
+    }
+
+
 def _latest_connector_result(metadata: Any) -> Dict[str, Any]:
     attempts = _approval_attempts(metadata)
     if not attempts:
@@ -206,6 +223,7 @@ def _approval_response(
     status_code: int,
     detail: str,
     *,
+    max_attempts: int,
     reused_result: bool = False,
 ) -> JSONResponse:
     approval = _approval_fields(proposal.get("metadata") or {})
@@ -216,13 +234,17 @@ def _approval_response(
     handoff_state = normalized_proposal.get("handoff_state") or approval.get("handoff_state") or ("success" if normalized_proposal.get("status") == "approved" else "pending")
     attempts = normalized_proposal.get("approval_history") or _approval_attempts(normalized_proposal.get("metadata") or {})
     latest_attempt = attempts[0] if attempts else {}
+    retry_fields = _retry_fields(normalized_proposal, max_attempts)
     body = {
         "status": approval_status,
         "handoff_state": handoff_state,
         "detail": detail,
         "approved": approval_status == "approved",
         "reused_result": reused_result,
-        "attempt_count": len(attempts),
+        "attempt_count": retry_fields["attempt_count"],
+        "attempts_remaining": retry_fields["attempts_remaining"],
+        "max_attempts": retry_fields["max_attempts"],
+        "retry_allowed": retry_fields["retry_allowed"],
         "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
         "last_attempt_info": latest_attempt,
         "proposal_id": normalized_proposal.get("proposal_id"),
@@ -508,6 +530,7 @@ def list_proposals() -> List[Dict[str, Any]]:
 
 @router.get("/proposals/{proposal_id}/history")
 def proposal_history(proposal_id: str) -> Dict[str, Any]:
+    settings = Settings()
     proposal = None
     try:
         proposal = _load_persisted_proposal(proposal_id)
@@ -518,12 +541,17 @@ def proposal_history(proposal_id: str) -> Dict[str, Any]:
         found = _find_proposal_payload(proposal_id)
         proposal = _proposal_from_summary(found["payload"], found["source_path"])
 
+    retry_fields = _retry_fields(proposal, _proposal_attempt_limit(settings))
     return {
         "proposal_id": proposal.get("proposal_id") or proposal_id,
         "last_approver": proposal.get("last_approver"),
         "last_attempt_time": proposal.get("last_attempt_time"),
         "handoff_state": proposal.get("handoff_state") or "pending",
         "attempts": proposal.get("approval_history") or [],
+        "attempt_count": retry_fields["attempt_count"],
+        "attempts_remaining": retry_fields["attempts_remaining"],
+        "max_attempts": retry_fields["max_attempts"],
+        "retry_allowed": retry_fields["retry_allowed"],
     }
 
 
@@ -532,6 +560,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
     found = _find_proposal_payload(proposal_id)
     payload = found["payload"]
     settings = Settings()
+    max_attempts = _proposal_attempt_limit(settings)
     recommendation = _build_recommendation(payload)
     approved_by = _identity_from_request(request)
     existing = None
@@ -546,8 +575,14 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
             _latest_connector_result(existing.get("metadata")),
             200,
             "PM proposal already approved; returning the existing handoff result",
+            max_attempts=max_attempts,
             reused_result=True,
         )
+
+    existing_attempts = _approval_attempts((existing or {}).get("metadata") or {})
+    attempts_remaining = max(0, max_attempts - len(existing_attempts))
+    if attempts_remaining <= 0:
+        raise HTTPException(status_code=409, detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts")
 
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
@@ -563,7 +598,7 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 {"recommendation": recommendation},
                 conn,
                 adapter,
-                retry_attempts=settings.pm_handoff_retry_attempts,
+                retry_attempts=min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining),
                 retry_interval_s=settings.pm_handoff_retry_interval_s,
             )
             status = "approved" if result.get("handoff_complete") else "pending"
@@ -601,7 +636,13 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 conn.close()
         except Exception:
             pass
-        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 502, detail)
+        return _approval_response(
+            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            None,
+            502,
+            detail,
+            max_attempts=max_attempts,
+        )
     except CMMSRetryExhaustedError as exc:
         detail = str(exc)
         persisted = {}
@@ -620,7 +661,13 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 conn.close()
         except Exception:
             pass
-        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 503, detail)
+        return _approval_response(
+            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            None,
+            503,
+            detail,
+            max_attempts=max_attempts,
+        )
     except (CMMSUnavailableError, CMMSAdapterError) as exc:
         detail = str(exc)
         persisted = {}
@@ -640,8 +687,26 @@ def approve_proposal(proposal_id: str, request: Request) -> Dict[str, Any]:
                 conn.close()
         except Exception:
             pass
-        return _approval_response(persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None}, None, 503, detail)
+        return _approval_response(
+            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            None,
+            503,
+            detail,
+            max_attempts=max_attempts,
+        )
 
     if result.get("handoff_complete"):
-        return _approval_response(persisted, result, 200, "PM proposal approved and handed off to the CMMS backend")
-    return _approval_response(persisted, result, 202, "PM proposal saved, but the CMMS handoff is still pending")
+        return _approval_response(
+            persisted,
+            result,
+            200,
+            "PM proposal approved and handed off to the CMMS backend",
+            max_attempts=max_attempts,
+        )
+    return _approval_response(
+        persisted,
+        result,
+        202,
+        "PM proposal saved, but the CMMS handoff is still pending",
+        max_attempts=max_attempts,
+    )

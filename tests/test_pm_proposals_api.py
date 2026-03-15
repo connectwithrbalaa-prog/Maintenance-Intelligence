@@ -248,6 +248,9 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert payload["handoff_state"] == "success"
     assert payload["attempt_status"] == "success"
     assert payload["attempt_count"] == 1
+    assert payload["attempts_remaining"] == 2
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is False
     assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "PM proposal approved and handed off to the CMMS backend"
     assert payload["approved"] is True
@@ -294,6 +297,9 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     assert payload["handoff_state"] == "pending"
     assert payload["attempt_status"] == "pending"
     assert payload["attempt_count"] == 1
+    assert payload["attempts_remaining"] == 2
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
     assert payload["approved"] is False
@@ -330,6 +336,9 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     assert payload["handoff_state"] == "failure"
     assert payload["attempt_status"] == "failure"
     assert payload["attempt_count"] == 1
+    assert payload["attempts_remaining"] == 2
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["detail"] == "CMMS backend returned malformed payload"
     assert payload["approved"] is False
@@ -374,6 +383,10 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert payload["proposal_id"] == "REC-1"
     assert payload["last_approver"] == "planner-2"
     assert payload["handoff_state"] == "failure"
+    assert payload["attempt_count"] == 2
+    assert payload["attempts_remaining"] == 1
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is True
     assert len(payload["attempts"]) == 2
     assert payload["attempts"][0]["approved_by"] == "planner-2"
     assert payload["attempts"][0]["handoff_state"] == "failure"
@@ -412,6 +425,8 @@ def test_approve_proposal_is_idempotent_after_success(monkeypatch, tmp_path):
     assert second.json()["detail"] == "PM proposal already approved; returning the existing handoff result"
     assert second.json()["reused_result"] is True
     assert second.json()["attempt_count"] == 1
+    assert second.json()["attempts_remaining"] == 2
+    assert second.json()["retry_allowed"] is False
     assert adapter.calls == 1
     workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
     assert len(workorder_calls) == 1
@@ -450,6 +465,9 @@ def test_approve_proposal_retries_transient_failures_before_success(monkeypatch,
     assert payload["handoff_state"] == "success"
     assert payload["attempt_status"] == "success"
     assert payload["attempt_count"] == 3
+    assert payload["attempts_remaining"] == 0
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is False
     assert payload["last_attempt_info"]["attempt_number"] == 3
     assert payload["reused_result"] is False
     assert adapter.calls == 3
@@ -492,9 +510,97 @@ def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypat
     assert payload["handoff_state"] == "failure"
     assert payload["attempt_status"] == "failure"
     assert payload["attempt_count"] == 2
+    assert payload["attempts_remaining"] == 1
+    assert payload["max_attempts"] == 3
+    assert payload["retry_allowed"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 2
     assert payload["detail"] == "temporary outage"
     assert adapter.calls == 2
     history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
     assert len(history["attempts"]) == 2
     assert all(attempt["handoff_state"] == "failure" for attempt in history["attempts"])
+
+
+def test_approve_proposal_retry_appends_history_and_creates_single_workorder(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class RetryThenSuccessAdapter:
+        backend_name = "retry-then-success"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            if self.calls == 1:
+                return {"status": "queued", "backend": self.backend_name, "response": {"status": "queued"}}
+            return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
+
+    adapter = RetryThenSuccessAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    second = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+
+    assert first.status_code == 202
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["attempt_count"] == 2
+    assert second_payload["attempts_remaining"] == 1
+    assert second_payload["retry_allowed"] is False
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    assert history.status_code == 200
+    history_payload = history.json()
+    assert len(history_payload["attempts"]) == 2
+    assert history_payload["attempts"][0]["handoff_state"] == "success"
+    assert history_payload["attempts"][1]["handoff_state"] == "pending"
+    workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
+    assert len(workorder_calls) == 1
+    assert adapter.calls == 2
+
+
+def test_approve_proposal_rejects_requests_after_proposal_attempt_limit(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_ATTEMPTS", "5")
+    monkeypatch.setenv("MI_PM_HANDOFF_MAX_ATTEMPTS_PER_PROPOSAL", "3")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_INTERVAL_S", "0")
+    fake_connection = FakeConnection()
+
+    class DownAdapter:
+        backend_name = "down"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            raise pm_mod.CMMSUnavailableError("temporary outage")
+
+    adapter = DownAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    blocked = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+
+    assert first.status_code == 503
+    assert first.json()["attempt_count"] == 3
+    assert first.json()["attempts_remaining"] == 0
+    assert adapter.calls == 3
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"] == "PM proposal reached the maximum of 3 handoff attempts"
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    assert history.status_code == 200
+    assert history.json()["attempt_count"] == 3
+    assert history.json()["attempts_remaining"] == 0
+    assert history.json()["retry_allowed"] is False

@@ -196,6 +196,11 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
     assert "Approve PM proposal" in page.text
+    assert "Retry Handoff" in page.text
+    assert "Retrying handoff..." in page.text
+    assert "Retry the PM handoff for" in page.text
+    assert "Retry handoff attempts remaining:" in page.text
+    assert "Retry limit reached" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text
     assert "Approval history" in page.text
@@ -206,4 +211,5 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Fresh handoff result." in page.text
     assert "Last attempt:" in page.text
     assert "Attempt ${attemptNumber} of ${attemptCount}" in page.text
+    assert "Retries remaining:" in page.text
     assert "Connector:" in page.text

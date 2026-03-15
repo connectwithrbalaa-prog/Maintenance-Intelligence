@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     dev_allow_headers: bool = Field(default=False)
     pm_handoff_retry_attempts: int = Field(default=3)
     pm_handoff_retry_interval_s: float = Field(default=1.0)
+    pm_handoff_max_attempts_per_proposal: int = Field(default=3)
     maximo_base_url: str | None = Field(default=None)
     maximo_site: str = Field(default="BEDFORD")
     maximo_api_key: str | None = Field(default=None)
