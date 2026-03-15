@@ -586,6 +586,91 @@
 				.replaceAll("'", "&#39;");
 		}
 
+		function asObject(value) {
+			return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+		}
+
+		function asString(value, fallback = "") {
+			if (typeof value === "string") {
+				return value;
+			}
+			if (typeof value === "number" && Number.isFinite(value)) {
+				return String(value);
+			}
+			return fallback;
+		}
+
+		function asNumber(value) {
+			return typeof value === "number" && Number.isFinite(value) ? value : null;
+		}
+
+		function asStringList(value) {
+			if (!Array.isArray(value)) {
+				return [];
+			}
+			return value
+				.map((item) => asString(item).trim())
+				.filter(Boolean);
+		}
+
+		function normalizeMetaValue(value) {
+			if (Array.isArray(value)) {
+				return value.map((item) => normalizeMetaValue(item)).filter((item) => item !== null && item !== "" && !(Array.isArray(item) && !item.length) && !(typeof item === "object" && item && !Object.keys(item).length));
+			}
+			if (value && typeof value === "object") {
+				return Object.fromEntries(
+					Object.entries(value)
+						.map(([key, item]) => [asString(key), normalizeMetaValue(item)])
+						.filter(([key, item]) => key && item !== null && item !== "" && !(Array.isArray(item) && !item.length) && !(typeof item === "object" && item && !Object.keys(item).length))
+				);
+			}
+			if (typeof value === "string") {
+				return value;
+			}
+			if (typeof value === "number" && Number.isFinite(value)) {
+				return String(value);
+			}
+			return null;
+		}
+
+		function normalizeRun(run) {
+			const source = asObject(run);
+			const structuredSource = asObject(source.structured);
+			const modelSource = asObject(source.model);
+			const contextMeta = normalizeMetaValue(asObject(source.context_meta));
+
+			return {
+				run_id: asString(source.run_id),
+				status: asString(source.status, "unknown") || "unknown",
+				event_id: asString(source.event_id),
+				recommendation_id: asString(source.recommendation_id),
+				title: asString(source.title) || asString(structuredSource.title),
+				summary: asString(source.summary) || asString(structuredSource.summary),
+				confidence: asNumber(source.confidence) ?? asNumber(structuredSource.confidence) ?? asNumber(modelSource.confidence),
+				hypothesis: asStringList(Array.isArray(source.hypothesis) && source.hypothesis.length ? source.hypothesis : structuredSource.hypothesis),
+				immediate_actions: asStringList(Array.isArray(source.immediate_actions) && source.immediate_actions.length ? source.immediate_actions : structuredSource.immediate_actions),
+				pm_suggestions: asStringList(Array.isArray(source.pm_suggestions) && source.pm_suggestions.length ? source.pm_suggestions : structuredSource.pm_suggestions),
+				structured: {
+					title: asString(structuredSource.title),
+					summary: asString(structuredSource.summary),
+					confidence: asNumber(structuredSource.confidence),
+					hypothesis: asStringList(structuredSource.hypothesis),
+					immediate_actions: asStringList(structuredSource.immediate_actions),
+					pm_suggestions: asStringList(structuredSource.pm_suggestions),
+				},
+				model: {
+					name: asString(modelSource.name),
+					version: asString(modelSource.version),
+					latency_ms: asNumber(modelSource.latency_ms),
+					confidence: asNumber(modelSource.confidence),
+				},
+				context_meta: asObject(contextMeta),
+				date: asString(source.date),
+				source_file: asString(source.source_file),
+				updated_at: source.updated_at,
+			};
+		}
+
 		function formatDate(timestamp) {
 			if (!timestamp) {
 				return "-";
@@ -729,12 +814,13 @@
 			}
 
 			const status = normalizeStatus(run.status);
-			const structured = run.structured || {};
-			const contextMeta = run.context_meta || {};
-			const model = run.model || {};
+			const structured = asObject(run.structured);
+			const contextMeta = asObject(run.context_meta);
+			const model = asObject(run.model);
 			const assetId = contextMeta.asset_id || "Unscoped asset";
 			const eventKind = contextMeta.event_kind || contextMeta.kind || "-";
 			const modelName = [model.name, model.version].filter(Boolean).join(" · ") || "-";
+			const summaryText = structured.summary || "This run summary is partial. Missing fields were left empty so the detail view can still load safely.";
 
 			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
 			elements.detailView.className = "";
@@ -744,7 +830,7 @@
 						<div>
 							<div class="eyebrow">${escapeHtml(assetId)}</div>
 							<h2>${escapeHtml(run.title || structured.title || "Untitled recommendation")}</h2>
-							<p class="hero-copy">${escapeHtml(structured.summary || "Structured RCA output for this run is shown below.")}</p>
+							<p class="hero-copy">${escapeHtml(summaryText)}</p>
 						</div>
 						<div class="chips">
 							<span class="status-pill ${status.className}">${escapeHtml(status.label)}</span>
@@ -810,8 +896,17 @@
 			if (!entries.length) {
 				return `<p class="muted">${escapeHtml(emptyText)}</p>`;
 			}
+			function formatMetaValue(value) {
+				if (Array.isArray(value)) {
+					return value.join(", ");
+				}
+				if (value && typeof value === "object") {
+					return JSON.stringify(value);
+				}
+				return value;
+			}
 			return `<div class="chips">${entries.map(([key, value]) => `
-				<span class="chip">${escapeHtml(key)}: ${escapeHtml(Array.isArray(value) ? value.join(", ") : value)}</span>
+				<span class="chip">${escapeHtml(key)}: ${escapeHtml(formatMetaValue(value))}</span>
 			`).join("")}</div>`;
 		}
 
@@ -885,7 +980,7 @@
 			setListLoading();
 			try {
 				const runs = await fetchJson("/api/v1/portal/runs?limit=24");
-				state.runs = Array.isArray(runs) ? runs : [];
+				state.runs = Array.isArray(runs) ? runs.map((run) => normalizeRun(run)) : [];
 				renderMetrics();
 				applyFilter();
 
@@ -934,8 +1029,9 @@
 
 			try {
 				const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`);
-				state.detailsById.set(runId, detail);
-				renderDetail(detail);
+				const normalized = normalizeRun(detail);
+				state.detailsById.set(runId, normalized);
+				renderDetail(normalized);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				setError(message);

@@ -41,6 +41,72 @@ def _as_string_list(value: Any) -> List[str]:
     return items
 
 
+def _as_safe_text(value: Any, default: str = "") -> str:
+    return _as_text(value) or default
+
+
+def _sanitize_meta_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = _as_text(key)
+            if key_text is None:
+                continue
+            normalized = _sanitize_meta_value(item)
+            if normalized in (None, "", [], {}):
+                continue
+            cleaned[key_text] = normalized
+        return cleaned
+
+    if isinstance(value, (list, tuple, set)):
+        items = [item for item in (_sanitize_meta_value(item) for item in value) if item not in (None, "", [], {})]
+        return items
+
+    text = _as_text(value)
+    if text is not None:
+        return text
+
+    number = _as_number(value)
+    if number is not None:
+        return number
+
+    return None
+
+
+def _sanitize_context_meta(value: Any) -> Dict[str, Any]:
+    cleaned = _sanitize_meta_value(value)
+    return cleaned if isinstance(cleaned, dict) else {}
+
+
+def _sanitize_model(value: Any) -> Dict[str, Any]:
+    model = _as_dict(value)
+    return {
+        "name": _as_safe_text(model.get("name")),
+        "version": _as_safe_text(model.get("version")),
+        "latency_ms": _as_number(model.get("latency_ms")),
+        "confidence": _as_number(model.get("confidence")),
+    }
+
+
+def _sanitize_structured(value: Any) -> Dict[str, Any]:
+    structured = _as_dict(value)
+    return {
+        "title": _as_safe_text(structured.get("title")),
+        "summary": _as_safe_text(structured.get("summary")),
+        "confidence": _as_number(structured.get("confidence")),
+        "hypothesis": _as_string_list(structured.get("hypothesis")),
+        "immediate_actions": _as_string_list(structured.get("immediate_actions")),
+        "pm_suggestions": _as_string_list(structured.get("pm_suggestions")),
+    }
+
+
+def _validate_run_id(run_id: str) -> str:
+    candidate = run_id.strip()
+    if not candidate or candidate != run_id or len(candidate) > 255 or any(ord(char) < 32 for char in candidate):
+        raise HTTPException(status_code=400, detail="Invalid run id")
+    return candidate
+
+
 def _portal_index_path() -> Path:
     index_path = WEB_DIR / "index.html"
     if not index_path.exists():
@@ -54,25 +120,21 @@ def _run_summary_root() -> Path:
 
 
 def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
-    structured = _as_dict(payload.get("structured"))
-    model = _as_dict(payload.get("model"))
+    structured = _sanitize_structured(payload.get("structured"))
+    model = _sanitize_model(payload.get("model"))
     return {
         "run_id": _as_text(payload.get("run_id")) or source_path.stem,
-        "status": _as_text(payload.get("status")) or "unknown",
-        "event_id": _as_text(payload.get("event_id")),
-        "recommendation_id": _as_text(payload.get("recommendation_id")),
-        "title": _as_text(structured.get("title")),
-        "confidence": _as_number(structured.get("confidence")),
-        "hypothesis": _as_string_list(structured.get("hypothesis")),
-        "immediate_actions": _as_string_list(structured.get("immediate_actions")),
-        "pm_suggestions": _as_string_list(structured.get("pm_suggestions")),
-        "model": {
-            "name": _as_text(model.get("name")),
-            "version": _as_text(model.get("version")),
-            "latency_ms": _as_number(model.get("latency_ms")),
-            "confidence": _as_number(model.get("confidence")),
-        },
-        "context_meta": _as_dict(payload.get("context_meta")),
+        "status": _as_safe_text(payload.get("status"), "unknown"),
+        "event_id": _as_safe_text(payload.get("event_id")),
+        "recommendation_id": _as_safe_text(payload.get("recommendation_id")),
+        "title": structured["title"],
+        "summary": structured["summary"],
+        "confidence": structured["confidence"],
+        "hypothesis": structured["hypothesis"],
+        "immediate_actions": structured["immediate_actions"],
+        "pm_suggestions": structured["pm_suggestions"],
+        "model": model,
+        "context_meta": _sanitize_context_meta(payload.get("context_meta")),
         "date": source_path.parent.name,
         "source_file": source_path.name,
         "updated_at": source_path.stat().st_mtime,
@@ -122,6 +184,7 @@ def recent_runs(limit: int = Query(12, ge=1, le=50)) -> List[Dict[str, Any]]:
 
 @router.get("/api/v1/portal/runs/{run_id}")
 def run_details(run_id: str) -> Dict[str, Any]:
+    run_id = _validate_run_id(run_id)
     for path in _list_run_files(_run_summary_root()):
         if path.stem != run_id:
             continue
@@ -130,6 +193,6 @@ def run_details(run_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=422, detail="Run summary is malformed")
         return {
             **_extract_run_summary(payload, path),
-            "structured": _as_dict(payload.get("structured")),
+            "structured": _sanitize_structured(payload.get("structured")),
         }
     raise HTTPException(status_code=404, detail="Run summary not found")
