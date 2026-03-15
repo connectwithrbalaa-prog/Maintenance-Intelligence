@@ -521,6 +521,61 @@
 			margin-top: 12px;
 		}
 
+		.audit-item {
+			padding: 12px 0;
+			border-bottom: 1px solid rgba(29, 42, 45, 0.08);
+		}
+
+		.audit-item:last-child {
+			border-bottom: 0;
+		}
+
+		.audit-item.admin-origin {
+			background: linear-gradient(90deg, rgba(14, 124, 102, 0.08), transparent 78%);
+			border-radius: 14px;
+			padding: 12px;
+			margin-left: -12px;
+		}
+
+		.audit-head {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+			margin-bottom: 6px;
+		}
+
+		.audit-badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 10px;
+			border-radius: 999px;
+			font-size: 11px;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			border: 1px solid var(--line);
+			background: rgba(24, 34, 38, 0.06);
+			color: var(--text);
+		}
+
+		.audit-badge.origin-admin {
+			background: rgba(14, 124, 102, 0.14);
+			border-color: rgba(14, 124, 102, 0.24);
+			color: var(--accent);
+		}
+
+		.audit-badge.origin-approval {
+			background: rgba(24, 34, 38, 0.06);
+			color: var(--muted);
+		}
+
+		.audit-badge.actor {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.22);
+			color: var(--warn);
+		}
+
 		.pm-actions button {
 			padding: 12px 14px;
 			border: 1px solid var(--line);
@@ -1281,12 +1336,13 @@
 				: `<p class="footer-note">All recorded audit attempts are visible.</p>`;
 			return `
 				<ol class="list">${attempts.map((attempt) => `
-					<li>
-						<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
-						 · Attempt ${escapeHtml(attempt.attempt_number || "?")}
-						 · ${escapeHtml(attempt.approved_by || "Unknown approver")}
-						 · ${escapeHtml(attempt.origin || "approval")}
-						 · ${escapeHtml(attempt.attempted_at || "Unknown time")}
+					<li class="audit-item ${(attempt.origin || "approval") === "admin" ? "admin-origin" : ""}">
+						<div class="audit-head">
+							<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
+							<span class="audit-badge actor">Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}</span>
+							<span class="audit-badge origin-${escapeHtml((attempt.origin || "approval").toLowerCase())}">Origin ${escapeHtml(attempt.origin || "approval")}</span>
+						</div>
+						<div class="footer-note">Attempt ${escapeHtml(attempt.attempt_number || "?")} · ${escapeHtml(attempt.attempted_at || "Unknown time")}</div>
 						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
 						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
 					</li>

@@ -225,6 +225,14 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Approval history" in page.text
     assert "No approval attempts recorded yet." in page.text
     assert "View full audit" in page.text
+    assert "audit-item" in page.text
+    assert "admin-origin" in page.text
+    assert "audit-head" in page.text
+    assert "audit-badge actor" in page.text
+    assert "Origin ${escapeHtml(attempt.origin || \"approval\")}" in page.text
+    assert "Actor ${escapeHtml(attempt.approved_by || \"Unknown approver\")}" in page.text
+    assert "origin-admin" in page.text
+    assert "origin-approval" in page.text
     assert "Load more" in page.text
     assert "Loading more audit..." in page.text
     assert "All recorded audit attempts are visible." in page.text
