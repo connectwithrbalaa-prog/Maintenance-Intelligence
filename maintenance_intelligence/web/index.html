@@ -3059,6 +3059,15 @@
 			return ordered.length ? ordered.join("/") : "none";
 		}
 
+		function handoffCurrentRankLabel(run, exceptionRows) {
+			const proposalId = asString(run?.recommendation_id || run?.run_id);
+			if (!proposalId) {
+				return "clear";
+			}
+			const rank = exceptionRows.findIndex((row) => row.proposalId === proposalId) + 1;
+			return rank ? `#${rank}` : "clear";
+		}
+
 		function handoffCurrentProposalRow(run, exceptionRows) {
 			const proposalId = asString(run?.recommendation_id || run?.run_id);
 			if (!proposalId) {
@@ -3328,6 +3337,7 @@
 			const retriesRemaining = handoffRetriesRemaining(exceptionRows);
 			const longestWait = handoffLongestWait(exceptionRows);
 			const visibleClasses = handoffVisibleClasses(exceptionRows);
+			const currentRankLabel = handoffCurrentRankLabel(run, exceptionRows);
 			const ageBucketFilterMarkup = `
 				<div class="outcomes-chip-row" aria-label="Handoff queue age filters">
 					<button type="button" class="chip" data-handoff-age-bucket="all" aria-pressed="${state.handoffExceptions.ageBucket === "all" ? "true" : "false"}">All ages</button>
@@ -3444,6 +3454,7 @@
 								<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
 								<span class="chip">Longest wait ${escapeHtml(longestWait)}</span>
 								<span class="chip">Visible classes ${escapeHtml(visibleClasses)}</span>
+								<span class="chip">Current rank ${escapeHtml(currentRankLabel)}</span>
 								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
 							</div>
 						</div>
@@ -3481,6 +3492,7 @@
 							<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
 							<span class="chip">Longest wait ${escapeHtml(longestWait)}</span>
 							<span class="chip">Visible classes ${escapeHtml(visibleClasses)}</span>
+							<span class="chip">Current rank ${escapeHtml(currentRankLabel)}</span>
 							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
 							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
 							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}
