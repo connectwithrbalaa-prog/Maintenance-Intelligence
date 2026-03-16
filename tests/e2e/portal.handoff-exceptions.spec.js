@@ -299,6 +299,48 @@ test('portal handoff exceptions: aging risk chip updates with queue view', async
   await expect(summaryRow.getByText('Aging risk 3', { exact: true })).not.toBeVisible();
 });
 
+test('portal handoff exceptions: lead age chip shows lead bucket and falls back when filtered', async ({ page }) => {
+  const harness = createPortalHarness({
+    pmProposals: [
+      {
+        proposal_id: 'REC-21',
+        run_id: 'RUN-099',
+        recommendation_id: 'REC-21',
+        asset_id: 'PUMP-101',
+        title: 'Inspect seal and rebalance coupling',
+        status: 'pending',
+        handoff_state: 'failure',
+        attempt_count: 1,
+        attempts_remaining: 2,
+        max_attempts: 3,
+        retry_allowed: true,
+        admin_retry_required: true,
+        updated_at: '2026-03-14T08:05:00Z',
+        last_attempt_info: {
+          attempt_number: 1,
+          attempted_at: '2026-03-14T08:05:00Z',
+          approved_by: 'planner.user',
+          origin: 'approval',
+          handoff_state: 'failure',
+          connector_result: {},
+          error_message: 'Payload validation failed',
+        },
+        approval_history: [],
+      },
+    ],
+  });
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+  const summaryRow = handoffPanel.locator('.handoff-summary .outcomes-chip-row');
+
+  await expect(summaryRow.locator('span.chip', { hasText: /^Lead age (SLA watch|Aging risk)$/ })).toBeVisible();
+
+  await page.getByLabel('Handoff queue view').selectOption('admin-retry');
+  await expect(summaryRow.getByText('Lead age -', { exact: true })).toBeVisible();
+});
+
 test('portal handoff exceptions: view-specific empty state shown per queue view when no rows match', async ({ page }) => {
   // Harness with only a connector-failure row — admin-retry view will be empty
   const harness = createPortalHarness({

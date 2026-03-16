@@ -322,12 +322,14 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Longest wait ${escapeHtml(longestWait)}" in page.text
     assert "Visible classes ${escapeHtml(visibleClasses)}" in page.text
     assert "Aging risk ${escapeHtml(agingRiskCount)}" in page.text
+    assert "Lead age ${escapeHtml(leadAgeLabel)}" in page.text
     assert "Current rank ${escapeHtml(currentRankLabel)}" in page.text
     assert "handoffSortLabel" in page.text
     assert "handoffRetriesRemaining" in page.text
     assert "handoffLongestWait" in page.text
     assert "handoffVisibleClasses" in page.text
     assert "handoffAgingRiskCount" in page.text
+    assert "handoffLeadAgeLabel" in page.text
     assert "handoffCurrentRankLabel" in page.text
     assert "No connector failures in this filter" in page.text
     assert "No proposals currently show connector-failure handoffs in this view." in page.text
