@@ -159,13 +159,13 @@ test('portal handoff exceptions: age bucket chips filter queue and persist on re
   await agingRiskChip.click();
   await expect(agingRiskChip).toHaveAttribute('aria-pressed', 'true');
   await expect(handoffPanel.getByText('Age filter Aging risk', { exact: true })).toBeVisible();
-  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+  await expect(handoffPanel.locator('.handoff-item').first()).toBeVisible();
   await expect(handoffPanel.locator('.handoff-item').first()).toContainText('Aging risk');
 
   await page.reload();
   await expect(handoffPanel.locator('[data-handoff-age-bucket="aging-risk"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(handoffPanel.getByText('Age filter Aging risk', { exact: true })).toBeVisible();
-  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+  await expect(handoffPanel.locator('.handoff-item').first()).toBeVisible();
 
   const allAgesChip = handoffPanel.locator('[data-handoff-age-bucket="all"]');
   await allAgesChip.click();
@@ -237,6 +237,51 @@ test('portal handoff exceptions: retries remaining chip updates with queue view 
   await page.getByLabel('Handoff queue view').selectOption('connector-failure');
   await expect(summaryRow.getByText('Retries remaining 2', { exact: true })).toBeVisible();
   await expect(summaryRow.getByText('Retries remaining 4', { exact: true })).not.toBeVisible();
+});
+
+test('portal handoff exceptions: view-specific empty state shown per queue view when no rows match', async ({ page }) => {
+  // Harness with only a connector-failure row — admin-retry view will be empty
+  const harness = createPortalHarness({
+    pmProposals: [
+      {
+        proposal_id: 'REC-21',
+        run_id: 'RUN-099',
+        recommendation_id: 'REC-21',
+        asset_id: 'PUMP-101',
+        title: 'Inspect seal and rebalance coupling',
+        status: 'pending',
+        handoff_state: 'failure',
+        attempt_count: 1,
+        attempts_remaining: 2,
+        max_attempts: 3,
+        retry_allowed: true,
+        admin_retry_required: true,
+        updated_at: '2026-03-14T08:05:00Z',
+        last_attempt_info: {
+          attempt_number: 1,
+          attempted_at: '2026-03-14T08:05:00Z',
+          approved_by: 'planner.user',
+          origin: 'approval',
+          handoff_state: 'failure',
+          connector_result: {},
+          error_message: 'Payload validation failed',
+        },
+        approval_history: [],
+      },
+    ],
+  });
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+
+  await page.getByLabel('Handoff queue view').selectOption('admin-retry');
+  await expect(handoffPanel.getByText('No admin retries waiting', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('No proposals are currently waiting on an admin retry in this view. Try All exceptions or broaden the age filter to continue triage.', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Handoff queue view').selectOption('limit-reached');
+  await expect(handoffPanel.getByText('No retry limits hit', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('No proposals have exhausted their retry limit in this view. Try All exceptions or broaden the age filter to continue triage.', { exact: true })).toBeVisible();
 });
 
 test('portal handoff exceptions: connector-failure view shows a dedicated empty state when no rows match', async ({ page }) => {

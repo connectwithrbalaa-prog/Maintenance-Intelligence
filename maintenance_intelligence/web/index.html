@@ -3381,13 +3381,30 @@
 				`;
 			}
 			if (!exceptionRows.length) {
-				const connectorFailureEmpty = state.handoffExceptions.view === "connector-failure";
-				const filteredTitle = connectorFailureEmpty
-					? "No connector failures in this filter"
-					: "No exceptions in this filter";
-				const filteredDetail = connectorFailureEmpty
-					? "No proposals currently show connector-failure handoffs in this view. Try All exceptions or broaden the age filter to continue triage."
-					: "Try All ages with All exceptions to inspect the full queue.";
+				const viewEmptyMessages = {
+					"connector-failure": {
+						title: "No connector failures in this filter",
+						detail: "No proposals currently show connector-failure handoffs in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"admin-retry": {
+						title: "No admin retries waiting",
+						detail: "No proposals are currently waiting on an admin retry in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"limit-reached": {
+						title: "No retry limits hit",
+						detail: "No proposals have exhausted their retry limit in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"aging-risk": {
+						title: "No aging risk or SLA watch items",
+						detail: "No proposals in this view currently exceed the SLA watch threshold. Try All ages with All exceptions to see the full queue.",
+					},
+				};
+				const viewMsg = viewEmptyMessages[state.handoffExceptions.view] || {
+					title: "No exceptions in this filter",
+					detail: "Try All ages with All exceptions to inspect the full queue.",
+				};
+				const filteredTitle = viewMsg.title;
+				const filteredDetail = viewMsg.detail;
 				return `
 					<div class="handoff-panel">
 						<div class="handoff-summary">
