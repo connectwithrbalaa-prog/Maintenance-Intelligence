@@ -257,6 +257,20 @@ test('portal handoff exceptions: longest wait chip appears in queue summary', as
   await expect(chipAfter).toBeVisible();
 });
 
+test('portal handoff exceptions: visible classes chip updates with queue view', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const summaryRow = page.locator('.handoff-panel .handoff-summary .outcomes-chip-row');
+
+  await expect(summaryRow.getByText('Visible classes Admin/Connector/Limit', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Handoff queue view').selectOption('connector-failure');
+  await expect(summaryRow.getByText('Visible classes Connector', { exact: true })).toBeVisible();
+  await expect(summaryRow.getByText('Visible classes Admin/Connector/Limit', { exact: true })).not.toBeVisible();
+});
+
 test('portal handoff exceptions: view-specific empty state shown per queue view when no rows match', async ({ page }) => {
   // Harness with only a connector-failure row — admin-retry view will be empty
   const harness = createPortalHarness({
