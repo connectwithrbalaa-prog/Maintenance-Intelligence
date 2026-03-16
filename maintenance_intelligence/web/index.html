@@ -2992,6 +2992,13 @@
 			return "All ages";
 		}
 
+		function handoffSortLabel(sort) {
+			if (sort === "age") {
+				return "Oldest first";
+			}
+			return "Priority first";
+		}
+
 		function handoffRowMatchesAgeBucket(row, ageBucket) {
 			if (ageBucket === "fresh") {
 				return row.ageLabel === "Fresh" || row.ageLabel === "No timestamp";
@@ -3381,6 +3388,7 @@
 								<span class="chip">Queue size ${escapeHtml(allExceptionRows.length)}</span>
 								<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 								<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
+								<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
 								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
 							</div>
 						</div>
@@ -3414,6 +3422,7 @@
 							<span class="chip">Source /api/v1/agents/pm/proposals</span>
 							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 							<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
+							<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
 							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
 							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
 							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}

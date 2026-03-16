@@ -209,3 +209,17 @@ test('portal handoff exceptions: shows a failure state when the proposal queue i
   await expect(handoffPanel.getByText('Handoff exceptions unavailable', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('We could not load the PM handoff queue right now: Proposal queue unavailable', { exact: true })).toBeVisible();
 });
+
+test('portal handoff exceptions: sort chip reflects the active sort mode and updates on change', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+
+  await expect(handoffPanel.getByText('Sort Priority first', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Handoff queue sort').selectOption('age');
+  await expect(handoffPanel.getByText('Sort Oldest first', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('Sort Priority first', { exact: true })).not.toBeVisible();
+});
