@@ -3237,6 +3237,7 @@
 								<option value="priority" ${state.handoffExceptions.sort === "priority" ? "selected" : ""}>Priority first</option>
 								<option value="age" ${state.handoffExceptions.sort === "age" ? "selected" : ""}>Oldest waiting first</option>
 							</select>
+							<button type="button" id="handoffPreferencesResetButton" aria-label="Reset handoff queue preferences">Reset to defaults</button>
 						</div>
 					</div>
 				</div>
@@ -4208,6 +4209,15 @@
 			if (handoffSortSelect) {
 				handoffSortSelect.addEventListener("change", () => {
 					state.handoffExceptions.sort = normalizeHandoffQueueSort(handoffSortSelect.value);
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
+			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
+			if (handoffPreferencesResetButton) {
+				handoffPreferencesResetButton.addEventListener("click", () => {
+					applyHandoffQueuePreferences({ view: "all", sort: "priority" });
 					writeHandoffQueuePreferences();
 					renderDetail(run);
 				});

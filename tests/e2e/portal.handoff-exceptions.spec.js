@@ -103,6 +103,23 @@ test('portal handoff exceptions: queue preferences persist per user identity', a
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
 });
 
+test('portal handoff exceptions: reset control restores default queue preferences', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+
+  await page.getByLabel('Handoff queue view').selectOption('admin-retry');
+  await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.getByRole('button', { name: 'Reset handoff queue preferences' }).click();
+
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await page.reload();
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+});
+
 test('portal handoff exceptions: shows a failure state when the proposal queue is unavailable', async ({ page }) => {
   const harness = createPortalHarness({
     pmProposalsFailure: 'Proposal queue unavailable',
