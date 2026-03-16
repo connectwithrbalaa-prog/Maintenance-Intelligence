@@ -70,6 +70,39 @@ test('portal handoff exceptions: queue view can focus retry limits only', async 
   await expect(handoffPanel.locator('.handoff-item').first()).not.toContainText('REC-44');
 });
 
+test('portal handoff exceptions: queue preferences persist per user identity', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+
+  await page.getByLabel('Handoff queue view').selectOption('limit-reached');
+  await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.reload();
+
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('limit-reached');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+
+  await applyAdminIdentity(page);
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+
+  await page.getByLabel('Handoff queue view').selectOption('admin-retry');
+  await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.reload();
+
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('admin-retry');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+
+  await page.locator('#identitySubjectInput').fill('portal.user');
+  await page.locator('#identityRoleSelect').selectOption('planner');
+  await page.locator('#identityOrgInput').fill('demo-org');
+  await page.getByRole('button', { name: 'Apply demo identity' }).click();
+
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('limit-reached');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+});
+
 test('portal handoff exceptions: shows a failure state when the proposal queue is unavailable', async ({ page }) => {
   const harness = createPortalHarness({
     pmProposalsFailure: 'Proposal queue unavailable',

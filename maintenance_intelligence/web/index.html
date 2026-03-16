@@ -1806,6 +1806,60 @@
 			}
 		}
 
+		function handoffQueuePreferencesStorageKey(identity = state.session) {
+			const subject = asString(identity?.subject || "portal.user").trim().toLowerCase() || "portal.user";
+			const role = asString(identity?.role || "planner").trim().toLowerCase() || "planner";
+			const orgId = asString(identity?.orgId || "demo-org").trim().toLowerCase() || "demo-org";
+			return `miPortalHandoffPrefs:${subject}:${role}:${orgId}`;
+		}
+
+		function normalizeHandoffQueueView(view) {
+			const nextView = asString(view || "").toLowerCase();
+			if (["all", "admin-retry", "limit-reached", "aging-risk"].includes(nextView)) {
+				return nextView;
+			}
+			return "all";
+		}
+
+		function normalizeHandoffQueueSort(sortMode) {
+			return asString(sortMode || "").toLowerCase() === "age" ? "age" : "priority";
+		}
+
+		function readHandoffQueuePreferences(identity = state.session) {
+			const fallback = {
+				view: "all",
+				sort: "priority",
+			};
+			try {
+				const raw = window.localStorage.getItem(handoffQueuePreferencesStorageKey(identity));
+				if (!raw) {
+					return fallback;
+				}
+				const parsed = asObject(JSON.parse(raw));
+				return {
+					view: normalizeHandoffQueueView(parsed.view),
+					sort: normalizeHandoffQueueSort(parsed.sort),
+				};
+			} catch (error) {
+				void error;
+				return fallback;
+			}
+		}
+
+		function applyHandoffQueuePreferences(preferences) {
+			const nextPreferences = asObject(preferences);
+			state.handoffExceptions.view = normalizeHandoffQueueView(nextPreferences.view || state.handoffExceptions.view);
+			state.handoffExceptions.sort = normalizeHandoffQueueSort(nextPreferences.sort || state.handoffExceptions.sort);
+		}
+
+		function writeHandoffQueuePreferences(identity = state.session) {
+			const payload = {
+				view: normalizeHandoffQueueView(state.handoffExceptions.view),
+				sort: normalizeHandoffQueueSort(state.handoffExceptions.sort),
+			};
+			window.localStorage.setItem(handoffQueuePreferencesStorageKey(identity), JSON.stringify(payload));
+		}
+
 		function syncIdentityInputs(identity = state.session) {
 			elements.identitySubjectInput.value = identity.subject || "portal.user";
 			elements.identityRoleSelect.value = identity.role || "planner";
@@ -1840,6 +1894,7 @@
 		async function refreshIdentity() {
 			const localIdentity = readPortalIdentity();
 			state.session = localIdentity;
+			applyHandoffQueuePreferences(readHandoffQueuePreferences(localIdentity));
 			renderIdentityPanel();
 			try {
 				const whoami = await fetchJson("/api/v1/whoami", { headers: portalIdentityHeaders() });
@@ -1853,6 +1908,7 @@
 					devMode: localIdentity.devMode || user.auth_source === "dev-header",
 				};
 				writePortalIdentity(state.session);
+				applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 				renderIdentityPanel();
 				if (state.selectedRunId) {
 					const selected = state.detailsById.get(state.selectedRunId);
@@ -4142,7 +4198,8 @@
 			const handoffViewSelect = document.getElementById("handoffViewSelect");
 			if (handoffViewSelect) {
 				handoffViewSelect.addEventListener("change", () => {
-					state.handoffExceptions.view = handoffViewSelect.value || "all";
+					state.handoffExceptions.view = normalizeHandoffQueueView(handoffViewSelect.value);
+					writeHandoffQueuePreferences();
 					renderDetail(run);
 				});
 			}
@@ -4150,7 +4207,8 @@
 			const handoffSortSelect = document.getElementById("handoffSortSelect");
 			if (handoffSortSelect) {
 				handoffSortSelect.addEventListener("change", () => {
-					state.handoffExceptions.sort = handoffSortSelect.value === "age" ? "age" : "priority";
+					state.handoffExceptions.sort = normalizeHandoffQueueSort(handoffSortSelect.value);
+					writeHandoffQueuePreferences();
 					renderDetail(run);
 				});
 			}
@@ -4839,11 +4897,13 @@
 				authSource: state.session.authSource || "local-storage",
 			};
 			writePortalIdentity(state.session);
+			applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 			renderIdentityPanel();
 			await refreshIdentity();
 		});
 
 		state.session = readPortalIdentity();
+		applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 		renderIdentityPanel();
 		refreshIdentity();
 		loadRuns();

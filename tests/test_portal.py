@@ -295,6 +295,13 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "handoffViewLabel" in page.text
     assert "handoffViewSelect" in page.text
     assert "handoffSortSelect" in page.text
+    assert "miPortalHandoffPrefs:" in page.text
+    assert "readHandoffQueuePreferences" in page.text
+    assert "writeHandoffQueuePreferences" in page.text
+    assert "applyHandoffQueuePreferences" in page.text
+    assert "handoffQueuePreferencesStorageKey" in page.text
+    assert "normalizeHandoffQueueView" in page.text
+    assert "normalizeHandoffQueueSort" in page.text
     assert "Admin role required for retry." in page.text
     assert "data-handoff-retry-proposal-id" in page.text
     assert "data-handoff-focus-run-id" in page.text
