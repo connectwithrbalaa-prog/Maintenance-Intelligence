@@ -158,6 +158,66 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
     }
 
 
+def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]:
+    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    latest_attempt = attempts[0] if attempts else {}
+    return {
+        **proposal,
+        **_retry_fields(proposal, max_attempts),
+        "admin_retry_required": bool(attempts) and proposal.get("status") != "approved",
+        "last_attempt_info": latest_attempt,
+    }
+
+
+def _work_order_snapshot_from_row(row: Any) -> Dict[str, Any]:
+    metadata = row[8] if len(row) > 8 and isinstance(row[8], dict) else {}
+    return {
+        "wo_id": row[0],
+        "asset_id": row[1],
+        "status": row[2],
+        "title": row[3],
+        "priority": row[4],
+        "workorder_created_at": row[5],
+        "handoff_completed_at": row[6],
+        "workorder_completed_at": row[7],
+        "metadata": metadata,
+    }
+
+
+def _load_work_order_snapshots(conn: Any, work_order_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    filtered_ids = [work_order_id for work_order_id in work_order_ids if work_order_id]
+    if not filtered_ids:
+        return {}
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT wo_id, asset_id, status, title, priority, workorder_created_at,
+                   handoff_completed_at, workorder_completed_at, metadata
+            FROM workorders
+            WHERE wo_id = ANY(%s)
+            """,
+            (filtered_ids,),
+        )
+        rows = cur.fetchall()
+    snapshots: Dict[str, Dict[str, Any]] = {}
+    for row in rows or []:
+        if not row or not row[0]:
+            continue
+        snapshots[str(row[0])] = _work_order_snapshot_from_row(row)
+    return snapshots
+
+
+def _attach_work_order_snapshots(proposals: List[Dict[str, Any]], snapshots: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    for proposal in proposals:
+        work_order_id = proposal.get("work_order_id")
+        enriched.append({
+            **proposal,
+            "work_order_snapshot": snapshots.get(str(work_order_id), {}) if work_order_id else {},
+        })
+    return enriched
+
+
 def _history_page(attempts: List[Dict[str, Any]], page: int, size: int) -> Dict[str, Any]:
     total_count = len(attempts)
     start = (page - 1) * size
@@ -539,12 +599,15 @@ def analyze_run(payload: AnalyzePayload, request: Request):
 
 @router.get("/proposals")
 def list_proposals() -> List[Dict[str, Any]]:
+    max_attempts = _proposal_attempt_limit(Settings())
     try:
         conn = _with_proposal_connection()
         try:
             persisted = _list_persisted_proposals(conn)
             if persisted:
-                return persisted
+                proposals = [_proposal_with_retry_fields(item, max_attempts) for item in persisted]
+                snapshots = _load_work_order_snapshots(conn, [str(item.get("work_order_id") or "") for item in proposals])
+                return _attach_work_order_snapshots(proposals, snapshots)
         finally:
             conn.close()
     except Exception:
@@ -558,7 +621,7 @@ def list_proposals() -> List[Dict[str, Any]]:
         if not payload.get("recommendation_id") and not payload.get("run_id"):
             continue
         items.append(_proposal_from_summary(payload, path))
-    return items
+    return _attach_work_order_snapshots([_proposal_with_retry_fields(item, max_attempts) for item in items], {})
 
 
 @router.get("/proposals/{proposal_id}/history")

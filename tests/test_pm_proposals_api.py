@@ -63,6 +63,7 @@ class FakeConnection:
         self.executed = []
         self.closed = False
         self.proposals = {}
+        self.workorders = {}
         self._last_rows = []
 
     def cursor(self):
@@ -110,7 +111,25 @@ class FakeConnection:
             record["work_order_id"] = params[2]
             record["metadata"] = {**record.get("metadata", {}), **json.loads(params[3])}
             self._last_rows = [self._row(record)]
+        elif normalized.startswith("SELECT wo_id"):
+            requested_ids = set(params[0] or [])
+            rows = [self._workorder_row(record) for record in self.workorders.values() if record["wo_id"] in requested_ids]
+            rows.sort(key=lambda row: row[0], reverse=True)
+            self._last_rows = rows
         elif normalized.startswith("INSERT INTO workorders"):
+            record = {
+                "wo_id": params[0],
+                "asset_id": params[1],
+                "status": params[2],
+                "title": params[3],
+                "description": params[4],
+                "priority": params[5],
+                "metadata": json.loads(params[6]),
+                "workorder_created_at": params[7],
+                "handoff_completed_at": params[8],
+                "workorder_completed_at": params[9],
+            }
+            self.workorders[record["wo_id"]] = record
             self._last_rows = []
         else:
             self._last_rows = []
@@ -137,6 +156,20 @@ class FakeConnection:
             record["proposed_by"],
             record["approved_by"],
             record["work_order_id"],
+            record["metadata"],
+        )
+
+    @staticmethod
+    def _workorder_row(record):
+        return (
+            record["wo_id"],
+            record["asset_id"],
+            record["status"],
+            record["title"],
+            record["priority"],
+            record["workorder_created_at"],
+            record["handoff_completed_at"],
+            record["workorder_completed_at"],
             record["metadata"],
         )
 
@@ -192,6 +225,62 @@ def test_list_proposals_from_run_summaries(monkeypatch, tmp_path):
     assert payload[0]["proposal_id"] == "REC-1"
     assert payload[0]["title"] == "Inspect pump seal"
     assert payload[0]["asset_id"] == "PUMP-101"
+    assert payload[0]["attempt_count"] == 0
+    assert payload[0]["attempts_remaining"] == 3
+    assert payload[0]["max_attempts"] == 3
+    assert payload[0]["retry_allowed"] is True
+    assert payload[0]["admin_retry_required"] is False
+    assert payload[0]["last_attempt_info"] == {}
+    assert payload[0]["work_order_snapshot"] == {}
+
+
+def test_list_proposals_includes_retry_metadata_for_exceptions(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class IncompleteAdapter:
+        backend_name = "incomplete"
+
+        def create_work_order(self, recommendation):
+            return {"status": "queued", "backend": self.backend_name, "response": {"status": "queued"}}
+
+    class BadAdapter:
+        backend_name = "bad"
+
+        def create_work_order(self, recommendation):
+            return "bad-payload"
+
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    client = TestClient(app)
+
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: IncompleteAdapter())
+    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}).status_code == 202
+
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: BadAdapter())
+    assert client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        json={"admin_retry": True},
+        headers={"x-user-id": "planner-2", "x-user-role": "maintainer"},
+    ).status_code == 502
+
+    response = client.get("/api/v1/agents/pm/proposals")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["proposal_id"] == "REC-1"
+    assert payload[0]["handoff_state"] == "failure"
+    assert payload[0]["attempt_count"] == 2
+    assert payload[0]["attempts_remaining"] == 1
+    assert payload[0]["max_attempts"] == 3
+    assert payload[0]["retry_allowed"] is True
+    assert payload[0]["admin_retry_required"] is True
+    assert payload[0]["last_attempt_info"]["origin"] == "admin"
+    assert payload[0]["last_attempt_info"]["handoff_state"] == "failure"
+    assert payload[0]["last_attempt_info"]["error_message"] == "CMMS backend returned malformed payload"
 
 
 def test_analyze_persists_proposal_record(monkeypatch, tmp_path):
@@ -270,6 +359,46 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert fake_connection.proposals["REC-1"]["work_order_id"] == "WO-REC-1"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["approved_at"] == payload["approved_at"]
     assert fake_connection.closed is True
+
+
+def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class SnapshotAdapter:
+        backend_name = "snapshot"
+
+        def create_work_order(self, recommendation):
+            return {
+                "wo_id": "WO-REC-1",
+                "status": "DRAFT",
+                "backend": self.backend_name,
+                "workorder_created_at": "2026-03-15T10:05:00Z",
+                "handoff_completed_at": "2026-03-15T10:05:30Z",
+                "workorder_completed_at": None,
+                "response": {"status": "DRAFT"},
+            }
+
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: SnapshotAdapter())
+
+    client = TestClient(app)
+    assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"}).status_code == 200
+
+    response = client.get("/api/v1/agents/pm/proposals")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["work_order_id"] == "WO-REC-1"
+    assert payload[0]["work_order_snapshot"]["wo_id"] == "WO-REC-1"
+    assert payload[0]["work_order_snapshot"]["status"] == "DRAFT"
+    assert payload[0]["work_order_snapshot"]["workorder_created_at"] == "2026-03-15T10:05:00Z"
+    assert payload[0]["work_order_snapshot"]["handoff_completed_at"] == "2026-03-15T10:05:30Z"
+    assert payload[0]["work_order_snapshot"]["workorder_completed_at"] is None
 
 
 def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_path):
