@@ -2688,6 +2688,60 @@
 			return `${minutes}m`;
 		}
 
+		function formatMinutesAsDuration(totalMinutes) {
+			if (typeof totalMinutes !== "number" || Number.isNaN(totalMinutes) || totalMinutes < 0) {
+				return "-";
+			}
+			const days = Math.floor(totalMinutes / (24 * 60));
+			const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+			const minutes = totalMinutes % 60;
+			if (days > 0) {
+				return `${days}d ${hours}h`;
+			}
+			if (hours > 0) {
+				return `${hours}h ${minutes}m`;
+			}
+			return `${minutes}m`;
+		}
+
+		function elapsedMinutesSince(timestamp) {
+			const parsed = parseTimestamp(timestamp);
+			if (!parsed) {
+				return null;
+			}
+			return Math.max(0, Math.round((Date.now() - parsed.getTime()) / 60000));
+		}
+
+		function agingDescriptor(timestamp) {
+			const elapsedMinutes = elapsedMinutesSince(timestamp);
+			if (elapsedMinutes === null) {
+				return {
+					label: "No timestamp",
+					className: "trend-steady",
+					detail: "No recent attempt timestamp is available yet.",
+				};
+			}
+			if (elapsedMinutes >= 24 * 60) {
+				return {
+					label: "Aging risk",
+					className: "trend-rising",
+					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
+				};
+			}
+			if (elapsedMinutes >= 6 * 60) {
+				return {
+					label: "SLA watch",
+					className: "trend-rising",
+					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
+				};
+			}
+			return {
+				label: "Fresh",
+				className: "trend-falling",
+				detail: `Last attempt was ${formatMinutesAsDuration(elapsedMinutes)} ago.`,
+			};
+		}
+
 		function normalizeHandoffProposal(proposal) {
 			const attempts = Array.isArray(proposal?.approval_history) ? proposal.approval_history : [];
 			const latestAttempt = Object.keys(asObject(proposal?.last_attempt_info)).length
@@ -2726,6 +2780,7 @@
 				return null;
 			}
 			if (!normalized.retryAllowed && normalized.attemptsRemaining <= 0) {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
 				return {
 					...normalized,
 					priority: 400 + normalized.attemptCount,
@@ -2733,9 +2788,13 @@
 					headline: "Retry limit reached",
 					toneClass: "trend-rising",
 					detail: `${normalized.proposalId} exhausted ${normalized.maxAttempts} handoff attempts and now needs connector cleanup before another push.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageDetail: aging.detail,
 				};
 			}
 			if (normalized.handoffState === "failure") {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
 				return {
 					...normalized,
 					priority: 340 + normalized.attemptCount,
@@ -2743,9 +2802,13 @@
 					headline: normalized.adminRetryRequired ? "Admin retry required" : "Connector failure",
 					toneClass: "trend-rising",
 					detail: `${normalized.proposalId} failed on the last connector attempt and has ${normalized.attemptsRemaining} retries left.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageDetail: aging.detail,
 				};
 			}
 			if (normalized.retryAllowed && normalized.adminRetryRequired) {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
 				return {
 					...normalized,
 					priority: 260 + normalized.attemptCount,
@@ -2753,6 +2816,9 @@
 					headline: "Admin retry required",
 					toneClass: "trend-steady",
 					detail: `${normalized.proposalId} is waiting on an admin or maintainer retry after ${normalized.attemptCount} attempt${normalized.attemptCount === 1 ? "" : "s"}.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageDetail: aging.detail,
 				};
 			}
 			return null;
@@ -2992,6 +3058,7 @@
 			const followThrough = normalizeFollowThroughProposal(proposal);
 			const phase = currentFollowThroughPhase(followThrough);
 			const stages = followThroughStages(followThrough);
+			const aging = agingDescriptor(followThrough.lastAttemptAt || followThrough.approvedAt);
 			const leadTimeChip = followThrough.workOrderCreatedAt && followThrough.approvedAt
 				? `Approval to work order ${formatElapsed(followThrough.approvedAt, followThrough.workOrderCreatedAt)}`
 				: (followThrough.workOrderCompletedAt && followThrough.workOrderCreatedAt
@@ -3001,7 +3068,7 @@
 				? renderOutcomesNote("Closed", "Work order follow-through complete", `${followThrough.workOrderId || "The linked work order"} has completed its lifecycle for this recommendation.`)
 				: (followThrough.workOrderId
 					? renderOutcomesNote("Open", "Work order is active", `${followThrough.workOrderId} is linked to this recommendation and is still moving through the CMMS lifecycle.`)
-					: renderOutcomesNote("Watch", "Still waiting on downstream follow-through", phase.detail, phase.className === "trend-rising" ? "warn" : ""));
+					: renderOutcomesNote(aging.label, "Still waiting on downstream follow-through", `${phase.detail} ${aging.detail}`, phase.className === "trend-rising" ? "warn" : ""));
 			return `
 				<div class="follow-panel">
 					<div class="follow-summary">
@@ -3015,6 +3082,7 @@
 							<span class="chip">Proposal ${escapeHtml(followThrough.proposalId)}</span>
 							<span class="chip">Work order ${escapeHtml(followThrough.workOrderId || "-")}</span>
 							<span class="chip ${escapeHtml(phase.className)}">${escapeHtml(phase.badge)}</span>
+							${!followThrough.workOrderCompletedAt ? `<span class="chip ${escapeHtml(aging.className)}">${escapeHtml(aging.label)}</span>` : ""}
 							${leadTimeChip ? `<span class="chip">${escapeHtml(leadTimeChip)}</span>` : ""}
 						</div>
 					</div>
@@ -3100,10 +3168,12 @@
 								<span class="chip">Attempts ${escapeHtml(row.attemptCount)} of ${escapeHtml(row.maxAttempts)}</span>
 								<span class="chip">Retries remaining ${escapeHtml(row.attemptsRemaining)}</span>
 								${row.workOrderId ? `<span class="chip">Work order ${escapeHtml(row.workOrderId)}</span>` : ""}
+								${row.ageLabel ? `<span class="chip ${escapeHtml(row.ageClass || "trend-steady")}">${escapeHtml(row.ageLabel)}</span>` : ""}
 								${row.approvedBy ? `<span class="chip">Last actor ${escapeHtml(row.approvedBy)}</span>` : ""}
 								${row.lastMessage ? `<span class="chip">${escapeHtml(row.lastMessage)}</span>` : ""}
 								${row.proposalId === currentProposalId ? '<span class="chip trend-rising">Current run proposal</span>' : ""}
 							</div>
+							${row.ageDetail ? `<div class="footer-note">${escapeHtml(row.ageDetail)}</div>` : ""}
 							<div class="pm-actions">
 								<button
 									type="button"

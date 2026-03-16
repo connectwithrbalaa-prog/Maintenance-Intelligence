@@ -21,6 +21,7 @@ test('portal handoff exceptions: ranks blocked PM proposals and highlights the c
   await expect(handoffPanel.getByText('Lead proposal REC-77', { exact: true })).toBeVisible();
   await expect(leadItem).toContainText('#1 · REC-77');
   await expect(leadItem).toContainText('Retry limit reached');
+  await expect(leadItem).toContainText(/SLA watch|Aging risk/);
   await expect(leadItem.getByRole('link', { name: 'Open audit trail' })).toBeVisible();
   await expect(leadItem.getByRole('button', { name: 'Run admin retry' })).toBeDisabled();
   await expect(currentItem).toContainText('#3 · REC-44');

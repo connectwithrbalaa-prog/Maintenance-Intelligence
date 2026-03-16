@@ -14,6 +14,7 @@ test('portal follow-through snapshot: shows admin retry state for the active rec
   await expect(followThroughSection).toContainText('Proposal REC-44');
   await expect(followThroughSection).toContainText('Work order creation');
   await expect(followThroughSection).toContainText('Not created');
+  await expect(followThroughSection).toContainText(/SLA watch|Aging risk/);
 });
 
 test('portal follow-through snapshot: shows completed work order lifecycle when present', async ({ page }) => {
