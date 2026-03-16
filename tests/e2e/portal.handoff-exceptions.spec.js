@@ -15,13 +15,17 @@ test('portal handoff exceptions: ranks blocked PM proposals and highlights the c
   await expect(handoffPanel.getByText('Current proposal exception state', { exact: true })).toBeVisible();
   await expect(handoffPanel.locator('.handoff-hero-value')).toHaveText('Admin retry required');
   await expect(handoffPanel.locator('.handoff-hero-meta')).toHaveText('REC-44 is waiting on an admin or maintainer retry after 1 attempt.');
+  await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
+  await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
   await expect(handoffPanel.getByText('More urgent handoffs exist', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('REC-77 currently ranks above REC-44 in the exceptions queue.', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('View All exceptions', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('Source /api/v1/agents/pm/proposals', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('Lead proposal REC-77', { exact: true })).toBeVisible();
   await expect(leadItem).toContainText('#1 · REC-77');
   await expect(leadItem).toContainText('Retry limit reached');
   await expect(leadItem).toContainText(/SLA watch|Aging risk/);
+  await expect(leadItem).toContainText('Age');
   await expect(leadItem.getByRole('link', { name: 'Open audit trail' })).toBeVisible();
   await expect(leadItem.getByRole('button', { name: 'Run admin retry' })).toBeDisabled();
   await expect(currentItem).toContainText('#3 · REC-44');
@@ -48,6 +52,22 @@ test('portal handoff exceptions: admin can trigger queue retry and clear the lea
 
   await expect(handoffPanel.getByText('Current proposal is clear', { exact: true })).toBeVisible();
   await expect(handoffPanel.locator('.handoff-item').filter({ hasText: 'REC-44' })).toHaveCount(0);
+});
+
+test('portal handoff exceptions: queue view can focus retry limits only', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+
+  const handoffPanel = page.locator('.handoff-panel');
+  await page.getByLabel('Handoff queue view').selectOption('limit-reached');
+
+  await expect(handoffPanel.getByText('View Retry limits', { exact: true })).toBeVisible();
+  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+  await expect(handoffPanel.locator('.handoff-item').first()).toContainText('REC-77');
+  await expect(handoffPanel.locator('.handoff-item').first()).toContainText('Retry limit reached');
+  await expect(handoffPanel.locator('.handoff-item').first()).not.toContainText('REC-44');
 });
 
 test('portal handoff exceptions: shows a failure state when the proposal queue is unavailable', async ({ page }) => {

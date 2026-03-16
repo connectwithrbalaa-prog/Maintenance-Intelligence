@@ -278,6 +278,23 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Run admin retry" in page.text
     assert "Open follow-through" in page.text
     assert "Open audit trail" in page.text
+    assert "Queue view" in page.text
+    assert "Sort order" in page.text
+    assert "Handoff queue view" in page.text
+    assert "Handoff queue sort" in page.text
+    assert "All exceptions" in page.text
+    assert "Admin retries only" in page.text
+    assert "Retry limits only" in page.text
+    assert "Oldest waiting first" in page.text
+    assert "No exceptions in this view" in page.text
+    assert "Filtered out" in page.text
+    assert "View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}" in page.text
+    assert "Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}" in page.text
+    assert "handoffRowMatchesView" in page.text
+    assert "handoffRowsForDisplay" in page.text
+    assert "handoffViewLabel" in page.text
+    assert "handoffViewSelect" in page.text
+    assert "handoffSortSelect" in page.text
     assert "Admin role required for retry." in page.text
     assert "data-handoff-retry-proposal-id" in page.text
     assert "data-handoff-focus-run-id" in page.text

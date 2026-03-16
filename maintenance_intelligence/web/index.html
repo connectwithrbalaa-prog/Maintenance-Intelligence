@@ -1726,6 +1726,8 @@
 				loading: false,
 				error: "",
 				limit: 6,
+				view: "all",
+				sort: "priority",
 				actionInFlightByProposalId: new Set(),
 				lastActionByProposalId: new Map(),
 			},
@@ -2718,6 +2720,7 @@
 				return {
 					label: "No timestamp",
 					className: "trend-steady",
+					elapsedMinutes: null,
 					detail: "No recent attempt timestamp is available yet.",
 				};
 			}
@@ -2725,6 +2728,7 @@
 				return {
 					label: "Aging risk",
 					className: "trend-rising",
+					elapsedMinutes,
 					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
 				};
 			}
@@ -2732,12 +2736,14 @@
 				return {
 					label: "SLA watch",
 					className: "trend-rising",
+					elapsedMinutes,
 					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
 				};
 			}
 			return {
 				label: "Fresh",
 				className: "trend-falling",
+				elapsedMinutes,
 				detail: `Last attempt was ${formatMinutesAsDuration(elapsedMinutes)} ago.`,
 			};
 		}
@@ -2784,12 +2790,14 @@
 				return {
 					...normalized,
 					priority: 400 + normalized.attemptCount,
+					classification: "limit-reached",
 					badge: "Limit",
 					headline: "Retry limit reached",
 					toneClass: "trend-rising",
 					detail: `${normalized.proposalId} exhausted ${normalized.maxAttempts} handoff attempts and now needs connector cleanup before another push.`,
 					ageLabel: aging.label,
 					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
 					ageDetail: aging.detail,
 				};
 			}
@@ -2798,12 +2806,14 @@
 				return {
 					...normalized,
 					priority: 340 + normalized.attemptCount,
+					classification: "connector-failure",
 					badge: "Failure",
 					headline: normalized.adminRetryRequired ? "Admin retry required" : "Connector failure",
 					toneClass: "trend-rising",
 					detail: `${normalized.proposalId} failed on the last connector attempt and has ${normalized.attemptsRemaining} retries left.`,
 					ageLabel: aging.label,
 					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
 					ageDetail: aging.detail,
 				};
 			}
@@ -2812,12 +2822,14 @@
 				return {
 					...normalized,
 					priority: 260 + normalized.attemptCount,
+					classification: "admin-retry",
 					badge: "Retry",
 					headline: "Admin retry required",
 					toneClass: "trend-steady",
 					detail: `${normalized.proposalId} is waiting on an admin or maintainer retry after ${normalized.attemptCount} attempt${normalized.attemptCount === 1 ? "" : "s"}.`,
 					ageLabel: aging.label,
 					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
 					ageDetail: aging.detail,
 				};
 			}
@@ -2828,14 +2840,53 @@
 			const proposals = Array.isArray(report) ? report : [];
 			return proposals
 				.map((proposal) => describeHandoffException(proposal))
-				.filter(Boolean)
+				.filter(Boolean);
+		}
+
+		function handoffRowMatchesView(row, view) {
+			if (view === "admin-retry") {
+				return row.classification === "admin-retry";
+			}
+			if (view === "limit-reached") {
+				return row.classification === "limit-reached";
+			}
+			if (view === "aging-risk") {
+				return row.ageLabel === "SLA watch" || row.ageLabel === "Aging risk";
+			}
+			return true;
+		}
+
+		function handoffViewLabel(view) {
+			if (view === "admin-retry") {
+				return "Admin retries";
+			}
+			if (view === "limit-reached") {
+				return "Retry limits";
+			}
+			if (view === "aging-risk") {
+				return "SLA watch";
+			}
+			return "All exceptions";
+		}
+
+		function handoffRowsForDisplay(exceptionRows) {
+			const view = state.handoffExceptions.view;
+			const sortMode = state.handoffExceptions.sort;
+			const rows = exceptionRows
+				.filter((row) => handoffRowMatchesView(row, view))
 				.sort((left, right) => {
+					if (sortMode === "age") {
+						if ((right.ageMinutes || 0) !== (left.ageMinutes || 0)) {
+							return (right.ageMinutes || 0) - (left.ageMinutes || 0);
+						}
+						return right.updatedSortTime - left.updatedSortTime;
+					}
 					if (right.priority !== left.priority) {
 						return right.priority - left.priority;
 					}
 					return right.updatedSortTime - left.updatedSortTime;
-				})
-				.slice(0, state.handoffExceptions.limit);
+				});
+			return rows.slice(0, state.handoffExceptions.limit);
 		}
 
 		function handoffCurrentProposalRow(run, exceptionRows) {
@@ -3101,7 +3152,39 @@
 		}
 
 		function renderHandoffExceptionsPanel(run) {
-			const exceptionRows = handoffExceptionRows(state.handoffExceptions.report);
+			const allExceptionRows = handoffExceptionRows(state.handoffExceptions.report);
+			const exceptionRows = handoffRowsForDisplay(allExceptionRows);
+			const filteredOutCount = Math.max(0, allExceptionRows.length - exceptionRows.length);
+			const controlsMarkup = `
+				<div class="outcomes-controls" aria-label="Handoff queue controls">
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Queue view</div>
+							<div class="outcomes-control-hint">Focus this list on retry approvals, exhausted limits, or stale items.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffViewSelect" aria-label="Handoff queue view">
+								<option value="all" ${state.handoffExceptions.view === "all" ? "selected" : ""}>All exceptions</option>
+								<option value="admin-retry" ${state.handoffExceptions.view === "admin-retry" ? "selected" : ""}>Admin retries only</option>
+								<option value="limit-reached" ${state.handoffExceptions.view === "limit-reached" ? "selected" : ""}>Retry limits only</option>
+								<option value="aging-risk" ${state.handoffExceptions.view === "aging-risk" ? "selected" : ""}>SLA watch and aging risk</option>
+							</select>
+						</div>
+					</div>
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Sort order</div>
+							<div class="outcomes-control-hint">Sort by urgency score or by longest waiting handoff age.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffSortSelect" aria-label="Handoff queue sort">
+								<option value="priority" ${state.handoffExceptions.sort === "priority" ? "selected" : ""}>Priority first</option>
+								<option value="age" ${state.handoffExceptions.sort === "age" ? "selected" : ""}>Oldest waiting first</option>
+							</select>
+						</div>
+					</div>
+				</div>
+			`;
 			if (state.handoffExceptions.loading) {
 				return `
 					<div class="handoff-panel">
@@ -3116,10 +3199,30 @@
 					</div>
 				`;
 			}
-			if (!exceptionRows.length) {
+			if (!allExceptionRows.length) {
 				return `
 					<div class="handoff-panel">
 						${renderOutcomesNote("Clear", "No handoff exceptions right now", "There are no PM proposals waiting on retry, escalation, or connector cleanup right now.")}
+					</div>
+				`;
+			}
+			if (!exceptionRows.length) {
+				return `
+					<div class="handoff-panel">
+						<div class="handoff-summary">
+							<div class="handoff-hero">
+								<div class="handoff-hero-label">Current proposal exception state</div>
+								<div class="handoff-hero-value">Filtered</div>
+								<div class="handoff-hero-meta">No handoff exceptions match the current queue view. Switch the view to continue triage.</div>
+							</div>
+							<div class="outcomes-chip-row">
+								<span class="chip">Queue size ${escapeHtml(allExceptionRows.length)}</span>
+								<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
+								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
+							</div>
+						</div>
+						${controlsMarkup}
+						${renderOutcomesNote("Filtered", "No exceptions in this view", "Try All exceptions or SLA watch view to inspect the full queue.")}
 					</div>
 				`;
 			}
@@ -3145,10 +3248,13 @@
 						<div class="outcomes-chip-row">
 							<span class="chip">Queue size ${escapeHtml(exceptionRows.length)}</span>
 							<span class="chip">Source /api/v1/agents/pm/proposals</span>
+							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
 							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
+							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}
 						</div>
 					</div>
+					${controlsMarkup}
 					${noteMarkup}
 					<ol class="handoff-list">${exceptionRows.map((row, index) => `
 						${(() => {
@@ -3169,6 +3275,7 @@
 								<span class="chip">Retries remaining ${escapeHtml(row.attemptsRemaining)}</span>
 								${row.workOrderId ? `<span class="chip">Work order ${escapeHtml(row.workOrderId)}</span>` : ""}
 								${row.ageLabel ? `<span class="chip ${escapeHtml(row.ageClass || "trend-steady")}">${escapeHtml(row.ageLabel)}</span>` : ""}
+								${typeof row.ageMinutes === "number" ? `<span class="chip">Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}</span>` : ""}
 								${row.approvedBy ? `<span class="chip">Last actor ${escapeHtml(row.approvedBy)}</span>` : ""}
 								${row.lastMessage ? `<span class="chip">${escapeHtml(row.lastMessage)}</span>` : ""}
 								${row.proposalId === currentProposalId ? '<span class="chip trend-rising">Current run proposal</span>' : ""}
@@ -4031,6 +4138,22 @@
 					await selectRun(targetRunId);
 				});
 			});
+
+			const handoffViewSelect = document.getElementById("handoffViewSelect");
+			if (handoffViewSelect) {
+				handoffViewSelect.addEventListener("change", () => {
+					state.handoffExceptions.view = handoffViewSelect.value || "all";
+					renderDetail(run);
+				});
+			}
+
+			const handoffSortSelect = document.getElementById("handoffSortSelect");
+			if (handoffSortSelect) {
+				handoffSortSelect.addEventListener("change", () => {
+					state.handoffExceptions.sort = handoffSortSelect.value === "age" ? "age" : "priority";
+					renderDetail(run);
+				});
+			}
 
 			const outcomesScopeSelect = document.getElementById("outcomesScopeSelect");
 			if (outcomesScopeSelect) {
