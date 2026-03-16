@@ -290,10 +290,12 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Showing top ${escapeHtml(state.handoffExceptions.limit)}" in page.text
     assert "All exceptions" in page.text
     assert "Admin retries only" in page.text
+    assert "Connector failures only" in page.text
     assert "Retry limits only" in page.text
     assert "Oldest waiting first" in page.text
     assert "No exceptions in this filter" in page.text
     assert "Filtered out" in page.text
+    assert "Connector failures" in page.text
     assert "View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}" in page.text
     assert "Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}" in page.text
     assert "handoffRowMatchesView" in page.text

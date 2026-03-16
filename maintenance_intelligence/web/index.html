@@ -1839,7 +1839,7 @@
 
 		function normalizeHandoffQueueView(view) {
 			const nextView = asString(view || "").toLowerCase();
-			if (["all", "admin-retry", "limit-reached", "aging-risk"].includes(nextView)) {
+			if (["all", "admin-retry", "connector-failure", "limit-reached", "aging-risk"].includes(nextView)) {
 				return nextView;
 			}
 			return "all";
@@ -2951,6 +2951,9 @@
 			if (view === "admin-retry") {
 				return row.classification === "admin-retry";
 			}
+			if (view === "connector-failure") {
+				return row.classification === "connector-failure";
+			}
 			if (view === "limit-reached") {
 				return row.classification === "limit-reached";
 			}
@@ -2963,6 +2966,9 @@
 		function handoffViewLabel(view) {
 			if (view === "admin-retry") {
 				return "Admin retries";
+			}
+			if (view === "connector-failure") {
+				return "Connector failures";
 			}
 			if (view === "limit-reached") {
 				return "Retry limits";
@@ -3306,6 +3312,7 @@
 							<select id="handoffViewSelect" aria-label="Handoff queue view">
 								<option value="all" ${state.handoffExceptions.view === "all" ? "selected" : ""}>All exceptions</option>
 								<option value="admin-retry" ${state.handoffExceptions.view === "admin-retry" ? "selected" : ""}>Admin retries only</option>
+								<option value="connector-failure" ${state.handoffExceptions.view === "connector-failure" ? "selected" : ""}>Connector failures only</option>
 								<option value="limit-reached" ${state.handoffExceptions.view === "limit-reached" ? "selected" : ""}>Retry limits only</option>
 								<option value="aging-risk" ${state.handoffExceptions.view === "aging-risk" ? "selected" : ""}>SLA watch and aging risk</option>
 							</select>

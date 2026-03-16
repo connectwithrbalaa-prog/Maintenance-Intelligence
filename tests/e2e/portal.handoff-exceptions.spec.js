@@ -71,6 +71,23 @@ test('portal handoff exceptions: queue view can focus retry limits only', async 
   await expect(handoffPanel.locator('.handoff-item').first()).not.toContainText('REC-44');
 });
 
+test('portal handoff exceptions: queue view can focus connector failures only', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+
+  const handoffPanel = page.locator('.handoff-panel');
+  await page.getByLabel('Handoff queue view').selectOption('connector-failure');
+
+  await expect(handoffPanel.getByText('View Connector failures', { exact: true })).toBeVisible();
+  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+  await expect(handoffPanel.locator('.handoff-item').first()).toContainText('REC-21');
+  await expect(handoffPanel.locator('.handoff-item').first()).toContainText('failed on the last connector attempt');
+  await expect(handoffPanel.locator('.handoff-item').first()).not.toContainText('REC-44');
+  await expect(handoffPanel.locator('.handoff-item').first()).not.toContainText('REC-77');
+});
+
 test('portal handoff exceptions: queue preferences persist per user identity', async ({ page }) => {
   const harness = createPortalHarness();
   await harness.install(page);
