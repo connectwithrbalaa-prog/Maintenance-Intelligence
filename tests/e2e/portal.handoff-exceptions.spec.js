@@ -223,3 +223,18 @@ test('portal handoff exceptions: sort chip reflects the active sort mode and upd
   await expect(handoffPanel.getByText('Sort Oldest first', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('Sort Priority first', { exact: true })).not.toBeVisible();
 });
+
+test('portal handoff exceptions: retries remaining chip updates with queue view filters', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+  const summaryRow = handoffPanel.locator('.handoff-summary .outcomes-chip-row');
+
+  await expect(summaryRow.getByText('Retries remaining 4', { exact: true })).toBeVisible();
+
+  await page.getByLabel('Handoff queue view').selectOption('connector-failure');
+  await expect(summaryRow.getByText('Retries remaining 2', { exact: true })).toBeVisible();
+  await expect(summaryRow.getByText('Retries remaining 4', { exact: true })).not.toBeVisible();
+});

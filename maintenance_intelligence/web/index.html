@@ -3034,6 +3034,10 @@
 			return rows.slice(0, state.handoffExceptions.limit);
 		}
 
+		function handoffRetriesRemaining(exceptionRows) {
+			return exceptionRows.reduce((total, row) => total + Math.max(0, asNumber(row.attemptsRemaining)), 0);
+		}
+
 		function handoffCurrentProposalRow(run, exceptionRows) {
 			const proposalId = asString(run?.recommendation_id || run?.run_id);
 			if (!proposalId) {
@@ -3300,6 +3304,7 @@
 			const allExceptionRows = handoffExceptionRows(state.handoffExceptions.report);
 			const exceptionRows = handoffRowsForDisplay(allExceptionRows);
 			const filteredOutCount = Math.max(0, allExceptionRows.length - exceptionRows.length);
+			const retriesRemaining = handoffRetriesRemaining(exceptionRows);
 			const ageBucketFilterMarkup = `
 				<div class="outcomes-chip-row" aria-label="Handoff queue age filters">
 					<button type="button" class="chip" data-handoff-age-bucket="all" aria-pressed="${state.handoffExceptions.ageBucket === "all" ? "true" : "false"}">All ages</button>
@@ -3389,6 +3394,7 @@
 								<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 								<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
 								<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
+								<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
 								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
 							</div>
 						</div>
@@ -3423,6 +3429,7 @@
 							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 							<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
 							<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
+							<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
 							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
 							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
 							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}
