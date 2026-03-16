@@ -1233,6 +1233,29 @@
 			color: var(--text);
 		}
 
+		.handoff-age-chips {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.handoff-age-chips button {
+			padding: 8px 10px;
+			border-radius: 999px;
+			border: 1px solid rgba(24, 34, 38, 0.12);
+			background: rgba(24, 34, 38, 0.05);
+			font: inherit;
+			font-size: 12px;
+			cursor: pointer;
+			color: var(--muted);
+		}
+
+		.handoff-age-chips button[aria-pressed="true"] {
+			background: rgba(14, 124, 102, 0.15);
+			color: var(--text);
+			border-color: rgba(14, 124, 102, 0.38);
+		}
+
 		.outcomes-summary {
 			display: grid;
 			grid-template-columns: minmax(220px, 0.95fr) minmax(0, 1.25fr);
@@ -1728,6 +1751,7 @@
 				limit: 6,
 				view: "all",
 				sort: "priority",
+				ageBucket: "all",
 				actionInFlightByProposalId: new Set(),
 				lastActionByProposalId: new Map(),
 			},
@@ -1825,10 +1849,19 @@
 			return asString(sortMode || "").toLowerCase() === "age" ? "age" : "priority";
 		}
 
+		function normalizeHandoffQueueAgeBucket(ageBucket) {
+			const nextBucket = asString(ageBucket || "").toLowerCase();
+			if (["all", "fresh", "sla-watch", "aging-risk"].includes(nextBucket)) {
+				return nextBucket;
+			}
+			return "all";
+		}
+
 		function readHandoffQueuePreferences(identity = state.session) {
 			const fallback = {
 				view: "all",
 				sort: "priority",
+				ageBucket: "all",
 			};
 			try {
 				const raw = window.localStorage.getItem(handoffQueuePreferencesStorageKey(identity));
@@ -1839,6 +1872,7 @@
 				return {
 					view: normalizeHandoffQueueView(parsed.view),
 					sort: normalizeHandoffQueueSort(parsed.sort),
+					ageBucket: normalizeHandoffQueueAgeBucket(parsed.ageBucket),
 				};
 			} catch (error) {
 				void error;
@@ -1850,12 +1884,14 @@
 			const nextPreferences = asObject(preferences);
 			state.handoffExceptions.view = normalizeHandoffQueueView(nextPreferences.view || state.handoffExceptions.view);
 			state.handoffExceptions.sort = normalizeHandoffQueueSort(nextPreferences.sort || state.handoffExceptions.sort);
+			state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(nextPreferences.ageBucket || state.handoffExceptions.ageBucket);
 		}
 
 		function writeHandoffQueuePreferences(identity = state.session) {
 			const payload = {
 				view: normalizeHandoffQueueView(state.handoffExceptions.view),
 				sort: normalizeHandoffQueueSort(state.handoffExceptions.sort),
+				ageBucket: normalizeHandoffQueueAgeBucket(state.handoffExceptions.ageBucket),
 			};
 			window.localStorage.setItem(handoffQueuePreferencesStorageKey(identity), JSON.stringify(payload));
 		}
@@ -2925,11 +2961,39 @@
 			return "All exceptions";
 		}
 
+		function handoffAgeBucketLabel(ageBucket) {
+			if (ageBucket === "fresh") {
+				return "Fresh";
+			}
+			if (ageBucket === "sla-watch") {
+				return "SLA watch";
+			}
+			if (ageBucket === "aging-risk") {
+				return "Aging risk";
+			}
+			return "All ages";
+		}
+
+		function handoffRowMatchesAgeBucket(row, ageBucket) {
+			if (ageBucket === "fresh") {
+				return row.ageLabel === "Fresh" || row.ageLabel === "No timestamp";
+			}
+			if (ageBucket === "sla-watch") {
+				return row.ageLabel === "SLA watch";
+			}
+			if (ageBucket === "aging-risk") {
+				return row.ageLabel === "Aging risk";
+			}
+			return true;
+		}
+
 		function handoffRowsForDisplay(exceptionRows) {
 			const view = state.handoffExceptions.view;
 			const sortMode = state.handoffExceptions.sort;
+			const ageBucket = state.handoffExceptions.ageBucket;
 			const rows = exceptionRows
 				.filter((row) => handoffRowMatchesView(row, view))
+				.filter((row) => handoffRowMatchesAgeBucket(row, ageBucket))
 				.sort((left, right) => {
 					if (sortMode === "age") {
 						if ((right.ageMinutes || 0) !== (left.ageMinutes || 0)) {
@@ -3211,6 +3275,14 @@
 			const allExceptionRows = handoffExceptionRows(state.handoffExceptions.report);
 			const exceptionRows = handoffRowsForDisplay(allExceptionRows);
 			const filteredOutCount = Math.max(0, allExceptionRows.length - exceptionRows.length);
+			const ageBucketFilterMarkup = `
+				<div class="outcomes-chip-row" aria-label="Handoff queue age filters">
+					<button type="button" class="chip" data-handoff-age-bucket="all" aria-pressed="${state.handoffExceptions.ageBucket === "all" ? "true" : "false"}">All ages</button>
+					<button type="button" class="chip" data-handoff-age-bucket="fresh" aria-pressed="${state.handoffExceptions.ageBucket === "fresh" ? "true" : "false"}">Fresh</button>
+					<button type="button" class="chip" data-handoff-age-bucket="sla-watch" aria-pressed="${state.handoffExceptions.ageBucket === "sla-watch" ? "true" : "false"}">SLA watch</button>
+					<button type="button" class="chip" data-handoff-age-bucket="aging-risk" aria-pressed="${state.handoffExceptions.ageBucket === "aging-risk" ? "true" : "false"}">Aging risk</button>
+				</div>
+			`;
 			const controlsMarkup = `
 				<div class="outcomes-controls" aria-label="Handoff queue controls">
 					<div class="outcomes-control">
@@ -3241,6 +3313,7 @@
 						</div>
 					</div>
 				</div>
+				${ageBucketFilterMarkup}
 			`;
 			if (state.handoffExceptions.loading) {
 				return `
@@ -3270,16 +3343,17 @@
 							<div class="handoff-hero">
 								<div class="handoff-hero-label">Current proposal exception state</div>
 								<div class="handoff-hero-value">Filtered</div>
-								<div class="handoff-hero-meta">No handoff exceptions match the current queue view. Switch the view to continue triage.</div>
+								<div class="handoff-hero-meta">No handoff exceptions match the current queue filters. Adjust view or aging chips to continue triage.</div>
 							</div>
 							<div class="outcomes-chip-row">
 								<span class="chip">Queue size ${escapeHtml(allExceptionRows.length)}</span>
 								<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
+								<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
 								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
 							</div>
 						</div>
 						${controlsMarkup}
-						${renderOutcomesNote("Filtered", "No exceptions in this view", "Try All exceptions or SLA watch view to inspect the full queue.")}
+						${renderOutcomesNote("Filtered", "No exceptions in this filter", "Try All ages with All exceptions to inspect the full queue.")}
 					</div>
 				`;
 			}
@@ -3306,6 +3380,7 @@
 							<span class="chip">Queue size ${escapeHtml(exceptionRows.length)}</span>
 							<span class="chip">Source /api/v1/agents/pm/proposals</span>
 							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
+							<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
 							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
 							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
 							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}
@@ -4214,10 +4289,18 @@
 				});
 			}
 
+			elements.detailView.querySelectorAll("[data-handoff-age-bucket]").forEach((button) => {
+				button.addEventListener("click", () => {
+					state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(button.getAttribute("data-handoff-age-bucket"));
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			});
+
 			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
 			if (handoffPreferencesResetButton) {
 				handoffPreferencesResetButton.addEventListener("click", () => {
-					applyHandoffQueuePreferences({ view: "all", sort: "priority" });
+					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all" });
 					writeHandoffQueuePreferences();
 					renderDetail(run);
 				});

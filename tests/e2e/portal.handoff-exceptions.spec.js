@@ -103,6 +103,33 @@ test('portal handoff exceptions: queue preferences persist per user identity', a
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
 });
 
+test('portal handoff exceptions: age bucket chips filter queue and persist on reload', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+
+  const agingRiskChip = handoffPanel.locator('[data-handoff-age-bucket="aging-risk"]');
+  await expect(agingRiskChip).toHaveAttribute('aria-pressed', 'false');
+  await agingRiskChip.click();
+  await expect(agingRiskChip).toHaveAttribute('aria-pressed', 'true');
+  await expect(handoffPanel.getByText('Age filter Aging risk', { exact: true })).toBeVisible();
+  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+  await expect(handoffPanel.locator('.handoff-item').first()).toContainText('Aging risk');
+
+  await page.reload();
+  await expect(handoffPanel.locator('[data-handoff-age-bucket="aging-risk"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(handoffPanel.getByText('Age filter Aging risk', { exact: true })).toBeVisible();
+  await expect(handoffPanel.locator('.handoff-item')).toHaveCount(1);
+
+  const allAgesChip = handoffPanel.locator('[data-handoff-age-bucket="all"]');
+  await allAgesChip.click();
+  await expect(allAgesChip).toHaveAttribute('aria-pressed', 'true');
+  const visibleRows = await handoffPanel.locator('.handoff-item').count();
+  expect(visibleRows).toBeGreaterThan(1);
+});
+
 test('portal handoff exceptions: reset control restores default queue preferences', async ({ page }) => {
   const harness = createPortalHarness();
   await harness.install(page);
@@ -111,13 +138,16 @@ test('portal handoff exceptions: reset control restores default queue preference
 
   await page.getByLabel('Handoff queue view').selectOption('admin-retry');
   await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.locator('[data-handoff-age-bucket="aging-risk"]').click();
   await page.getByRole('button', { name: 'Reset handoff queue preferences' }).click();
 
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.locator('[data-handoff-age-bucket="all"]')).toHaveAttribute('aria-pressed', 'true');
   await page.reload();
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.locator('[data-handoff-age-bucket="all"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('portal handoff exceptions: shows a failure state when the proposal queue is unavailable', async ({ page }) => {

@@ -286,7 +286,7 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Admin retries only" in page.text
     assert "Retry limits only" in page.text
     assert "Oldest waiting first" in page.text
-    assert "No exceptions in this view" in page.text
+    assert "No exceptions in this filter" in page.text
     assert "Filtered out" in page.text
     assert "View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}" in page.text
     assert "Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}" in page.text
@@ -302,6 +302,12 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "handoffQueuePreferencesStorageKey" in page.text
     assert "normalizeHandoffQueueView" in page.text
     assert "normalizeHandoffQueueSort" in page.text
+    assert "normalizeHandoffQueueAgeBucket" in page.text
+    assert "handoffAgeBucketLabel" in page.text
+    assert "handoffRowMatchesAgeBucket" in page.text
+    assert "Handoff queue age filters" in page.text
+    assert "data-handoff-age-bucket" in page.text
+    assert "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}" in page.text
     assert "Reset to defaults" in page.text
     assert "Reset handoff queue preferences" in page.text
     assert "handoffPreferencesResetButton" in page.text
