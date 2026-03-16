@@ -1726,6 +1726,8 @@
 				loading: false,
 				error: "",
 				limit: 6,
+				actionInFlightByProposalId: new Set(),
+				lastActionByProposalId: new Map(),
 			},
 			triage: {
 				report: null,
@@ -2702,6 +2704,7 @@
 				proposalId: asString(proposal?.proposal_id || proposal?.recommendation_id || proposal?.run_id),
 				runId: asString(proposal?.run_id),
 				assetId: asString(proposal?.asset_id),
+				workOrderId: asString(asObject(proposal?.work_order_snapshot).wo_id || proposal?.work_order_id),
 				title: asString(proposal?.title) || "Untitled PM proposal",
 				status: asString(proposal?.status || "pending").toLowerCase(),
 				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
@@ -2780,6 +2783,57 @@
 				currentProposalRow: currentProposalRank ? exceptionRows[currentProposalRank - 1] : null,
 				currentProposalRank,
 			};
+		}
+
+		function handoffQueueActionState(row) {
+			const inFlight = state.handoffExceptions.actionInFlightByProposalId.has(row.proposalId);
+			const isAdmin = portalUserIsAdmin();
+			const retryEligible = Boolean(row.retryAllowed && row.adminRetryRequired && row.attemptsRemaining > 0);
+			return {
+				inFlight,
+				isAdmin,
+				retryEligible,
+				retryEnabled: retryEligible && isAdmin && !inFlight,
+			};
+		}
+
+		function handoffQueueActionMessage(row) {
+			const message = state.handoffExceptions.lastActionByProposalId.get(row.proposalId);
+			return asString(message);
+		}
+
+		async function submitHandoffQueueRetry(row) {
+			if (!row?.proposalId || !portalUserIsAdmin()) {
+				return;
+			}
+			if (!window.confirm(`Admin retry the PM handoff for ${row.proposalId}? ${row.attemptsRemaining} attempts remaining.`)) {
+				return;
+			}
+			state.handoffExceptions.actionInFlightByProposalId.add(row.proposalId);
+			state.handoffExceptions.lastActionByProposalId.set(row.proposalId, "Admin retry in progress...");
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(row.proposalId)}/approve`, { admin_retry: true });
+				state.handoffExceptions.lastActionByProposalId.set(row.proposalId, approval?.detail || `Admin retry submitted for ${row.proposalId}.`);
+				resetHandoffExceptionsReport();
+				await ensureHandoffExceptionsReport();
+				const refreshedSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (refreshedSelectedRun && (refreshedSelectedRun.recommendation_id === row.proposalId || refreshedSelectedRun.run_id === row.runId)) {
+					await loadApprovalHistory(refreshedSelectedRun, { page: 1, size: 3 });
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown retry error";
+				state.handoffExceptions.lastActionByProposalId.set(row.proposalId, message);
+			} finally {
+				state.handoffExceptions.actionInFlightByProposalId.delete(row.proposalId);
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
 		}
 
 		function followThroughProposalForRun(run, proposalsReport) {
@@ -3029,6 +3083,10 @@
 					</div>
 					${noteMarkup}
 					<ol class="handoff-list">${exceptionRows.map((row, index) => `
+						${(() => {
+							const actionState = handoffQueueActionState(row);
+							const actionMessage = handoffQueueActionMessage(row);
+							return `
 						<li class="handoff-item ${row.proposalId === currentProposalId ? "current-proposal" : ""}">
 							<div class="handoff-item-head">
 								<div>
@@ -3041,11 +3099,25 @@
 							<div class="handoff-meta">
 								<span class="chip">Attempts ${escapeHtml(row.attemptCount)} of ${escapeHtml(row.maxAttempts)}</span>
 								<span class="chip">Retries remaining ${escapeHtml(row.attemptsRemaining)}</span>
+								${row.workOrderId ? `<span class="chip">Work order ${escapeHtml(row.workOrderId)}</span>` : ""}
 								${row.approvedBy ? `<span class="chip">Last actor ${escapeHtml(row.approvedBy)}</span>` : ""}
 								${row.lastMessage ? `<span class="chip">${escapeHtml(row.lastMessage)}</span>` : ""}
 								${row.proposalId === currentProposalId ? '<span class="chip trend-rising">Current run proposal</span>' : ""}
 							</div>
+							<div class="pm-actions">
+								<button
+									type="button"
+									data-handoff-retry-proposal-id="${escapeHtml(row.proposalId)}"
+									${actionState.retryEnabled ? "" : "disabled"}
+								>${escapeHtml(actionState.inFlight ? "Running admin retry..." : "Run admin retry")}</button>
+								${!actionState.isAdmin && actionState.retryEligible ? '<span class="muted tiny">Admin role required for retry.</span>' : ''}
+								${row.runId ? `<button type="button" data-handoff-focus-run-id="${escapeHtml(row.runId)}">Open follow-through</button>` : ""}
+								<a href="/api/v1/agents/pm/proposals/${encodeURIComponent(row.proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">Open audit trail</a>
+							</div>
+							${actionMessage ? `<div class="footer-note">${escapeHtml(actionMessage)}</div>` : ""}
 						</li>
+						`;
+						})()}
 					`).join("")}</ol>
 				</div>
 			`;
@@ -3866,6 +3938,30 @@
 				});
 			}
 
+			elements.detailView.querySelectorAll("[data-handoff-retry-proposal-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const proposalId = asString(button.getAttribute("data-handoff-retry-proposal-id"));
+					if (!proposalId) {
+						return;
+					}
+					const row = handoffExceptionRows(state.handoffExceptions.report).find((candidate) => candidate.proposalId === proposalId);
+					if (!row) {
+						return;
+					}
+					await submitHandoffQueueRetry(row);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-handoff-focus-run-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const targetRunId = asString(button.getAttribute("data-handoff-focus-run-id"));
+					if (!targetRunId) {
+						return;
+					}
+					await selectRun(targetRunId);
+				});
+			});
+
 			const outcomesScopeSelect = document.getElementById("outcomesScopeSelect");
 			if (outcomesScopeSelect) {
 				outcomesScopeSelect.addEventListener("change", () => {
@@ -3921,6 +4017,7 @@
 			state.handoffExceptions.report = null;
 			state.handoffExceptions.error = "";
 			state.handoffExceptions.loading = false;
+			state.handoffExceptions.actionInFlightByProposalId.clear();
 		}
 
 		async function ensureOutcomesReport() {

@@ -664,6 +664,85 @@ function createPortalHarness(options = {}) {
       });
     });
 
+    await page.route('**/api/v1/agents/pm/proposals/REC-77/approve', async (route) => {
+      const headers = route.request().headers();
+      const payload = route.request().postDataJSON() || {};
+      expect(Boolean(payload.admin_retry)).toBe(true);
+      if (!['admin', 'maintainer'].includes((headers['x-user-role'] || '').toLowerCase())) {
+        await fulfillError(route, 403, 'Admin retry requires admin or maintainer role');
+        return;
+      }
+      const proposal = pmProposals.find((item) => item.proposal_id === 'REC-77');
+      if (proposal) {
+        Object.assign(proposal, {
+          status: 'approved',
+          handoff_state: 'success',
+          approved_by: headers['x-user-id'] || 'demo.admin',
+          approved_at: '2026-03-15T10:12:00Z',
+          work_order_id: 'WO-REC-77',
+          attempt_count: 4,
+          attempts_remaining: 0,
+          max_attempts: 4,
+          retry_allowed: false,
+          admin_retry_required: false,
+          updated_at: '2026-03-15T10:12:00Z',
+          last_attempt_info: {
+            attempt_number: 4,
+            attempted_at: '2026-03-15T10:12:00Z',
+            approved_by: headers['x-user-id'] || 'demo.admin',
+            origin: 'admin',
+            handoff_state: 'success',
+            connector_result: { status: 'DRAFT', message: 'Draft work order created after admin retry' },
+            error_message: '',
+          },
+          approval_history: [
+            {
+              attempt_number: 4,
+              attempted_at: '2026-03-15T10:12:00Z',
+              approved_by: headers['x-user-id'] || 'demo.admin',
+              origin: 'admin',
+              handoff_state: 'success',
+              connector_result: { status: 'DRAFT', message: 'Draft work order created after admin retry' },
+              error_message: '',
+            },
+          ],
+          work_order_snapshot: {
+            wo_id: 'WO-REC-77',
+            asset_id: 'COMP-7',
+            status: 'DRAFT',
+            title: 'Repair compressor seals',
+            priority: 'high',
+            workorder_created_at: '2026-03-15T10:13:00Z',
+            handoff_completed_at: '2026-03-15T10:12:00Z',
+            workorder_completed_at: null,
+            metadata: {},
+          },
+        });
+      }
+      await fulfillJson(route, {
+        status: 'approved',
+        handoff_state: 'success',
+        detail: 'PM proposal approved and handed off to the CMMS backend',
+        approved: true,
+        reused_result: false,
+        attempt_count: 4,
+        attempts_remaining: 0,
+        max_attempts: 4,
+        retry_allowed: false,
+        attempt_status: 'success',
+        proposal_id: 'REC-77',
+        approved_by: headers['x-user-id'] || 'demo.admin',
+        approved_at: '2026-03-15T10:12:00Z',
+        proposal: {
+          proposal_id: 'REC-77',
+          approved_by: headers['x-user-id'] || 'demo.admin',
+          approved_at: '2026-03-15T10:12:00Z',
+          work_order_id: 'WO-REC-77',
+        },
+        work_order: { wo_id: 'WO-REC-77', status: 'DRAFT', message: 'Draft work order created after admin retry' },
+      });
+    });
+
     await page.route('**/api/v1/agents/pm/proposals/REC-44/approve', async (route) => {
       const headers = route.request().headers();
       const proposal = pmProposals.find((item) => item.proposal_id === 'REC-44');

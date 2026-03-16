@@ -274,6 +274,13 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "renderHandoffExceptionsPanel" in page.text
     assert "ensureHandoffExceptionsReport" in page.text
     assert "resetHandoffExceptionsReport" in page.text
+    assert "submitHandoffQueueRetry" in page.text
+    assert "Run admin retry" in page.text
+    assert "Open follow-through" in page.text
+    assert "Open audit trail" in page.text
+    assert "Admin role required for retry." in page.text
+    assert "data-handoff-retry-proposal-id" in page.text
+    assert "data-handoff-focus-run-id" in page.text
     assert 'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals")' in page.text
     assert "Live evidence" in page.text
     assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
