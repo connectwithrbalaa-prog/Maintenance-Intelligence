@@ -239,6 +239,24 @@ test('portal handoff exceptions: retries remaining chip updates with queue view 
   await expect(summaryRow.getByText('Retries remaining 4', { exact: true })).not.toBeVisible();
 });
 
+test('portal handoff exceptions: longest wait chip appears in queue summary', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const summaryRow = page.locator('.handoff-panel .handoff-summary .outcomes-chip-row');
+
+  // Chip must be present with a non-empty duration (all fixtures have timestamps)
+  const chip = summaryRow.locator('span.chip', { hasText: /^Longest wait \S/ });
+  await expect(chip).toBeVisible();
+  await expect(chip).not.toHaveText('Longest wait -', { exact: true });
+
+  // Switching to limit-reached (only REC-77 matches) should update the chip
+  await page.getByLabel('Handoff queue view').selectOption('limit-reached');
+  const chipAfter = summaryRow.locator('span.chip', { hasText: /^Longest wait \S/ });
+  await expect(chipAfter).toBeVisible();
+});
+
 test('portal handoff exceptions: view-specific empty state shown per queue view when no rows match', async ({ page }) => {
   // Harness with only a connector-failure row — admin-retry view will be empty
   const harness = createPortalHarness({
