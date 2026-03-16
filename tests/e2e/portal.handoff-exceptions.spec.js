@@ -238,3 +238,55 @@ test('portal handoff exceptions: retries remaining chip updates with queue view 
   await expect(summaryRow.getByText('Retries remaining 2', { exact: true })).toBeVisible();
   await expect(summaryRow.getByText('Retries remaining 4', { exact: true })).not.toBeVisible();
 });
+
+test('portal handoff exceptions: connector-failure view shows a dedicated empty state when no rows match', async ({ page }) => {
+  const harness = createPortalHarness({
+    pmProposals: [
+      {
+        proposal_id: 'REC-44',
+        run_id: 'RUN-123',
+        recommendation_id: 'REC-44',
+        asset_id: 'PUMP-101',
+        title: 'Replace bearing before next shift',
+        status: 'pending',
+        handoff_state: 'pending',
+        attempt_count: 1,
+        attempts_remaining: 2,
+        max_attempts: 3,
+        retry_allowed: true,
+        admin_retry_required: true,
+        updated_at: '2026-03-15T10:00:00Z',
+        last_attempt_info: {
+          attempt_number: 1,
+          attempted_at: '2026-03-15T10:00:00Z',
+          approved_by: 'planner.user',
+          origin: 'approval',
+          handoff_state: 'pending',
+          connector_result: { message: 'Queued for connector retry' },
+          error_message: '',
+        },
+        approval_history: [
+          {
+            attempt_number: 1,
+            attempted_at: '2026-03-15T10:00:00Z',
+            approved_by: 'planner.user',
+            origin: 'approval',
+            handoff_state: 'pending',
+            connector_result: { message: 'Queued for connector retry' },
+            error_message: '',
+          },
+        ],
+        work_order_snapshot: {},
+      },
+    ],
+  });
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+
+  await page.getByLabel('Handoff queue view').selectOption('connector-failure');
+  await expect(handoffPanel.getByText('No connector failures in this filter', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('No proposals currently show connector-failure handoffs in this view. Try All exceptions or broaden the age filter to continue triage.', { exact: true })).toBeVisible();
+  await expect(handoffPanel.getByText('No exceptions in this filter', { exact: true })).not.toBeVisible();
+});

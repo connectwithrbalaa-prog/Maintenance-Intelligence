@@ -3381,6 +3381,13 @@
 				`;
 			}
 			if (!exceptionRows.length) {
+				const connectorFailureEmpty = state.handoffExceptions.view === "connector-failure";
+				const filteredTitle = connectorFailureEmpty
+					? "No connector failures in this filter"
+					: "No exceptions in this filter";
+				const filteredDetail = connectorFailureEmpty
+					? "No proposals currently show connector-failure handoffs in this view. Try All exceptions or broaden the age filter to continue triage."
+					: "Try All ages with All exceptions to inspect the full queue.";
 				return `
 					<div class="handoff-panel">
 						<div class="handoff-summary">
@@ -3399,7 +3406,7 @@
 							</div>
 						</div>
 						${controlsMarkup}
-						${renderOutcomesNote("Filtered", "No exceptions in this filter", "Try All ages with All exceptions to inspect the full queue.")}
+						${renderOutcomesNote("Filtered", filteredTitle, filteredDetail)}
 					</div>
 				`;
 			}
