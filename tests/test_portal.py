@@ -282,6 +282,12 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Sort order" in page.text
     assert "Handoff queue view" in page.text
     assert "Handoff queue sort" in page.text
+    assert "Handoff queue rows shown" in page.text
+    assert "Rows shown" in page.text
+    assert "Top 3" in page.text
+    assert "Top 6" in page.text
+    assert "Top 10" in page.text
+    assert "Showing top ${escapeHtml(state.handoffExceptions.limit)}" in page.text
     assert "All exceptions" in page.text
     assert "Admin retries only" in page.text
     assert "Retry limits only" in page.text
@@ -303,6 +309,7 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "normalizeHandoffQueueView" in page.text
     assert "normalizeHandoffQueueSort" in page.text
     assert "normalizeHandoffQueueAgeBucket" in page.text
+    assert "normalizeHandoffQueueLimit" in page.text
     assert "handoffAgeBucketLabel" in page.text
     assert "handoffRowMatchesAgeBucket" in page.text
     assert "Handoff queue age filters" in page.text

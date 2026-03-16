@@ -17,6 +17,7 @@ test('portal handoff exceptions: ranks blocked PM proposals and highlights the c
   await expect(handoffPanel.locator('.handoff-hero-meta')).toHaveText('REC-44 is waiting on an admin or maintainer retry after 1 attempt.');
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('6');
   await expect(handoffPanel.getByText('More urgent handoffs exist', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('REC-77 currently ranks above REC-44 in the exceptions queue.', { exact: true })).toBeVisible();
   await expect(handoffPanel.getByText('View All exceptions', { exact: true })).toBeVisible();
@@ -78,21 +79,26 @@ test('portal handoff exceptions: queue preferences persist per user identity', a
 
   await page.getByLabel('Handoff queue view').selectOption('limit-reached');
   await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.getByLabel('Handoff queue rows shown').selectOption('3');
   await page.reload();
 
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('limit-reached');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('3');
 
   await applyAdminIdentity(page);
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('6');
 
   await page.getByLabel('Handoff queue view').selectOption('admin-retry');
   await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.getByLabel('Handoff queue rows shown').selectOption('10');
   await page.reload();
 
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('admin-retry');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('10');
 
   await page.locator('#identitySubjectInput').fill('portal.user');
   await page.locator('#identityRoleSelect').selectOption('planner');
@@ -101,6 +107,27 @@ test('portal handoff exceptions: queue preferences persist per user identity', a
 
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('limit-reached');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('age');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('3');
+});
+
+test('portal handoff exceptions: rows shown selector adjusts queue size and persists', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const handoffPanel = page.locator('.handoff-panel');
+  await expect(handoffPanel.getByText('Current proposal exception state', { exact: true })).toBeVisible();
+  await expect(handoffPanel.locator('.handoff-item').first()).toBeVisible();
+
+  await page.getByLabel('Handoff queue rows shown').selectOption('3');
+  const reducedCount = await handoffPanel.locator('.handoff-item').count();
+  expect(reducedCount).toBeLessThanOrEqual(3);
+
+  await page.getByLabel('Handoff queue rows shown').selectOption('10');
+  const expandedCount = await handoffPanel.locator('.handoff-item').count();
+  expect(expandedCount).toBeGreaterThanOrEqual(reducedCount);
+  await page.reload();
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('10');
 });
 
 test('portal handoff exceptions: age bucket chips filter queue and persist on reload', async ({ page }) => {
@@ -138,15 +165,18 @@ test('portal handoff exceptions: reset control restores default queue preference
 
   await page.getByLabel('Handoff queue view').selectOption('admin-retry');
   await page.getByLabel('Handoff queue sort').selectOption('age');
+  await page.getByLabel('Handoff queue rows shown').selectOption('10');
   await page.locator('[data-handoff-age-bucket="aging-risk"]').click();
   await page.getByRole('button', { name: 'Reset handoff queue preferences' }).click();
 
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('6');
   await expect(page.locator('[data-handoff-age-bucket="all"]')).toHaveAttribute('aria-pressed', 'true');
   await page.reload();
   await expect(page.getByLabel('Handoff queue view')).toHaveValue('all');
   await expect(page.getByLabel('Handoff queue sort')).toHaveValue('priority');
+  await expect(page.getByLabel('Handoff queue rows shown')).toHaveValue('6');
   await expect(page.locator('[data-handoff-age-bucket="all"]')).toHaveAttribute('aria-pressed', 'true');
 });
 

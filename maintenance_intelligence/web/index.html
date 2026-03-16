@@ -1857,11 +1857,20 @@
 			return "all";
 		}
 
+		function normalizeHandoffQueueLimit(limitValue) {
+			const nextLimit = asNumber(limitValue) ?? Number.parseInt(asString(limitValue || ""), 10);
+			if ([3, 6, 10].includes(nextLimit)) {
+				return nextLimit;
+			}
+			return 6;
+		}
+
 		function readHandoffQueuePreferences(identity = state.session) {
 			const fallback = {
 				view: "all",
 				sort: "priority",
 				ageBucket: "all",
+				limit: 6,
 			};
 			try {
 				const raw = window.localStorage.getItem(handoffQueuePreferencesStorageKey(identity));
@@ -1873,6 +1882,7 @@
 					view: normalizeHandoffQueueView(parsed.view),
 					sort: normalizeHandoffQueueSort(parsed.sort),
 					ageBucket: normalizeHandoffQueueAgeBucket(parsed.ageBucket),
+					limit: normalizeHandoffQueueLimit(parsed.limit),
 				};
 			} catch (error) {
 				void error;
@@ -1885,6 +1895,7 @@
 			state.handoffExceptions.view = normalizeHandoffQueueView(nextPreferences.view || state.handoffExceptions.view);
 			state.handoffExceptions.sort = normalizeHandoffQueueSort(nextPreferences.sort || state.handoffExceptions.sort);
 			state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(nextPreferences.ageBucket || state.handoffExceptions.ageBucket);
+			state.handoffExceptions.limit = normalizeHandoffQueueLimit(nextPreferences.limit ?? state.handoffExceptions.limit);
 		}
 
 		function writeHandoffQueuePreferences(identity = state.session) {
@@ -1892,6 +1903,7 @@
 				view: normalizeHandoffQueueView(state.handoffExceptions.view),
 				sort: normalizeHandoffQueueSort(state.handoffExceptions.sort),
 				ageBucket: normalizeHandoffQueueAgeBucket(state.handoffExceptions.ageBucket),
+				limit: normalizeHandoffQueueLimit(state.handoffExceptions.limit),
 			};
 			window.localStorage.setItem(handoffQueuePreferencesStorageKey(identity), JSON.stringify(payload));
 		}
@@ -3312,6 +3324,19 @@
 							<button type="button" id="handoffPreferencesResetButton" aria-label="Reset handoff queue preferences">Reset to defaults</button>
 						</div>
 					</div>
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Rows shown</div>
+							<div class="outcomes-control-hint">Control how many queue rows are visible while triaging.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffLimitSelect" aria-label="Handoff queue rows shown">
+								<option value="3" ${state.handoffExceptions.limit === 3 ? "selected" : ""}>Top 3</option>
+								<option value="6" ${state.handoffExceptions.limit === 6 ? "selected" : ""}>Top 6</option>
+								<option value="10" ${state.handoffExceptions.limit === 10 ? "selected" : ""}>Top 10</option>
+							</select>
+						</div>
+					</div>
 				</div>
 				${ageBucketFilterMarkup}
 			`;
@@ -3378,6 +3403,7 @@
 						</div>
 						<div class="outcomes-chip-row">
 							<span class="chip">Queue size ${escapeHtml(exceptionRows.length)}</span>
+							<span class="chip">Showing top ${escapeHtml(state.handoffExceptions.limit)}</span>
 							<span class="chip">Source /api/v1/agents/pm/proposals</span>
 							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
 							<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
@@ -4289,6 +4315,15 @@
 				});
 			}
 
+			const handoffLimitSelect = document.getElementById("handoffLimitSelect");
+			if (handoffLimitSelect) {
+				handoffLimitSelect.addEventListener("change", () => {
+					state.handoffExceptions.limit = normalizeHandoffQueueLimit(handoffLimitSelect.value);
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
 			elements.detailView.querySelectorAll("[data-handoff-age-bucket]").forEach((button) => {
 				button.addEventListener("click", () => {
 					state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(button.getAttribute("data-handoff-age-bucket"));
@@ -4300,7 +4335,7 @@
 			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
 			if (handoffPreferencesResetButton) {
 				handoffPreferencesResetButton.addEventListener("click", () => {
-					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all" });
+					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
 					writeHandoffQueuePreferences();
 					renderDetail(run);
 				});
