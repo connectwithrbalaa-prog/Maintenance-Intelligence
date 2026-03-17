@@ -2834,6 +2834,54 @@
 			`;
 		}
 
+		function repairPlanProcedureLabels(plan) {
+			const normalized = normalizeRepairPlan(plan);
+			return normalized.procedure_steps.map((step, index) => {
+				const stepNumber = step.seq !== null ? Math.round(step.seq) : index + 1;
+				return `Step ${stepNumber}: ${step.action || "Procedure detail pending"}`;
+			});
+		}
+
+		function repairPlanPartLabels(plan) {
+			const normalized = normalizeRepairPlan(plan);
+			if (normalized.parts.length) {
+				return normalized.parts.map((part) => {
+					const primary = part.name || part.description || part.part_id || "Unlabeled part";
+					const quantity = part.quantity ? ` x${part.quantity}${part.unit ? ` ${part.unit}` : ""}` : "";
+					return `${primary}${quantity}`;
+				});
+			}
+			return normalized.parts_list.map((part) => {
+				const primary = part.part_no || part.description || "Suggested part";
+				const quantity = part.qty ? ` x${part.qty}` : "";
+				return `${primary}${quantity}`;
+			});
+		}
+
+		function formatNumericDelta(currentValue, compareValue, suffix = "") {
+			if (typeof currentValue !== "number" || Number.isNaN(currentValue) || typeof compareValue !== "number" || Number.isNaN(compareValue)) {
+				return "Delta unavailable";
+			}
+			const delta = Math.round((currentValue - compareValue) * 10) / 10;
+			if (delta === 0) {
+				return `No change vs compare run${suffix}`;
+			}
+			const prefix = delta > 0 ? "+" : "";
+			return `${prefix}${delta}${suffix} vs compare run`;
+		}
+
+		function formatCurrencyDelta(currentValue, compareValue) {
+			if (typeof currentValue !== "number" || Number.isNaN(currentValue) || typeof compareValue !== "number" || Number.isNaN(compareValue)) {
+				return "Cost delta unavailable";
+			}
+			const delta = Math.round(currentValue - compareValue);
+			if (delta === 0) {
+				return "No cost change vs compare run";
+			}
+			const prefix = delta > 0 ? "+" : "-";
+			return `${prefix}${formatCurrency(Math.abs(delta))} vs compare run`;
+		}
+
 		function comparisonCandidates(run) {
 			const currentAssetId = asString(asObject(run?.context_meta).asset_id);
 			return [...state.runs]
@@ -2983,8 +3031,21 @@
 			const evidenceReferenceDelta = compareListValues(run.evidence_ids, compareRun.evidence_ids);
 			const immediateActionDelta = compareListValues(run.immediate_actions, compareRun.immediate_actions);
 			const pmSuggestionDelta = compareListValues(run.pm_suggestions, compareRun.pm_suggestions);
+			const currentRepairPlan = normalizeRepairPlan(run.repair_plan);
+			const compareRepairPlan = normalizeRepairPlan(compareRun.repair_plan);
+			const currentHasRepairPlan = hasRepairPlanContent(currentRepairPlan);
+			const compareHasRepairPlan = hasRepairPlanContent(compareRepairPlan);
+			const repairPlanStepDelta = compareListValues(repairPlanProcedureLabels(currentRepairPlan), repairPlanProcedureLabels(compareRepairPlan));
+			const repairPlanPartDelta = compareListValues(repairPlanPartLabels(currentRepairPlan), repairPlanPartLabels(compareRepairPlan));
+			const repairPlanToolDelta = compareListValues(currentRepairPlan.tools_required, compareRepairPlan.tools_required);
+			const repairPlanSafetyDelta = compareListValues(currentRepairPlan.safety_requirements, compareRepairPlan.safety_requirements);
 			const compareAssetId = asString(asObject(compareRun.context_meta).asset_id) || "Unscoped asset";
 			const titleDrift = currentTitle === compareTitle ? "Title aligned with compare run" : `Title changed from ${compareTitle}`;
+			const repairPlanStatusDrift = currentHasRepairPlan || compareHasRepairPlan
+				? (currentRepairPlan.status || "pending") === (compareRepairPlan.status || "pending")
+					? `Status aligned at ${currentRepairPlan.status || compareRepairPlan.status || "pending"}`
+					: `Status changed from ${compareRepairPlan.status || "pending"}`
+				: "No repair plans captured yet";
 
 			return `
 				<div class="compare-shell">
@@ -3016,6 +3077,18 @@
 								<span class="chip">Edited ${escapeHtml(formatCountDelta(currentFeedbackCounts.edited, compareFeedbackCounts.edited))}</span>
 							</div>
 							<p class="footer-note">Feedback deltas compare this run against the selected peer.</p>
+						</div>
+						<div class="compare-card">
+							<strong>Repair plan drift</strong>
+							<div class="chips">
+								<span class="chip">${escapeHtml(repairPlanStatusDrift)}</span>
+								<span class="chip">Current ${escapeHtml(currentRepairPlan.plan_id || "No plan")}</span>
+								<span class="chip">Compare ${escapeHtml(compareRepairPlan.plan_id || "No plan")}</span>
+								<span class="chip">${escapeHtml(formatNumericDelta(currentRepairPlan.estimated_duration_hrs, compareRepairPlan.estimated_duration_hrs, " hr"))}</span>
+								<span class="chip">${escapeHtml(formatCurrencyDelta(currentRepairPlan.spare_parts_cost_estimate, compareRepairPlan.spare_parts_cost_estimate))}</span>
+								${currentRepairPlan.permit_type || compareRepairPlan.permit_type ? `<span class="chip">Permit ${escapeHtml(currentRepairPlan.permit_type || "none")} vs ${escapeHtml(compareRepairPlan.permit_type || "none")}</span>` : ""}
+							</div>
+							<p class="footer-note">${escapeHtml(currentHasRepairPlan || compareHasRepairPlan ? "Compare execution steps, parts, tooling, and permit needs across the two runs." : "Neither run has a persisted or structured repair plan snapshot yet.")}</p>
 						</div>
 					</div>
 					<div class="compare-delta-grid">
@@ -3089,6 +3162,49 @@
 								<div>
 									<div class="compare-delta-label">Only in compare run</div>
 									${renderCompareDeltaList(pmSuggestionDelta.removed, "No PM suggestions were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Repair procedure drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(repairPlanStepDelta.added, "No new procedure steps against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(repairPlanStepDelta.removed, "No procedure steps were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Repair parts drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(repairPlanPartDelta.added, "No new repair parts against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(repairPlanPartDelta.removed, "No repair parts were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Repair requirements drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">Tools added in current run</div>
+									${renderCompareDeltaList(repairPlanToolDelta.added, "No new tools were added against the compare run.")}
+									<div class="compare-delta-label">Safety added in current run</div>
+									${renderCompareDeltaList(repairPlanSafetyDelta.added, "No new safety requirements were added against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(repairPlanToolDelta.removed, "No tools were dropped from the compare run.")}
+									<div class="compare-delta-label">Safety only in compare run</div>
+									${renderCompareDeltaList(repairPlanSafetyDelta.removed, "No safety requirements were dropped from the compare run.")}
 								</div>
 							</div>
 						</div>
@@ -5335,7 +5451,7 @@
 					<div class="section">
 						<div class="section-head">
 							<h3>Run comparison</h3>
-							<span class="muted tiny">Check confidence drift, feedback deltas, and action-set changes against another run.</span>
+							<span class="muted tiny">Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run.</span>
 						</div>
 						${renderComparePanel(run)}
 					</div>

@@ -16,6 +16,10 @@ test('portal compare: highlights confidence, feedback, and action drift against 
   await expect(comparePanel.getByText('Compare ready', { exact: true })).toBeVisible();
   await expect(comparePanel.getByText('+12 pts vs compare run', { exact: true })).toBeVisible();
   await expect(comparePanel.getByText('Title changed from Inspect seal and rebalance coupling', { exact: true })).toBeVisible();
+  await expect(comparePanel.getByText('Repair plan drift', { exact: true })).toBeVisible();
+  await expect(comparePanel.getByText('Status changed from draft', { exact: true })).toBeVisible();
+  await expect(comparePanel.getByText('+1.5 hr vs compare run', { exact: true })).toBeVisible();
+  await expect(comparePanel.getByText('+$875 vs compare run', { exact: true })).toBeVisible();
   await expect(comparePanel.getByText('Reject -1', { exact: true })).toBeVisible();
   await expect(comparePanel.getByText('Edited -1', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Bearing wear is increasing vibration', { exact: true })).toBeVisible();
@@ -29,6 +33,17 @@ test('portal compare: highlights confidence, feedback, and action drift against 
   await expect(compareDeltaGrid.getByText('Capture vibration spectrum', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Schedule bearing replacement', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Plan coupling rebalance', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Repair procedure drift', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Step 2: Replace the inboard bearing', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Step 3: Verify alignment before restart', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Step 2: Capture vibration spectrum', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Repair parts drift', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Bearing kit x1 ea', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('SEAL-42 x1', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Repair requirements drift', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Torque wrench', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Vibration analyzer', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Hot work permit review', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByRole('button', { name: 'Signal SIG-901' })).toBeVisible();
   await expect(compareDeltaGrid.getByRole('button', { name: 'Document DOC-COMMON' })).toBeVisible();
   await expect(compareDeltaGrid.getByRole('button', { name: 'Signal SIG-777' })).toBeVisible();

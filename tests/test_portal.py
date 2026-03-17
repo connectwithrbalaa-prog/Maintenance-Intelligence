@@ -446,11 +446,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Run comparison" in page.text
     assert "Compare against" in page.text
     assert "Confidence drift" in page.text
-    assert "Check confidence drift, feedback deltas, and action-set changes against another run." in page.text
+    assert "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run." in page.text
+    assert "Repair plan drift" in page.text
+    assert "Repair procedure drift" in page.text
+    assert "Repair parts drift" in page.text
+    assert "Repair requirements drift" in page.text
     assert "Root cause drift" in page.text
     assert "Contributing factor drift" in page.text
     assert "Evidence reference drift" in page.text
     assert "Present in both runs" in page.text
+    assert "repairPlanProcedureLabels" in page.text
+    assert "repairPlanPartLabels" in page.text
+    assert "formatCurrencyDelta" in page.text
     assert "renderCompareEvidenceReferenceDeltaList" in page.text
     assert "activateCompareEvidenceReference" in page.text
     assert "data-compare-evidence-ref-id" in page.text
