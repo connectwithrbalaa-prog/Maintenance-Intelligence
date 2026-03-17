@@ -2263,6 +2263,9 @@
 				summary: asString(source.summary) || asString(structuredSource.summary),
 				confidence: asNumber(source.confidence) ?? asNumber(structuredSource.confidence) ?? asNumber(modelSource.confidence),
 				hypothesis: asStringList(Array.isArray(source.hypothesis) && source.hypothesis.length ? source.hypothesis : structuredSource.hypothesis),
+				root_causes: asStringList(Array.isArray(source.root_causes) && source.root_causes.length ? source.root_causes : structuredSource.root_causes),
+				contributing_factors: asStringList(Array.isArray(source.contributing_factors) && source.contributing_factors.length ? source.contributing_factors : structuredSource.contributing_factors),
+				evidence_ids: asStringList(Array.isArray(source.evidence_ids) && source.evidence_ids.length ? source.evidence_ids : structuredSource.evidence_ids),
 				immediate_actions: asStringList(Array.isArray(source.immediate_actions) && source.immediate_actions.length ? source.immediate_actions : structuredSource.immediate_actions),
 				pm_suggestions: asStringList(Array.isArray(source.pm_suggestions) && source.pm_suggestions.length ? source.pm_suggestions : structuredSource.pm_suggestions),
 				structured: {
@@ -2270,6 +2273,9 @@
 					summary: asString(structuredSource.summary),
 					confidence: asNumber(structuredSource.confidence),
 					hypothesis: asStringList(structuredSource.hypothesis),
+					root_causes: asStringList(structuredSource.root_causes),
+					contributing_factors: asStringList(structuredSource.contributing_factors),
+					evidence_ids: asStringList(structuredSource.evidence_ids),
 					immediate_actions: asStringList(structuredSource.immediate_actions),
 					pm_suggestions: asStringList(structuredSource.pm_suggestions),
 					repair_plan: structuredRepairPlan,
@@ -5084,6 +5090,21 @@
 					<div class="section">
 						<h3>Hypotheses</h3>
 						${renderList(run.hypothesis, "No hypotheses were stored for this run.")}
+					</div>
+
+					<div class="section">
+						<h3>Root causes</h3>
+						${renderList(run.root_causes, "No root causes were stored for this run.")}
+					</div>
+
+					<div class="section">
+						<h3>Contributing factors</h3>
+						${renderList(run.contributing_factors, "No contributing factors were stored for this run.")}
+					</div>
+
+					<div class="section">
+						<h3>Evidence references</h3>
+						${renderList(run.evidence_ids, "No evidence references were stored for this run.")}
 					</div>
 
 					<div class="section">

@@ -98,6 +98,9 @@ def _sanitize_structured(value: Any) -> Dict[str, Any]:
         "summary": _as_safe_text(structured.get("summary")),
         "confidence": _as_number(structured.get("confidence")),
         "hypothesis": _as_string_list(structured.get("hypothesis")),
+        "root_causes": _as_string_list(structured.get("root_causes")),
+        "contributing_factors": _as_string_list(structured.get("contributing_factors")),
+        "evidence_ids": _as_string_list(structured.get("evidence_ids")),
         "immediate_actions": _as_string_list(structured.get("immediate_actions")),
         "pm_suggestions": _as_string_list(structured.get("pm_suggestions")),
     }

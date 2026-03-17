@@ -30,6 +30,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
                     "title": "Replace bearing before next shift",
                     "confidence": 0.83,
                     "hypothesis": ["Bearing wear is increasing vibration"],
+                    "root_causes": ["Bearing degradation from lubrication loss"],
+                    "contributing_factors": ["High ambient temperature"],
+                    "evidence_ids": ["DOC-1", "SIG-1"],
                     "immediate_actions": ["Inspect lubrication"],
                     "pm_suggestions": ["Schedule bearing replacement"],
                 },
@@ -67,6 +70,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["structured"]["hypothesis"] == ["Bearing wear is increasing vibration"]
+    assert detail_payload["structured"]["root_causes"] == ["Bearing degradation from lubrication loss"]
+    assert detail_payload["structured"]["contributing_factors"] == ["High ambient temperature"]
+    assert detail_payload["structured"]["evidence_ids"] == ["DOC-1", "SIG-1"]
     assert detail_payload["model"]["latency_ms"] == 812
     assert detail_payload["structured"]["summary"] == ""
 
@@ -174,6 +180,9 @@ def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape
         "summary": "",
         "confidence": None,
         "hypothesis": ["1", "Bearing wear"],
+        "root_causes": [],
+        "contributing_factors": [],
+        "evidence_ids": [],
         "immediate_actions": [],
         "pm_suggestions": ["Schedule inspection", "77"],
     }
@@ -410,6 +419,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Maintainer" in page.text
     assert "Admin" in page.text
     assert "No hypotheses were stored for this run." in page.text
+    assert "No root causes were stored for this run." in page.text
+    assert "No contributing factors were stored for this run." in page.text
+    assert "No evidence references were stored for this run." in page.text
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
     assert "Approve PM proposal" in page.text
@@ -563,6 +575,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "headers: portalIdentityHeaders()" in page.text
     assert "Live evidence" in page.text
     assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
+    assert "Root causes" in page.text
+    assert "Contributing factors" in page.text
+    assert "Evidence references" in page.text
     assert "No asset evidence link yet" in page.text
     assert "This run does not include an asset_id, so live signals cannot be fetched." in page.text
     assert "Loading live evidence" in page.text
@@ -603,6 +618,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Open asset trends" in page.text
     assert "Open current evidence" in page.text
     assert "Open latest evidence" in page.text
+    assert "root_causes" in page.text
+    assert "contributing_factors" in page.text
+    assert "evidence_ids" in page.text
     assert "Freshest linked run" in page.text
     assert "triageCurrentAssetRow" in page.text
     assert "triagePreferredRun" in page.text
