@@ -1,10 +1,16 @@
 import re
 import math
+import os
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter
 import psycopg2
 from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.runner.config import Settings
+
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 class HybridRetriever:
     """Hybrid retrieval combining BM25 and vector similarity."""
@@ -55,11 +61,17 @@ class HybridRetriever:
 
     def _vector_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
         """Vector similarity search using pgvector."""
+        api_key = self.settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key or OpenAI is None:
+            return []
+
+        conn = None
         try:
-            from maintenance_intelligence.genai.gateway import GenAIGateway
-            settings = Settings()
-            gateway = GenAIGateway(api_key=settings.openai_api_key, model="text-embedding-3-small")
-            embedding = gateway._get_embedding(query)  # Access private method for embedding
+            client = OpenAI(api_key=api_key)
+            resp = client.embeddings.create(model="text-embedding-3-large", input=[query])
+            if not resp.data:
+                return []
+            embedding = resp.data[0].embedding
 
             conn = with_pg(self.db_url)
             with conn, conn.cursor() as cur:
@@ -90,6 +102,12 @@ class HybridRetriever:
         except Exception:
             # Fallback to BM25 only if vector search fails
             return []
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _bm25_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
         """BM25 text search."""

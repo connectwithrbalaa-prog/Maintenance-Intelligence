@@ -79,16 +79,20 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
                         to_regclass('public.pm_proposals'),
                         to_regclass('public.workorders'),
                         to_regclass('public.rca_feedback'),
+                        to_regclass('public.repair_plan'),
+                        to_regclass('public.repair_part'),
                         to_regclass('public.alembic_version'),
                         to_regclass('public.mi_schema_migrations')
                     """
                 )
-                events_table, pm_proposals_table, workorders_table, rca_feedback_table, alembic_table, fallback_table = cur.fetchone()
+                events_table, pm_proposals_table, workorders_table, rca_feedback_table, repair_plan_table, repair_part_table, alembic_table, fallback_table = cur.fetchone()
 
                 assert events_table == "events"
                 assert pm_proposals_table == "pm_proposals"
                 assert workorders_table == "workorders"
                 assert rca_feedback_table == "rca_feedback"
+                assert repair_plan_table == "repair_plan"
+                assert repair_part_table == "repair_part"
                 assert alembic_table == "alembic_version" or fallback_table == "mi_schema_migrations"
 
                 cur.execute(
@@ -125,12 +129,12 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
 
                 if alembic_table == "alembic_version":
                     cur.execute("SELECT version_num FROM alembic_version")
-                    assert cur.fetchone()[0] == "005_rca_feedback"
+                    assert cur.fetchone()[0] == "006_repair_plan_and_parts"
                 else:
                     cur.execute(
                         "SELECT filename FROM mi_schema_migrations WHERE filename = %s",
-                        ("011_rename_event_time_to_occurred_at.sql",),
+                        ("012_repair_plan_and_parts.sql",),
                     )
-                    assert cur.fetchone()[0] == "011_rename_event_time_to_occurred_at.sql"
+                    assert cur.fetchone()[0] == "012_repair_plan_and_parts.sql"
         finally:
             conn.close()

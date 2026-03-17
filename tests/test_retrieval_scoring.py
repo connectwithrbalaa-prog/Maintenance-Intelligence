@@ -103,3 +103,12 @@ def test_retrieve_ranking_is_stable_across_input_permutations():
 
     assert [chunk["chunk_id"] for chunk in first_ranked] == ["chunk-1", "chunk-2"]
     assert [chunk["chunk_id"] for chunk in second_ranked] == ["chunk-1", "chunk-2"]
+
+
+def test_vector_search_returns_empty_without_openai_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MI_OPENAI_API_KEY", raising=False)
+
+    retriever = HybridRetriever("dummy_db_url")
+
+    assert retriever._vector_search("pump anomaly", asset_id="PUMP-101", limit=5) == []

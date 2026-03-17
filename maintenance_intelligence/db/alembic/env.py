@@ -10,9 +10,6 @@ from alembic import context
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
-# Import the models (we'll need to create these)
-# from maintenance_intelligence.db.models import Base
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -22,10 +19,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+# This repository uses hand-authored migration scripts, so Alembic does not
+# need ORM metadata to run upgrades.
 target_metadata = None
 
 # other values from the config, defined by the needs of env.py,

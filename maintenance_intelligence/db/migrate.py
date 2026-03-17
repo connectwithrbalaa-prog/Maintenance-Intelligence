@@ -5,12 +5,12 @@ from maintenance_intelligence.runner.config import Settings
 
 def run():
     """Run database migrations using Alembic."""
+    settings = Settings()
     try:
         from alembic.config import Config
         from alembic import command
 
         # Get database URL
-        settings = Settings()
         db_url = settings.sqlalchemy_url
 
         # Configure Alembic
