@@ -36,6 +36,8 @@ app = FastAPI()
 identity_mod.install_identity_middleware(app)
 app.include_router(pm_mod.router)
 
+READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
+
 
 class FakeCursor:
     def __init__(self, connection):
@@ -116,6 +118,17 @@ class FakeConnection:
             rows = [self._workorder_row(record) for record in self.workorders.values() if record["wo_id"] in requested_ids]
             rows.sort(key=lambda row: row[0], reverse=True)
             self._last_rows = rows
+        elif normalized.startswith("SELECT status, workorder_created_at, handoff_completed_at, workorder_completed_at, metadata FROM workorders"):
+            record = self.workorders.get(params[0])
+            self._last_rows = [
+                (
+                    record["status"],
+                    record["workorder_created_at"],
+                    record["handoff_completed_at"],
+                    record["workorder_completed_at"],
+                    record["metadata"],
+                )
+            ] if record else []
         elif normalized.startswith("INSERT INTO workorders"):
             record = {
                 "wo_id": params[0],
@@ -213,11 +226,12 @@ def test_list_proposals_from_run_summaries(monkeypatch, tmp_path):
     summaries = tmp_path / "outputs"
     _write_summary(summaries)
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
     monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: (_ for _ in ()).throw(RuntimeError("db unavailable")))
 
     client = TestClient(app)
 
-    response = client.get("/api/v1/agents/pm/proposals")
+    response = client.get("/api/v1/agents/pm/proposals", headers=READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -266,7 +280,7 @@ def test_list_proposals_includes_retry_metadata_for_exceptions(monkeypatch, tmp_
         headers={"x-user-id": "planner-2", "x-user-role": "maintainer"},
     ).status_code == 502
 
-    response = client.get("/api/v1/agents/pm/proposals")
+    response = client.get("/api/v1/agents/pm/proposals", headers=READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -302,16 +316,34 @@ def test_analyze_persists_proposal_record(monkeypatch, tmp_path):
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
 
 
+def test_analyze_requires_allowed_role(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/advisor/analyze",
+        json={"run_id": "RUN-1"},
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "PM approval requires planner, maintainer, or admin role"
+
+
 def test_approve_proposal_returns_422_for_unsupported_backend(monkeypatch, tmp_path):
     summaries = tmp_path / "outputs"
     _write_summary(summaries)
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
     monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "sap")
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
     monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: FakeConnection())
 
     client = TestClient(app)
 
-    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve")
+    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
 
     assert response.status_code == 422
     assert "Unsupported CMMS backend" in response.json()["detail"]
@@ -354,11 +386,33 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert params[0] == "WO-REC-1"
     assert params[1] == "PUMP-101"
     assert params[2] == "DRAFT"
+    workorder_metadata = fake_connection.workorders["WO-REC-1"]["metadata"]
+    assert workorder_metadata["handoff"]["proposal_id"] == "REC-1"
+    assert workorder_metadata["handoff"]["recommendation_id"] == "REC-1"
+    assert workorder_metadata["handoff"]["approved_by"] == "dev-user"
+    assert workorder_metadata["handoff"]["origin"] == "approval"
+    assert workorder_metadata["handoff"]["handoff_state"] == "success"
     assert fake_connection.proposals["REC-1"]["status"] == "approved"
     assert fake_connection.proposals["REC-1"]["approved_by"] == "dev-user"
     assert fake_connection.proposals["REC-1"]["work_order_id"] == "WO-REC-1"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["approved_at"] == payload["approved_at"]
     assert fake_connection.closed is True
+
+
+def test_approve_proposal_requires_allowed_role(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "PM approval requires planner, maintainer, or admin role"
 
 
 def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, tmp_path):
@@ -388,7 +442,7 @@ def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, 
     client = TestClient(app)
     assert client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"}).status_code == 200
 
-    response = client.get("/api/v1/agents/pm/proposals")
+    response = client.get("/api/v1/agents/pm/proposals", headers=READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -510,7 +564,7 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     )
     assert failed_response.status_code == 502
 
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS)
     assert history.status_code == 200
     payload = history.json()
     assert payload["proposal_id"] == "REC-1"
@@ -610,7 +664,7 @@ def test_approve_proposal_retries_transient_failures_before_success(monkeypatch,
     assert payload["last_attempt_info"]["attempt_number"] == 3
     assert payload["reused_result"] is False
     assert adapter.calls == 3
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS).json()
     assert len(history["attempts"]) == 3
     assert history["attempts"][0]["handoff_state"] == "success"
     assert history["attempts"][1]["handoff_state"] == "failure"
@@ -655,7 +709,7 @@ def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypat
     assert payload["last_attempt_info"]["attempt_number"] == 2
     assert payload["detail"] == "temporary outage"
     assert adapter.calls == 2
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS).json()
     assert len(history["attempts"]) == 2
     assert all(attempt["handoff_state"] == "failure" for attempt in history["attempts"])
 
@@ -693,7 +747,7 @@ def test_approve_proposal_retry_appends_history_and_creates_single_workorder(mon
     assert second_payload["attempt_count"] == 2
     assert second_payload["attempts_remaining"] == 1
     assert second_payload["retry_allowed"] is False
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS)
     assert history.status_code == 200
     history_payload = history.json()
     assert len(history_payload["attempts"]) == 2
@@ -769,7 +823,7 @@ def test_admin_retry_after_success_reuses_existing_workorder(monkeypatch, tmp_pa
     assert second.status_code == 200
     assert second.json()["reused_result"] is True
     assert adapter.calls == 1
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history").json()
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS).json()
     assert len(history["attempts"]) == 1
     assert history["attempts"][0]["origin"] == "approval"
 
@@ -808,7 +862,7 @@ def test_approve_proposal_rejects_requests_after_proposal_attempt_limit(monkeypa
     assert adapter.calls == 3
     assert blocked.status_code == 409
     assert blocked.json()["detail"] == "PM proposal reached the maximum of 3 handoff attempts"
-    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS)
     assert history.status_code == 200
     assert history.json()["attempt_count"] == 3
     assert history.json()["attempts_remaining"] == 0
@@ -853,7 +907,7 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
         headers={"x-user-id": "planner-3", "x-user-role": "admin"},
     ).status_code == 200
 
-    first_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=2")
+    first_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=2", headers=READ_HEADERS)
     assert first_page.status_code == 200
     first_payload = first_page.json()
     assert first_payload["total_count"] == 3
@@ -862,7 +916,7 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
     assert first_payload["has_more"] is True
     assert [attempt["approved_by"] for attempt in first_payload["attempts"]] == ["planner-3", "planner-2"]
 
-    second_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=2&size=2")
+    second_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=2&size=2", headers=READ_HEADERS)
     assert second_page.status_code == 200
     second_payload = second_page.json()
     assert second_payload["total_count"] == 3
@@ -872,7 +926,7 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
     assert len(second_payload["attempts"]) == 1
     assert second_payload["attempts"][0]["approved_by"] == "planner-1"
 
-    empty_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=3&size=2")
+    empty_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=3&size=2", headers=READ_HEADERS)
     assert empty_page.status_code == 200
     empty_payload = empty_page.json()
     assert empty_payload["attempts"] == []
@@ -884,13 +938,31 @@ def test_proposal_history_validates_page_and_size_limits(monkeypatch, tmp_path):
     summaries = tmp_path / "outputs"
     _write_summary(summaries)
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
 
     client = TestClient(app)
 
-    bad_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=0&size=3")
-    bad_size_low = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=0")
-    bad_size_high = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=26")
+    bad_page = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=0&size=3", headers=READ_HEADERS)
+    bad_size_low = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=0", headers=READ_HEADERS)
+    bad_size_high = client.get("/api/v1/agents/pm/proposals/REC-1/history?page=1&size=26", headers=READ_HEADERS)
 
     assert bad_page.status_code == 422
     assert bad_size_low.status_code == 422
     assert bad_size_high.status_code == 422
+
+
+def test_proposal_read_endpoints_require_authenticated_identity(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
+
+    client = TestClient(app)
+
+    proposals = client.get("/api/v1/agents/pm/proposals")
+    history = client.get("/api/v1/agents/pm/proposals/REC-1/history")
+
+    assert proposals.status_code == 403
+    assert proposals.json()["detail"] == "PM proposal reads require an authenticated identity"
+    assert history.status_code == 403
+    assert history.json()["detail"] == "PM proposal reads require an authenticated identity"

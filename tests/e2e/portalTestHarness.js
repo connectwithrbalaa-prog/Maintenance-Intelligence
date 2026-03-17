@@ -39,9 +39,59 @@ function buildOutcomesReport(feedbackHistory) {
     window_days: 30,
     status: 'ok',
     warnings: [],
+    cmms_summary: {
+      success_total: 2,
+      pending_total: 1,
+      failure_total: 1,
+      admin_retry_required_total: 2,
+      limit_reached_total: 1,
+      approval_to_handoff_seconds_avg: 450,
+    },
+    cmms_breakdowns: {
+      by_asset: {
+        'PUMP-202': {
+          success_total: 0,
+          pending_total: 1,
+          failure_total: 1,
+          admin_retry_required_total: 2,
+          limit_reached_total: 1,
+          approval_to_handoff_seconds_avg: null,
+        },
+        'PUMP-101': {
+          success_total: 2,
+          pending_total: 0,
+          failure_total: 0,
+          admin_retry_required_total: 0,
+          limit_reached_total: 0,
+          approval_to_handoff_seconds_avg: 450,
+        },
+      },
+      by_backend: {
+        maximo: {
+          success_total: 1,
+          pending_total: 1,
+          failure_total: 0,
+          admin_retry_required_total: 1,
+          limit_reached_total: 0,
+          approval_to_handoff_seconds_avg: 300,
+        },
+        mock: {
+          success_total: 1,
+          pending_total: 0,
+          failure_total: 1,
+          admin_retry_required_total: 1,
+          limit_reached_total: 1,
+          approval_to_handoff_seconds_avg: 600,
+        },
+      },
+    },
     top_assets_by_wo_volume: [
       { asset_id: 'PUMP-202', count: 6 },
       { asset_id: 'PUMP-101', count: 4 },
+    ],
+    top_backends_by_handoff_volume: [
+      { backend: 'maximo', count: 2 },
+      { backend: 'mock', count: 2 },
     ],
     top_users_by_feedback: [
       { user_id: 'demo.admin', count: feedbackHistory.length ? 4 : 3 },
@@ -70,6 +120,36 @@ function buildOutcomesReport(feedbackHistory) {
           { date: '2026-03-13', value: 0.2 },
           { date: '2026-03-14', value: 0.4 },
           { date: '2026-03-15', value: 0.8 },
+        ],
+      },
+    },
+    backend_metrics: {
+      maximo: {
+        handoff_total: 2,
+        handoff_success_rate: 1.0,
+        handoff_volume: [
+          { date: '2026-03-13', value: 1 },
+          { date: '2026-03-14', value: 1 },
+          { date: '2026-03-15', value: 0 },
+        ],
+        handoff_success_rate_series: [
+          { date: '2026-03-13', value: 1.0 },
+          { date: '2026-03-14', value: null },
+          { date: '2026-03-15', value: null },
+        ],
+      },
+      mock: {
+        handoff_total: 2,
+        handoff_success_rate: 0.5,
+        handoff_volume: [
+          { date: '2026-03-13', value: 0 },
+          { date: '2026-03-14', value: 1 },
+          { date: '2026-03-15', value: 1 },
+        ],
+        handoff_success_rate_series: [
+          { date: '2026-03-13', value: null },
+          { date: '2026-03-14', value: 1.0 },
+          { date: '2026-03-15', value: 0.0 },
         ],
       },
     },
@@ -187,6 +267,7 @@ function createPortalHarness(options = {}) {
       status: 'ok',
       event_id: 'EV-9',
       recommendation_id: 'REC-44',
+      repair_plan_id: 'RP-321',
       title: 'Replace bearing before next shift',
       summary: 'Inspect the current RCA run and PM recommendation set.',
       confidence: 0.83,
@@ -217,6 +298,7 @@ function createPortalHarness(options = {}) {
       status: 'ok',
       event_id: 'EV-9',
       recommendation_id: 'REC-44',
+      repair_plan_id: 'RP-321',
       title: 'Replace bearing before next shift',
       summary: 'Inspect the current RCA run and PM recommendation set.',
       confidence: 0.83,
@@ -230,6 +312,62 @@ function createPortalHarness(options = {}) {
         hypothesis: ['Bearing wear is increasing vibration'],
         immediate_actions: ['Inspect lubrication'],
         pm_suggestions: ['Schedule bearing replacement'],
+        repair_plan: {
+          plan_id: 'RP-321',
+          procedure_steps: [
+            { seq: 1, action: 'Isolate the pump', safety_note: 'Apply LOTO', estimated_mins: 15 },
+            { seq: 2, action: 'Replace the inboard bearing', safety_note: 'Use approved lift points', estimated_mins: 120 },
+            { seq: 3, action: 'Verify alignment before restart', safety_note: 'Remove tools before energizing', estimated_mins: 45 },
+          ],
+          tools_required: ['Torque wrench', 'Laser alignment kit'],
+          safety_requirements: ['LOTO required', 'Hot work permit review'],
+          permit_type: 'hot-work',
+          estimated_duration_hrs: 4,
+          spare_parts_cost_estimate: 1295,
+          parts_list: [
+            {
+              part_no: 'BRG-9',
+              description: 'Bearing kit',
+              qty: 1,
+              lead_time_days: 2,
+            },
+          ],
+        },
+      },
+      repair_plan: {
+        plan_id: 'RP-321',
+        run_id: 'RUN-123',
+        recommendation_id: 'REC-44',
+        org_id: 'ops-demo',
+        asset_id: 'PUMP-101',
+        summary: 'Replace the inboard bearing and re-align the shaft before the next shift.',
+        rationale: 'Repeated vibration and bearing temperature spikes indicate wear progression.',
+        confidence: 0.83,
+        status: 'pending',
+        created_at: '2026-03-15T10:03:00Z',
+        updated_at: '2026-03-15T10:04:00Z',
+        procedure_steps: [
+          { seq: 1, action: 'Isolate the pump', safety_note: 'Apply LOTO', estimated_mins: 15 },
+          { seq: 2, action: 'Replace the inboard bearing', safety_note: 'Use approved lift points', estimated_mins: 120 },
+          { seq: 3, action: 'Verify alignment before restart', safety_note: 'Remove tools before energizing', estimated_mins: 45 },
+        ],
+        tools_required: ['Torque wrench', 'Laser alignment kit'],
+        safety_requirements: ['LOTO required', 'Hot work permit review'],
+        permit_type: 'hot-work',
+        estimated_duration_hrs: 4,
+        spare_parts_cost_estimate: 1295,
+        parts: [
+          {
+            part_id: 'PART-321',
+            plan_id: 'RP-321',
+            name: 'Bearing kit',
+            description: 'OEM replacement bearing set',
+            quantity: 1,
+            unit: 'ea',
+            metadata: { sku: 'BRG-9' },
+            created_at: '2026-03-15T10:05:00Z',
+          },
+        ],
       },
       model: { name: 'gpt-4.1', version: 'test', latency_ms: 812, confidence: 0.83 },
       context_meta: { asset_id: 'PUMP-101', event_kind: 'anomaly' },
@@ -447,7 +585,23 @@ function createPortalHarness(options = {}) {
         workorder_created_at: '2026-03-15T07:25:00Z',
         handoff_completed_at: '2026-03-15T07:21:00Z',
         workorder_completed_at: '2026-03-15T11:40:00Z',
-        metadata: {},
+          metadata: {
+            handoff: {
+              proposal_id: 'REC-88',
+              recommendation_id: 'REC-88',
+              approved_by: 'demo.admin',
+              origin: 'approval',
+              backend: 'maximo',
+              lifecycle_phase: 'completed',
+              status_before: 'created',
+              status_after: 'complete',
+              attempt_count: 1,
+              last_attempt: {
+                attempted_at: '2026-03-15T07:20:00Z',
+                handoff_state: 'success',
+              },
+            },
+          },
       },
     },
   ];
@@ -600,6 +754,10 @@ function createPortalHarness(options = {}) {
       }
 
       const headers = route.request().headers();
+      if (!['planner', 'maintainer', 'admin'].includes((headers['x-user-role'] || '').toLowerCase())) {
+        await fulfillError(route, 403, 'Feedback submission requires planner, maintainer, or admin role');
+        return;
+      }
       const payload = route.request().postDataJSON();
       expect(payload).toEqual({
         run_id: 'RUN-123',
@@ -655,6 +813,11 @@ function createPortalHarness(options = {}) {
     });
 
     await page.route('**/api/v1/agents/pm/advisor/analyze', async (route) => {
+      const headers = route.request().headers();
+      if (!['planner', 'maintainer', 'admin'].includes((headers['x-user-role'] || '').toLowerCase())) {
+        await fulfillError(route, 403, 'PM approval requires planner, maintainer, or admin role');
+        return;
+      }
       const payload = route.request().postDataJSON();
       expect(payload).toEqual({ run_id: 'RUN-123' });
       await fulfillJson(route, {
@@ -745,6 +908,10 @@ function createPortalHarness(options = {}) {
 
     await page.route('**/api/v1/agents/pm/proposals/REC-44/approve', async (route) => {
       const headers = route.request().headers();
+      if (!['planner', 'maintainer', 'admin'].includes((headers['x-user-role'] || '').toLowerCase())) {
+        await fulfillError(route, 403, 'PM approval requires planner, maintainer, or admin role');
+        return;
+      }
       const proposal = pmProposals.find((item) => item.proposal_id === 'REC-44');
       if (proposal) {
         Object.assign(proposal, {
@@ -940,8 +1107,16 @@ async function applyAdminIdentity(page) {
   await page.getByRole('button', { name: 'Apply demo identity' }).click();
 }
 
+async function applyReadOnlyIdentity(page) {
+  await page.locator('#identitySubjectInput').fill('viewer.user');
+  await page.locator('#identityRoleSelect').selectOption('viewer');
+  await page.locator('#identityOrgInput').fill('ops-demo');
+  await page.getByRole('button', { name: 'Apply demo identity' }).click();
+}
+
 module.exports = {
   applyAdminIdentity,
+  applyReadOnlyIdentity,
   createPortalHarness,
   openPortal,
 };

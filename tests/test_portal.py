@@ -1,8 +1,18 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
+from maintenance_intelligence.api import portal as portal_mod
+
+
+READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
+
+
+@pytest.fixture(autouse=True)
+def _enable_dev_headers(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
 
 
 def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
@@ -45,7 +55,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert page.status_code == 200
     assert "Maintenance Intelligence Portal" in page.text
 
-    runs = client.get("/api/v1/portal/runs")
+    runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
     assert runs.status_code == 200
     payload = runs.json()
     assert len(payload) == 1
@@ -53,7 +63,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert payload[0]["title"] == "Replace bearing before next shift"
     assert payload[0]["context_meta"]["asset_id"] == "PUMP-101"
 
-    detail = client.get("/api/v1/portal/runs/RUN-123")
+    detail = client.get("/api/v1/portal/runs/RUN-123", headers=READ_HEADERS)
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["structured"]["hypothesis"] == ["Bearing wear is increasing vibration"]
@@ -83,7 +93,7 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
 
     client = TestClient(app)
 
-    runs = client.get("/api/v1/portal/runs")
+    runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
     assert runs.status_code == 200
     payload = runs.json()
     assert len(payload) == 1
@@ -106,7 +116,7 @@ def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monk
 
     client = TestClient(app)
 
-    detail = client.get("/api/v1/portal/runs/RUN-BAD")
+    detail = client.get("/api/v1/portal/runs/RUN-BAD", headers=READ_HEADERS)
     assert detail.status_code == 422
     assert detail.json()["detail"] == "Run summary is malformed"
 
@@ -140,7 +150,7 @@ def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape
 
     client = TestClient(app)
 
-    detail = client.get("/api/v1/portal/runs/RUN-PARTIAL")
+    detail = client.get("/api/v1/portal/runs/RUN-PARTIAL", headers=READ_HEADERS)
     assert detail.status_code == 200
 
     payload = detail.json()
@@ -182,9 +192,163 @@ def test_portal_run_detail_rejects_invalid_run_id(tmp_path, monkeypatch):
 
     client = TestClient(app)
 
-    detail = client.get("/api/v1/portal/runs/%20RUN-123")
+    detail = client.get("/api/v1/portal/runs/%20RUN-123", headers=READ_HEADERS)
     assert detail.status_code == 400
     assert detail.json()["detail"] == "Invalid run id"
+
+
+def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-PLAN.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-PLAN",
+                "status": "ok",
+                "recommendation_id": "REC-PLAN",
+                "repair_plan_id": "RP-123",
+                "structured": {
+                    "title": "Replace bearing before next shift",
+                    "summary": "Structured RCA proposed a repair plan.",
+                    "repair_plan": {
+                        "plan_id": "RP-123",
+                        "procedure_steps": [
+                            {"seq": 1, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15},
+                            {"seq": 2, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90},
+                        ],
+                        "tools_required": ["Torque wrench", "Laser alignment kit"],
+                        "safety_requirements": ["LOTO required"],
+                        "permit_type": "hot-work",
+                        "estimated_duration_hrs": 4,
+                        "spare_parts_cost_estimate": 1295,
+                        "parts_list": [
+                            {
+                                "part_no": "BRG-9",
+                                "description": "Bearing kit",
+                                "qty": 1,
+                                "lead_time_days": 2,
+                            }
+                        ],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+    monkeypatch.setattr(
+        portal_mod,
+        "get_repair_plan",
+        lambda dsn, plan_id: {
+            "plan_id": plan_id,
+            "run_id": "RUN-PLAN",
+            "recommendation_id": "REC-PLAN",
+            "org_id": "demo-org",
+            "asset_id": "PUMP-101",
+            "summary": "Replace the inboard bearing and re-align the shaft.",
+            "rationale": "Repeated vibration and temperature spikes.",
+            "confidence": 0.83,
+            "status": "pending",
+            "created_at": "2026-03-15T10:03:00Z",
+            "updated_at": "2026-03-15T10:04:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        portal_mod,
+        "list_parts_for_plan",
+        lambda dsn, plan_id: [
+            {
+                "part_id": "PART-1",
+                "plan_id": plan_id,
+                "name": "Bearing kit",
+                "description": "OEM replacement set",
+                "quantity": 1,
+                "unit": "ea",
+                "metadata": {"sku": "BRG-9"},
+                "created_at": "2026-03-15T10:05:00Z",
+            }
+        ],
+    )
+
+    client = TestClient(app)
+
+    detail = client.get("/api/v1/portal/runs/RUN-PLAN", headers=READ_HEADERS)
+    assert detail.status_code == 200
+
+    payload = detail.json()
+    assert payload["repair_plan_id"] == "RP-123"
+    assert payload["repair_plan"]["plan_id"] == "RP-123"
+    assert payload["repair_plan"]["summary"] == "Replace the inboard bearing and re-align the shaft."
+    assert payload["repair_plan"]["procedure_steps"] == [
+        {"seq": 1.0, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15.0},
+        {"seq": 2.0, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90.0},
+    ]
+    assert payload["repair_plan"]["tools_required"] == ["Torque wrench", "Laser alignment kit"]
+    assert payload["repair_plan"]["parts"][0]["name"] == "Bearing kit"
+    assert payload["repair_plan"]["parts_list"][0]["part_no"] == "BRG-9"
+
+
+def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-PLAN-FAIL.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-PLAN-FAIL",
+                "status": "warn",
+                "repair_plan_id": "RP-FAIL",
+                "structured": {
+                    "repair_plan": {
+                        "plan_id": "RP-FAIL",
+                        "procedure_steps": [
+                            {"seq": 1, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30}
+                        ],
+                        "parts_list": [
+                            {
+                                "part_no": "SEAL-42",
+                                "description": "Seal kit",
+                                "qty": 1,
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+    monkeypatch.setattr(portal_mod, "get_repair_plan", lambda dsn, plan_id: (_ for _ in ()).throw(RuntimeError("db down")))
+
+    client = TestClient(app)
+
+    detail = client.get("/api/v1/portal/runs/RUN-PLAN-FAIL", headers=READ_HEADERS)
+
+    assert detail.status_code == 200
+
+    payload = detail.json()
+    assert payload["repair_plan"]["plan_id"] == "RP-FAIL"
+    assert payload["repair_plan"]["load_error"] == "Repair plan lookup unavailable"
+    assert payload["repair_plan"]["procedure_steps"] == [
+        {"seq": 1.0, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30.0}
+    ]
+
+
+def test_portal_run_endpoints_require_authenticated_identity(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(json.dumps({"run_id": "RUN-123", "structured": {}}), encoding="utf-8")
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
+
+    client = TestClient(app)
+
+    runs = client.get("/api/v1/portal/runs")
+    detail = client.get("/api/v1/portal/runs/RUN-123")
+
+    assert runs.status_code == 403
+    assert runs.json()["detail"] == "Portal run data requires an authenticated identity"
+    assert detail.status_code == 403
+    assert detail.json()["detail"] == "Portal run data requires an authenticated identity"
 
 
 def test_portal_index_includes_safe_detail_messages_for_partial_runs():
@@ -222,6 +386,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "renderFollowThroughPanel" in page.text
     assert "Current proposal follow-through" in page.text
     assert "Work order completion" in page.text
+    assert "Repair plan snapshot" in page.text
+    assert "Persisted repair plan" in page.text
+    assert "Repair plan record could not be loaded" in page.text
+    assert "No persisted repair plan is linked to this run yet." in page.text
     assert "Run comparison" in page.text
     assert "Compare against" in page.text
     assert "Confidence drift" in page.text
@@ -232,7 +400,8 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Approve the PM proposal for" in page.text
     assert "Approval history" in page.text
     assert "No approval attempts recorded yet." in page.text
-    assert "View full audit" in page.text
+    assert "Audit history stays in the current run view." in page.text
+    assert "Showing the in-app audit trail for ${escapeHtml(proposalId || \"this proposal\")}." in page.text
     assert "audit-item" in page.text
     assert "admin-origin" in page.text
     assert "audit-head" in page.text
@@ -277,7 +446,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "submitHandoffQueueRetry" in page.text
     assert "Run admin retry" in page.text
     assert "Open follow-through" in page.text
+    assert 'data-handoff-open-audit-run-id' in page.text
     assert "Open audit trail" in page.text
+    assert "Audit history stays in the current run view." in page.text
     assert "Queue view" in page.text
     assert "Sort order" in page.text
     assert "Handoff queue view" in page.text
@@ -347,7 +518,8 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Admin role required for retry." in page.text
     assert "data-handoff-retry-proposal-id" in page.text
     assert "data-handoff-focus-run-id" in page.text
-    assert 'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals")' in page.text
+    assert 'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {' in page.text
+    assert "headers: portalIdentityHeaders()" in page.text
     assert "Live evidence" in page.text
     assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
     assert "No asset evidence link yet" in page.text
@@ -390,6 +562,8 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "renderTriagePanel" in page.text
     assert "ensureTriageReport" in page.text
     assert "resetTriageReport" in page.text
+    assert 'state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`, {' in page.text
+    assert "headers: portalIdentityHeaders()" in page.text
     assert "/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}" in page.text
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
@@ -414,13 +588,15 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "outcomesPrimaryKpiValue" in page.text
     assert "Scope ${escapeHtml(config.label)}" in page.text
     assert "Current ${escapeHtml(selectedEntityId)}" in page.text
-    assert "Feedback total ${escapeHtml(selectedFeedbackTotal)}" in page.text
+    assert "selectedTotalMetric" in page.text
+    assert "totalLabel" in page.text
     assert "Top contributor" in page.text
     assert "Top volume" in page.text
     assert "Last ${escapeHtml(outcomesWindow)} days" in page.text
     assert "renderOutcomesPanel" in page.text
     assert "ensureOutcomesReport" in page.text
     assert "resetOutcomesReport" in page.text
+    assert 'state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {' in page.text
     assert "Switch between asset, operator, and org lenses without leaving the run view." in page.text
     assert "Start with the asset tied to this run, or compare another asset that already has live trend data." in page.text
     assert "Follow the signed-in operator first, or switch to another operator with recorded feedback activity." in page.text
@@ -444,7 +620,7 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Decision quality across the last ${outcomesWindow} days." in page.text
     assert "Waiting" in page.text
     assert "Peak daily volume" in page.text
-    assert "Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window." in page.text
+    assert "Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window." in page.text
     assert "No accept or reject feedback was recorded for this asset in the current window." in page.text
     assert "No work orders were recorded for this asset in the current window." in page.text
     assert "No feedback was recorded for this operator in the current window." in page.text

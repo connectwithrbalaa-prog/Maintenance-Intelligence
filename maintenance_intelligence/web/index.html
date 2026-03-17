@@ -472,6 +472,50 @@
 			margin-bottom: 0;
 		}
 
+		.workflow-rail {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 10px;
+			margin: 18px 0;
+			padding: 14px 16px;
+			border: 1px solid var(--line);
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.52);
+		}
+
+		.workflow-rail-label {
+			font-size: 0.72rem;
+			font-weight: 700;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		.workflow-link {
+			padding: 9px 14px;
+			border: 1px solid var(--line);
+			border-radius: 999px;
+			background: rgba(24, 34, 38, 0.04);
+			color: var(--text);
+			font: inherit;
+			font-size: 0.9rem;
+			cursor: pointer;
+			transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+		}
+
+		.workflow-link:hover,
+		.workflow-link:focus-visible {
+			background: rgba(14, 124, 102, 0.12);
+			border-color: rgba(14, 124, 102, 0.35);
+			transform: translateY(-1px);
+			outline: none;
+		}
+
+		.workflow-target {
+			scroll-margin-top: 24px;
+		}
+
 		.list {
 			margin: 0;
 			padding-left: 18px;
@@ -1036,7 +1080,8 @@
 
 		.triage-panel,
 		.handoff-panel,
-		.follow-panel {
+		.follow-panel,
+		.repair-plan-shell {
 			padding: 16px;
 			border-radius: 18px;
 			background: rgba(255, 255, 255, 0.62);
@@ -1046,7 +1091,8 @@
 
 		.triage-summary,
 		.handoff-summary,
-		.follow-summary {
+		.follow-summary,
+		.repair-plan-summary {
 			display: grid;
 			grid-template-columns: minmax(220px, 0.95fr) minmax(0, 1.25fr);
 			gap: 12px;
@@ -1056,7 +1102,8 @@
 
 		.triage-hero,
 		.handoff-hero,
-		.follow-hero {
+		.follow-hero,
+		.repair-plan-hero {
 			padding: 16px 18px;
 			border-radius: 18px;
 			background: linear-gradient(135deg, rgba(197, 103, 47, 0.16), rgba(197, 103, 47, 0.05));
@@ -1073,9 +1120,15 @@
 			border-color: rgba(14, 124, 102, 0.16);
 		}
 
+		.repair-plan-hero {
+			background: linear-gradient(135deg, rgba(24, 34, 38, 0.12), rgba(14, 124, 102, 0.05));
+			border-color: rgba(24, 34, 38, 0.12);
+		}
+
 		.triage-hero-label,
 		.handoff-hero-label,
-		.follow-hero-label {
+		.follow-hero-label,
+		.repair-plan-hero-label {
 			font-size: 11px;
 			letter-spacing: 0.08em;
 			text-transform: uppercase;
@@ -1085,7 +1138,8 @@
 
 		.triage-hero-value,
 		.handoff-hero-value,
-		.follow-hero-value {
+		.follow-hero-value,
+		.repair-plan-hero-value {
 			font-family: var(--font-display);
 			font-size: clamp(1.8rem, 3vw, 2.4rem);
 			line-height: 0.96;
@@ -1095,39 +1149,70 @@
 
 		.triage-hero-meta,
 		.handoff-hero-meta,
-		.follow-hero-meta {
-					.follow-stage-list {
-						list-style: none;
-						padding: 0;
-						margin: 14px 0 0;
-						display: grid;
-						gap: 10px;
-					}
-
-					.follow-stage {
-						padding: 14px;
-						border-radius: 16px;
-						border: 1px solid rgba(29, 42, 45, 0.08);
-						background: rgba(255, 255, 255, 0.78);
-					}
-
-					.follow-stage-head {
-						display: flex;
-						justify-content: space-between;
-						gap: 12px;
-						align-items: start;
-						margin-bottom: 8px;
-					}
-
-					.follow-stage-label {
-						font-family: var(--font-display);
-						font-size: 1.05rem;
-						letter-spacing: -0.03em;
-					}
-
+		.follow-hero-meta,
+		.repair-plan-hero-meta {
 			font-size: 13px;
 			line-height: 1.5;
 			color: var(--muted);
+		}
+
+		.follow-stage-list,
+		.repair-plan-part-list {
+			list-style: none;
+			padding: 0;
+			margin: 14px 0 0;
+			display: grid;
+			gap: 10px;
+		}
+
+		.follow-stage {
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(29, 42, 45, 0.08);
+			background: rgba(255, 255, 255, 0.78);
+		}
+
+		.follow-stage-head,
+		.repair-plan-part-head {
+			display: flex;
+			justify-content: space-between;
+			gap: 12px;
+			align-items: start;
+			margin-bottom: 8px;
+		}
+
+		.follow-stage-label,
+		.repair-plan-part-head strong {
+			font-family: var(--font-display);
+			font-size: 1.05rem;
+			letter-spacing: -0.03em;
+		}
+
+		.repair-plan-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.repair-plan-card {
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(29, 42, 45, 0.08);
+			background: rgba(255, 255, 255, 0.78);
+		}
+
+		.repair-plan-card h4 {
+			margin: 0 0 10px;
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+		}
+
+		.repair-plan-part {
+			padding: 12px;
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px solid rgba(24, 34, 38, 0.06);
 		}
 
 		.triage-list,
@@ -1538,6 +1623,7 @@
 			.triage-panel,
 			.handoff-panel,
 			.follow-panel,
+			.repair-plan-shell,
 			.outcomes-controls,
 			.outcomes-hero-kpi,
 			.outcomes-chip-row,
@@ -1563,7 +1649,8 @@
 
 			.triage-summary,
 			.handoff-summary,
-			.follow-summary {
+			.follow-summary,
+			.repair-plan-summary {
 				grid-template-columns: 1fr;
 			}
 
@@ -1605,6 +1692,7 @@
 			.outcomes-controls,
 			.outcomes-summary,
 			.evidence-grid,
+			.repair-plan-grid,
 			.compare-summary-grid,
 			.compare-delta-grid,
 			.compare-delta-columns {
@@ -1651,6 +1739,7 @@
 						<label>
 							Role
 							<select id="identityRoleSelect">
+								<option value="viewer">Read-only</option>
 								<option value="planner">Operator</option>
 								<option value="maintainer">Maintainer</option>
 								<option value="admin">Admin</option>
@@ -1742,6 +1831,7 @@
 			auditLoadingById: new Set(),
 			selectedOutcomeScopeByRunId: new Map(),
 			selectedOutcomeAssetByRunId: new Map(),
+			selectedOutcomeBackendByRunId: new Map(),
 			selectedOutcomeUserByRunId: new Map(),
 			selectedOutcomeOrgByRunId: new Map(),
 			handoffExceptions: {
@@ -2034,17 +2124,138 @@
 			return null;
 		}
 
+		function normalizeRepairPlanPart(part) {
+			const source = asObject(part);
+			return {
+				part_id: asString(source.part_id),
+				plan_id: asString(source.plan_id),
+				name: asString(source.name),
+				description: asString(source.description),
+				quantity: asNumber(source.quantity),
+				unit: asString(source.unit),
+				metadata: asObject(normalizeMetaValue(asObject(source.metadata))),
+				created_at: asString(source.created_at),
+			};
+		}
+
+		function normalizeRepairPlanSuggestion(part) {
+			const source = asObject(part);
+			return {
+				part_no: asString(source.part_no),
+				description: asString(source.description),
+				qty: asNumber(source.qty),
+				lead_time_days: asNumber(source.lead_time_days),
+			};
+		}
+
+		function normalizeRepairPlanProcedureStep(step) {
+			if (typeof step === "string") {
+				return {
+					seq: null,
+					action: asString(step),
+					safety_note: "",
+					estimated_mins: null,
+				};
+			}
+			const source = asObject(step);
+			return {
+				seq: asNumber(source.seq),
+				action: asString(source.action),
+				safety_note: asString(source.safety_note),
+				estimated_mins: asNumber(source.estimated_mins),
+			};
+		}
+
+		function normalizeRepairPlan(plan) {
+			const source = asObject(plan);
+			return {
+				plan_id: asString(source.plan_id),
+				run_id: asString(source.run_id),
+				recommendation_id: asString(source.recommendation_id),
+				org_id: asString(source.org_id),
+				asset_id: asString(source.asset_id),
+				summary: asString(source.summary),
+				rationale: asString(source.rationale),
+				confidence: asNumber(source.confidence),
+				status: asString(source.status),
+				created_at: asString(source.created_at),
+				updated_at: asString(source.updated_at),
+				permit_type: asString(source.permit_type),
+				estimated_duration_hrs: asNumber(source.estimated_duration_hrs),
+				spare_parts_cost_estimate: asNumber(source.spare_parts_cost_estimate),
+				load_error: asString(source.load_error),
+				parts: Array.isArray(source.parts) ? source.parts.map((item) => normalizeRepairPlanPart(item)) : [],
+				parts_list: Array.isArray(source.parts_list) ? source.parts_list.map((item) => normalizeRepairPlanSuggestion(item)) : [],
+				tools_required: asStringList(source.tools_required),
+				procedure_steps: Array.isArray(source.procedure_steps)
+					? source.procedure_steps
+						.map((item) => normalizeRepairPlanProcedureStep(item))
+						.filter((item) => item.action || item.safety_note || item.seq !== null || item.estimated_mins !== null)
+					: [],
+				safety_requirements: asStringList(source.safety_requirements),
+			};
+		}
+
+		function mergeRepairPlan(primaryPlan, fallbackPlan) {
+			const primary = normalizeRepairPlan(primaryPlan);
+			const fallback = normalizeRepairPlan(fallbackPlan);
+			return {
+				plan_id: primary.plan_id || fallback.plan_id,
+				run_id: primary.run_id || fallback.run_id,
+				recommendation_id: primary.recommendation_id || fallback.recommendation_id,
+				org_id: primary.org_id || fallback.org_id,
+				asset_id: primary.asset_id || fallback.asset_id,
+				summary: primary.summary || fallback.summary,
+				rationale: primary.rationale || fallback.rationale,
+				confidence: primary.confidence ?? fallback.confidence,
+				status: primary.status || fallback.status,
+				created_at: primary.created_at || fallback.created_at,
+				updated_at: primary.updated_at || fallback.updated_at,
+				permit_type: primary.permit_type || fallback.permit_type,
+				estimated_duration_hrs: primary.estimated_duration_hrs ?? fallback.estimated_duration_hrs,
+				spare_parts_cost_estimate: primary.spare_parts_cost_estimate ?? fallback.spare_parts_cost_estimate,
+				load_error: primary.load_error || fallback.load_error,
+				parts: primary.parts.length ? primary.parts : fallback.parts,
+				parts_list: primary.parts_list.length ? primary.parts_list : fallback.parts_list,
+				tools_required: primary.tools_required.length ? primary.tools_required : fallback.tools_required,
+				procedure_steps: primary.procedure_steps.length ? primary.procedure_steps : fallback.procedure_steps,
+				safety_requirements: primary.safety_requirements.length ? primary.safety_requirements : fallback.safety_requirements,
+			};
+		}
+
+		function hasRepairPlanContent(plan) {
+			const candidate = normalizeRepairPlan(plan);
+			return [
+				candidate.plan_id,
+				candidate.summary,
+				candidate.rationale,
+				candidate.status,
+				candidate.permit_type,
+				candidate.load_error,
+				candidate.parts.length,
+				candidate.parts_list.length,
+				candidate.tools_required.length,
+				candidate.procedure_steps.length,
+				candidate.safety_requirements.length,
+				candidate.estimated_duration_hrs,
+				candidate.spare_parts_cost_estimate,
+			].some((value) => value !== null && value !== undefined && value !== "" && value !== 0);
+		}
+
 		function normalizeRun(run) {
 			const source = asObject(run);
 			const structuredSource = asObject(source.structured);
 			const modelSource = asObject(source.model);
 			const contextMeta = normalizeMetaValue(asObject(source.context_meta));
+			const structuredRepairPlan = normalizeRepairPlan(structuredSource.repair_plan);
+			const repairPlan = mergeRepairPlan(source.repair_plan, structuredRepairPlan);
 
 			return {
 				run_id: asString(source.run_id),
 				status: asString(source.status, "unknown") || "unknown",
 				event_id: asString(source.event_id),
 				recommendation_id: asString(source.recommendation_id),
+				repair_plan_id: asString(source.repair_plan_id) || repairPlan.plan_id,
 				title: asString(source.title) || asString(structuredSource.title),
 				summary: asString(source.summary) || asString(structuredSource.summary),
 				confidence: asNumber(source.confidence) ?? asNumber(structuredSource.confidence) ?? asNumber(modelSource.confidence),
@@ -2058,6 +2269,7 @@
 					hypothesis: asStringList(structuredSource.hypothesis),
 					immediate_actions: asStringList(structuredSource.immediate_actions),
 					pm_suggestions: asStringList(structuredSource.pm_suggestions),
+					repair_plan: structuredRepairPlan,
 				},
 				model: {
 					name: asString(modelSource.name),
@@ -2065,6 +2277,7 @@
 					latency_ms: asNumber(modelSource.latency_ms),
 					confidence: asNumber(modelSource.confidence),
 				},
+				repair_plan: hasRepairPlanContent(repairPlan) ? repairPlan : null,
 				context_meta: asObject(contextMeta),
 				date: asString(source.date),
 				source_file: asString(source.source_file),
@@ -2362,6 +2575,139 @@
 			`;
 		}
 
+		function formatCurrency(value) {
+			if (typeof value !== "number" || Number.isNaN(value)) {
+				return "-";
+			}
+			return new Intl.NumberFormat("en-US", {
+				style: "currency",
+				currency: "USD",
+				maximumFractionDigits: 0,
+			}).format(value);
+		}
+
+		function renderRepairPlanProcedureSteps(plan) {
+			if (!plan.procedure_steps.length) {
+				return `<p class="muted">No procedure steps were captured for this repair plan.</p>`;
+			}
+			return `<ol class="repair-plan-part-list">${plan.procedure_steps.map((step, index) => {
+				const stepNumber = step.seq !== null ? Math.round(step.seq) : index + 1;
+				const durationLabel = step.estimated_mins !== null ? `${Math.round(step.estimated_mins)} min` : "Time pending";
+				return `
+					<li class="repair-plan-part">
+						<div class="repair-plan-part-head">
+							<strong>Step ${escapeHtml(stepNumber)}</strong>
+							<span class="chip">${escapeHtml(durationLabel)}</span>
+						</div>
+						<div class="muted">${escapeHtml(step.action || "Procedure detail pending")}</div>
+						${step.safety_note ? `<div class="footer-note">Safety: ${escapeHtml(step.safety_note)}</div>` : ""}
+					</li>
+				`;
+			}).join("")}</ol>`;
+		}
+
+		function renderRepairPlanParts(plan) {
+			if (plan.parts.length) {
+				return `<ol class="repair-plan-part-list">${plan.parts.map((part) => `
+					<li class="repair-plan-part">
+						<div class="repair-plan-part-head">
+							<strong>${escapeHtml(part.name || part.description || part.part_id || "Unlabeled part")}</strong>
+							<span class="chip">${escapeHtml(part.quantity ? `${part.quantity}${part.unit ? ` ${part.unit}` : ""}` : (part.unit || "Qty pending"))}</span>
+						</div>
+						${part.description ? `<div class="muted">${escapeHtml(part.description)}</div>` : ""}
+						<div class="chips">
+							${part.part_id ? `<span class="chip">Part ${escapeHtml(part.part_id)}</span>` : ""}
+							${part.created_at ? `<span class="chip">Added ${escapeHtml(formatDate(part.created_at) || part.created_at)}</span>` : ""}
+						</div>
+						${Object.keys(part.metadata || {}).length ? `<div class="footer-note">${escapeHtml(JSON.stringify(part.metadata))}</div>` : ""}
+					</li>
+				`).join("")}</ol>`;
+			}
+			if (plan.parts_list.length) {
+				return `<ol class="repair-plan-part-list">${plan.parts_list.map((part) => `
+					<li class="repair-plan-part">
+						<div class="repair-plan-part-head">
+							<strong>${escapeHtml(part.part_no || part.description || "Suggested part")}</strong>
+							<span class="chip">${escapeHtml(part.qty ? `Qty ${part.qty}` : "Qty pending")}</span>
+						</div>
+						${part.description ? `<div class="muted">${escapeHtml(part.description)}</div>` : ""}
+						<div class="chips">
+							${part.part_no ? `<span class="chip">Part no ${escapeHtml(part.part_no)}</span>` : ""}
+							${part.lead_time_days ? `<span class="chip">Lead ${escapeHtml(part.lead_time_days)} day${part.lead_time_days === 1 ? "" : "s"}</span>` : ""}
+						</div>
+					</li>
+				`).join("")}</ol>`;
+			}
+			return `<p class="muted">No repair parts were captured for this plan.</p>`;
+		}
+
+		function renderRepairPlanPanel(run) {
+			const repairPlan = run?.repair_plan;
+			if (!hasRepairPlanContent(repairPlan)) {
+				return `
+					<div class="repair-plan-shell">
+						${renderOutcomesNote("Waiting", "No persisted repair plan is linked to this run yet.", "The RCA output can still publish actions and PM suggestions even when a persisted repair-plan record has not been created.")}
+					</div>
+				`;
+			}
+
+			const plan = normalizeRepairPlan(repairPlan);
+			const planSummary = plan.summary || run.summary || run.title || "Repair plan details are still being assembled.";
+			const planStatus = plan.status || (plan.plan_id ? "persisted" : "draft");
+			const noteMarkup = plan.load_error
+				? renderOutcomesNote("Heads up", "Repair plan record could not be loaded", "Showing the structured RCA repair snapshot while the persisted repair-plan record is unavailable.", "warn")
+				: renderOutcomesNote("Persisted", "Persisted repair plan", plan.plan_id
+					? `${plan.plan_id} is linked to this RCA run with its current execution outline and parts snapshot.`
+					: "Showing the repair outline captured directly from the structured RCA payload.");
+
+			return `
+				<div class="repair-plan-shell">
+					<div class="repair-plan-summary">
+						<div class="repair-plan-hero">
+							<div class="repair-plan-hero-label">Repair execution plan</div>
+							<div class="repair-plan-hero-value">${escapeHtml(plan.plan_id || "Structured draft")}</div>
+							<div class="repair-plan-hero-meta">${escapeHtml(planSummary)}</div>
+						</div>
+						<div class="outcomes-chip-row">
+							<span class="chip">Status ${escapeHtml(planStatus)}</span>
+							${plan.confidence !== null ? `<span class="chip">Confidence ${escapeHtml(formatConfidence(plan.confidence))}</span>` : ""}
+							${plan.estimated_duration_hrs !== null ? `<span class="chip">Duration ${escapeHtml(plan.estimated_duration_hrs)} hr</span>` : ""}
+							${plan.permit_type ? `<span class="chip">Permit ${escapeHtml(plan.permit_type)}</span>` : ""}
+							${plan.spare_parts_cost_estimate !== null ? `<span class="chip">Spare parts ${escapeHtml(formatCurrency(plan.spare_parts_cost_estimate))}</span>` : ""}
+							${plan.parts.length ? `<span class="chip">Persisted parts ${escapeHtml(plan.parts.length)}</span>` : ""}
+							${!plan.parts.length && plan.parts_list.length ? `<span class="chip">Suggested parts ${escapeHtml(plan.parts_list.length)}</span>` : ""}
+							${plan.updated_at ? `<span class="chip">Updated ${escapeHtml(formatDate(plan.updated_at) || plan.updated_at)}</span>` : ""}
+						</div>
+					</div>
+					${noteMarkup}
+					<div class="repair-plan-grid">
+						<div class="repair-plan-card">
+							<h4>Procedure steps</h4>
+							${renderRepairPlanProcedureSteps(plan)}
+							${plan.rationale ? `<div class="footer-note">${escapeHtml(plan.rationale)}</div>` : ""}
+						</div>
+						<div class="repair-plan-card">
+							<h4>Parts snapshot</h4>
+							${renderRepairPlanParts(plan)}
+						</div>
+						<div class="repair-plan-card">
+							<h4>Tools required</h4>
+							${renderList(plan.tools_required, "No special tools were captured for this repair plan.")}
+						</div>
+						<div class="repair-plan-card">
+							<h4>Safety and permit</h4>
+							${renderList(plan.safety_requirements, "No additional safety requirements were captured for this repair plan.")}
+							<div class="chips">
+								${plan.permit_type ? `<span class="chip">Permit ${escapeHtml(plan.permit_type)}</span>` : ""}
+								${plan.created_at ? `<span class="chip">Created ${escapeHtml(formatDate(plan.created_at) || plan.created_at)}</span>` : ""}
+								${plan.asset_id ? `<span class="chip">Asset ${escapeHtml(plan.asset_id)}</span>` : ""}
+							</div>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
 		function comparisonCandidates(run) {
 			const currentAssetId = asString(asObject(run?.context_meta).asset_id);
 			return [...state.runs]
@@ -2565,7 +2911,9 @@
 			if (state.detailsById.has(runId)) {
 				return state.detailsById.get(runId);
 			}
-			const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`);
+			const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`, {
+				headers: portalIdentityHeaders(),
+			});
 			const normalized = normalizeRun(detail);
 			state.detailsById.set(runId, normalized);
 			return normalized;
@@ -2693,6 +3041,48 @@
 					return `The run points to ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live asset instead.`;
 				},
 			},
+			backend: {
+				label: "Backend",
+				metricsKey: "backend_metrics",
+				selectorLabel: "Backend selector",
+				entityHint: "Jump from a CMMS connector breakdown into backend-specific handoff volume and success trends.",
+				entityNoun: "backend",
+				selectorAria: "Select backend trend series",
+				sourceLabel: "Source outcomes.backend_metrics",
+				volumeMetricKey: "handoff_volume",
+				primaryMetricKey: "handoff_success_rate",
+				primaryMetricName: "handoff_success_rate",
+				primaryMetricKind: "rate",
+				primaryKpiLabel: "Handoff success rate",
+				primaryKpiMeta(windowDays) {
+					return `Terminal CMMS connector success across the last ${windowDays} days.`;
+				},
+				acceptanceMetricKey: "handoff_success_rate_series",
+				secondaryTitle: "Handoff success rate",
+				secondaryMetricName: "handoff_success_rate",
+				secondaryMetricKind: "rate",
+				volumeTitle: "Handoff volume",
+				emptyStateTitle: "No backend trends yet",
+				emptyState: "No backend handoff trend lines are ready for this outcomes window yet. This view fills in once CMMS proposals start recording backend activity.",
+				emptyVolumeSummary: "No CMMS handoffs were recorded for this backend in the current window.",
+				emptyAcceptanceSummary: "No terminal CMMS handoff outcomes were recorded for this backend in the current window.",
+				emptyVolumeLabel: "No handoff volume yet",
+				emptyAcceptanceLabel: "No terminal outcomes yet",
+				totalMetricKey: "handoff_total",
+				totalLabel: "Handoff total",
+				preferredEntityId() {
+					return "";
+				},
+				selectedMap() {
+					return state.selectedOutcomeBackendByRunId;
+				},
+				topKey: "top_backends_by_handoff_volume",
+				topIdKey: "backend",
+				topLabel: "Top connector",
+				fallbackMessage(expectedId, selectedId) {
+					return `This backend view prefers ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}.`;
+				},
+			},
 			user: {
 				label: "Operator",
 				metricsKey: "user_metrics",
@@ -2808,6 +3198,13 @@
 				return `${hours}h ${minutes}m`;
 			}
 			return `${minutes}m`;
+		}
+
+		function formatSecondsAsDuration(totalSeconds) {
+			if (typeof totalSeconds !== "number" || Number.isNaN(totalSeconds) || totalSeconds < 0) {
+				return "-";
+			}
+			return formatMinutesAsDuration(Math.round(totalSeconds / 60));
 		}
 
 		function elapsedMinutesSince(timestamp) {
@@ -3152,8 +3549,32 @@
 			}) || null;
 		}
 
+		function formatFollowThroughValue(value, fallback = "Not recorded") {
+			const normalized = asString(value).trim();
+			if (!normalized) {
+				return fallback;
+			}
+			return normalized
+				.replace(/[_-]+/g, " ")
+				.toLowerCase()
+				.split(/\s+/)
+				.filter(Boolean)
+				.map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+				.join(" ");
+		}
+
+		function handoffAttemptTimestamp(value, fallback = "") {
+			if (typeof value === "string") {
+				return value;
+			}
+			const attempt = asObject(value);
+			return asString(attempt.attempted_at || attempt.statusdate || attempt.changedate || fallback);
+		}
+
 		function normalizeFollowThroughProposal(proposal) {
 			const workOrderSnapshot = asObject(proposal?.work_order_snapshot);
+			const workOrderMetadata = asObject(workOrderSnapshot.metadata);
+			const handoffMetadata = asObject(workOrderMetadata.handoff);
 			const latestAttempt = asObject(proposal?.last_attempt_info);
 			const attemptCount = asNumber(proposal?.attempt_count) || 0;
 			const maxAttempts = asNumber(proposal?.max_attempts) || Math.max(attemptCount, 0);
@@ -3163,7 +3584,7 @@
 				title: asString(proposal?.title) || "Untitled PM proposal",
 				status: asString(proposal?.status || "pending").toLowerCase(),
 				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
-				approvedBy: asString(proposal?.approved_by || latestAttempt.approved_by),
+				approvedBy: asString(proposal?.approved_by || handoffMetadata.approved_by || latestAttempt.approved_by),
 				approvedAt: asString(proposal?.approved_at),
 				attemptCount,
 				attemptsRemaining,
@@ -3177,6 +3598,15 @@
 				workOrderCreatedAt: asString(workOrderSnapshot.workorder_created_at),
 				handoffCompletedAt: asString(workOrderSnapshot.handoff_completed_at),
 				workOrderCompletedAt: asString(workOrderSnapshot.workorder_completed_at),
+				handoffOrigin: asString(handoffMetadata.origin || latestAttempt.origin),
+				handoffBackend: asString(handoffMetadata.backend),
+				handoffProposalId: asString(handoffMetadata.proposal_id || proposal?.proposal_id),
+				handoffRecommendationId: asString(handoffMetadata.recommendation_id || proposal?.recommendation_id),
+				handoffLifecyclePhase: asString(handoffMetadata.lifecycle_phase),
+				handoffStatusBefore: asString(handoffMetadata.status_before),
+				handoffStatusAfter: asString(handoffMetadata.status_after),
+				handoffRecordedAt: handoffAttemptTimestamp(handoffMetadata.last_attempt, latestAttempt.attempted_at),
+				handoffAttemptCount: asNumber(handoffMetadata.attempt_count),
 			};
 		}
 
@@ -3302,6 +3732,17 @@
 				: (followThrough.workOrderCompletedAt && followThrough.workOrderCreatedAt
 					? `Cycle ${formatElapsed(followThrough.workOrderCreatedAt, followThrough.workOrderCompletedAt)}`
 					: "");
+			const lifecyclePhaseLabel = formatFollowThroughValue(followThrough.handoffLifecyclePhase);
+			const transitionLabel = followThrough.handoffStatusBefore || followThrough.handoffStatusAfter
+				? `${formatFollowThroughValue(followThrough.handoffStatusBefore)} to ${formatFollowThroughValue(followThrough.handoffStatusAfter)}`
+				: "Not recorded";
+			const provenanceActor = followThrough.approvedBy || "Unknown approver";
+			const provenanceOrigin = formatFollowThroughValue(followThrough.handoffOrigin);
+			const provenanceBackend = formatFollowThroughValue(followThrough.handoffBackend);
+			const provenanceRecordedAt = followThrough.handoffRecordedAt ? formatDate(followThrough.handoffRecordedAt) : "No retry or handoff timestamp recorded yet.";
+			const provenanceAttemptCount = typeof followThrough.handoffAttemptCount === "number" && Number.isFinite(followThrough.handoffAttemptCount)
+				? followThrough.handoffAttemptCount
+				: followThrough.attemptCount;
 			const noteMarkup = followThrough.workOrderCompletedAt
 				? renderOutcomesNote("Closed", "Work order follow-through complete", `${followThrough.workOrderId || "The linked work order"} has completed its lifecycle for this recommendation.`)
 				: (followThrough.workOrderId
@@ -3325,6 +3766,27 @@
 						</div>
 					</div>
 					${noteMarkup}
+					<div class="compare-summary-grid">
+						<div class="compare-card">
+							<strong>Lifecycle merge</strong>
+							<div class="outcomes-chip-row">
+								<span class="chip">Phase ${escapeHtml(lifecyclePhaseLabel)}</span>
+								<span class="chip">Transition ${escapeHtml(transitionLabel)}</span>
+								${followThrough.workOrderStatus ? `<span class="chip">Current ${escapeHtml(formatFollowThroughValue(followThrough.workOrderStatus))}</span>` : ""}
+							</div>
+							<div class="muted">Stored from work order persistence so terminal CMMS states stay visible even when later connector payloads are weaker.</div>
+						</div>
+						<div class="compare-card">
+							<strong>Handoff provenance</strong>
+							<div class="outcomes-chip-row">
+								<span class="chip">Origin ${escapeHtml(provenanceOrigin)}</span>
+								<span class="chip">Approved by ${escapeHtml(provenanceActor)}</span>
+								${followThrough.handoffBackend ? `<span class="chip">Backend ${escapeHtml(provenanceBackend)}</span>` : ""}
+								${followThrough.handoffRecommendationId ? `<span class="chip">Recommendation ${escapeHtml(followThrough.handoffRecommendationId)}</span>` : ""}
+							</div>
+							<div class="muted">${escapeHtml(followThrough.handoffProposalId || followThrough.proposalId)} was recorded ${escapeHtml(provenanceRecordedAt)} after ${escapeHtml(String(provenanceAttemptCount))} handoff attempt${provenanceAttemptCount === 1 ? "" : "s"}.</div>
+						</div>
+					</div>
 					<ol class="follow-stage-list">${stages.map((stage) => `
 						<li class="follow-stage">
 							<div class="follow-stage-head">
@@ -3547,7 +4009,7 @@
 								>${escapeHtml(actionState.inFlight ? "Running admin retry..." : "Run admin retry")}</button>
 								${!actionState.isAdmin && actionState.retryEligible ? '<span class="muted tiny">Admin role required for retry.</span>' : ''}
 								${row.runId ? `<button type="button" data-handoff-focus-run-id="${escapeHtml(row.runId)}">Open follow-through</button>` : ""}
-								<a href="/api/v1/agents/pm/proposals/${encodeURIComponent(row.proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">Open audit trail</a>
+								${row.runId ? `<button type="button" data-handoff-open-audit-run-id="${escapeHtml(row.runId)}">Open audit trail</button>` : '<span class="muted tiny">Audit trail unavailable without a linked run.</span>'}
 							</div>
 							${actionMessage ? `<div class="footer-note">${escapeHtml(actionMessage)}</div>` : ""}
 						</li>
@@ -3684,17 +4146,44 @@
 			config.selectedMap().set(runId, entityId);
 		}
 
+		function navigateToOutcomeSelection(run, scope, entityId) {
+			if (!run?.run_id || !entityId) {
+				return;
+			}
+			state.selectedOutcomeScopeByRunId.set(run.run_id, scope);
+			rememberOutcomeEntity(run.run_id, scope, entityId);
+			renderDetail(run);
+			requestAnimationFrame(() => {
+				const entitySelect = document.getElementById("outcomesEntitySelect");
+				if (entitySelect) {
+					entitySelect.focus();
+				}
+				const chartGrid = elements.detailView.querySelector(".outcomes-chart-grid");
+				if (chartGrid?.scrollIntoView) {
+					chartGrid.scrollIntoView({ behavior: "smooth", block: "nearest" });
+				}
+			});
+		}
+
 		function metricValues(points) {
 			return points
 				.map((point) => asNumber(point?.value))
 				.filter((value) => typeof value === "number" && !Number.isNaN(value));
 		}
 
-		function formatTrendValue(value, metricName) {
+		function metricKind(metricName, options = {}) {
+			const configuredKind = asString(options.metricKind);
+			if (configuredKind) {
+				return configuredKind;
+			}
+			return metricName === "acceptance_rate" ? "rate" : "count";
+		}
+
+		function formatTrendValue(value, metricName, options = {}) {
 			if (typeof value !== "number" || Number.isNaN(value)) {
 				return "-";
 			}
-			if (metricName === "acceptance_rate") {
+			if (metricKind(metricName, options) === "rate") {
 				return `${Math.round(value * 100)}%`;
 			}
 			return `${Math.round(value)}`;
@@ -3702,17 +4191,18 @@
 
 		function chartSummary(points, metricName, options = {}) {
 			const values = metricValues(points);
+			const kind = metricKind(metricName, options);
 			if (!values.length) {
-				return metricName === "acceptance_rate"
+				return kind === "rate"
 					? (options.emptyAcceptanceSummary || "No accept or reject feedback was recorded for this asset in the current window.")
 					: (options.emptyVolumeSummary || "No work orders were recorded for this asset in the current window.");
 			}
 			const peak = Math.max(...values);
 			const low = Math.min(...values);
-			if (metricName === "acceptance_rate") {
-				return `Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window.`;
+			if (kind === "rate") {
+				return `Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window.`;
 			}
-			return `Peak daily volume ${formatTrendValue(peak, metricName)} · Low ${formatTrendValue(low, metricName)}.`;
+			return `Peak daily volume ${formatTrendValue(peak, metricName, options)} · Low ${formatTrendValue(low, metricName, options)}.`;
 		}
 
 		function latestTrendValue(points) {
@@ -3770,7 +4260,7 @@
 			const padding = 16;
 			const { segments, lastPoint } = buildTrendSegments(points, width, height, padding);
 			if (!segments.length) {
-				const emptyLabel = metricName === "acceptance_rate"
+				const emptyLabel = metricKind(metricName, options) === "rate"
 					? (options.emptyAcceptanceLabel || "No acceptance decisions yet")
 					: (options.emptyVolumeLabel || "No work order volume yet");
 				return `<div class="chart-empty">${escapeHtml(emptyLabel)}</div>`;
@@ -3805,16 +4295,170 @@
 							<div class="chart-title">${escapeHtml(title)}</div>
 							<div class="chart-meta">${escapeHtml(chartSummary(points, metricName, options))}</div>
 						</div>
-						<div class="chart-stat">${escapeHtml(formatTrendValue(latestValue, metricName))}</div>
+						<div class="chart-stat">${escapeHtml(formatTrendValue(latestValue, metricName, options))}</div>
 					</div>
 					${renderTrendChartSvg(points, metricName, color, options)}
 				</article>
 			`;
 		}
 
+		function normalizeCmmsSummary(report) {
+			const source = asObject(report?.cmms_summary);
+			return {
+				successTotal: asNumber(source.success_total) || 0,
+				pendingTotal: asNumber(source.pending_total) || 0,
+				failureTotal: asNumber(source.failure_total) || 0,
+				adminRetryRequiredTotal: asNumber(source.admin_retry_required_total) || 0,
+				limitReachedTotal: asNumber(source.limit_reached_total) || 0,
+				approvalToHandoffSecondsAvg: asNumber(source.approval_to_handoff_seconds_avg),
+			};
+		}
+
+		function normalizeCmmsBreakdownBucket(bucket) {
+			const source = asObject(bucket);
+			return {
+				successTotal: asNumber(source.success_total) || 0,
+				pendingTotal: asNumber(source.pending_total) || 0,
+				failureTotal: asNumber(source.failure_total) || 0,
+				adminRetryRequiredTotal: asNumber(source.admin_retry_required_total) || 0,
+				limitReachedTotal: asNumber(source.limit_reached_total) || 0,
+				approvalToHandoffSecondsAvg: asNumber(source.approval_to_handoff_seconds_avg),
+			};
+		}
+
+		function normalizeCmmsBreakdowns(report) {
+			const source = asObject(report?.cmms_breakdowns);
+			const normalizeEntries = (items) => Object.entries(asObject(items))
+				.map(([key, value]) => ({
+					key,
+					label: asString(key) || "unknown",
+					metrics: normalizeCmmsBreakdownBucket(value),
+				}))
+				.sort((left, right) => {
+					const leftScore = (left.metrics.failureTotal * 100) + (left.metrics.pendingTotal * 10) + left.metrics.adminRetryRequiredTotal;
+					const rightScore = (right.metrics.failureTotal * 100) + (right.metrics.pendingTotal * 10) + right.metrics.adminRetryRequiredTotal;
+					if (rightScore !== leftScore) {
+						return rightScore - leftScore;
+					}
+					return left.label.localeCompare(right.label);
+				});
+			return {
+				byAsset: normalizeEntries(source.by_asset),
+				byBackend: normalizeEntries(source.by_backend),
+			};
+		}
+
+		function renderCmmsBreakdownList(rows, noun, options = {}) {
+			if (!rows.length) {
+				return `<p class="muted">No CMMS ${escapeHtml(noun)} breakdowns are recorded for this outcomes window yet.</p>`;
+			}
+			return `<ol class="follow-stage-list">${rows.map((row) => {
+				const navigationScope = asString(options.navigationScope);
+				const rowActionLabel = typeof options.actionLabel === "function"
+					? asString(options.actionLabel(row))
+					: asString(options.actionLabel);
+				const leadTimeLabel = row.metrics.approvalToHandoffSecondsAvg !== null
+					? formatSecondsAsDuration(row.metrics.approvalToHandoffSecondsAvg)
+					: "Not recorded";
+				const toneClass = row.metrics.failureTotal > 0 || row.metrics.pendingTotal > 0 || row.metrics.adminRetryRequiredTotal > 0
+					? "trend-rising"
+					: "trend-falling";
+				const backlogTotal = row.metrics.pendingTotal + row.metrics.failureTotal;
+				const detail = backlogTotal > 0
+					? `${backlogTotal} proposal${backlogTotal === 1 ? " is" : "s are"} still open in pending or failure states for this ${noun}.`
+					: `This ${noun} is currently clear of pending and failed CMMS handoffs in the selected outcomes window.`;
+				return `
+					<li class="follow-stage">
+						<div class="follow-stage-head">
+							<div class="follow-stage-label">${escapeHtml(row.label)}</div>
+							<div class="chips">
+								<span class="chip ${escapeHtml(toneClass)}">${escapeHtml(backlogTotal > 0 ? "Watch" : "Clear")}</span>
+								${navigationScope && rowActionLabel ? `<button class="workflow-link cmms-breakdown-link" type="button" data-outcomes-scope="${escapeHtml(navigationScope)}" data-outcomes-entity="${escapeHtml(row.key)}">${escapeHtml(rowActionLabel)}</button>` : ""}
+							</div>
+						</div>
+						<div class="outcomes-chip-row">
+							<span class="chip">Success ${escapeHtml(row.metrics.successTotal)}</span>
+							<span class="chip">Pending ${escapeHtml(row.metrics.pendingTotal)}</span>
+							<span class="chip">Failure ${escapeHtml(row.metrics.failureTotal)}</span>
+							<span class="chip">Admin retry ${escapeHtml(row.metrics.adminRetryRequiredTotal)}</span>
+							<span class="chip">Limit reached ${escapeHtml(row.metrics.limitReachedTotal)}</span>
+							<span class="chip">Avg lead time ${escapeHtml(leadTimeLabel)}</span>
+						</div>
+						<div class="muted">${escapeHtml(detail)}</div>
+					</li>
+				`;
+			}).join("")}</ol>`;
+		}
+
+		function renderCmmsBreakdowns(report) {
+			const breakdowns = normalizeCmmsBreakdowns(report);
+			return `
+				<div class="compare-summary-grid">
+					<div class="compare-card">
+						<strong>CMMS breakdown by asset</strong>
+						<div class="muted">Expose the most backlogged assets and jump straight into their trend series without leaving the outcomes view.</div>
+						${renderCmmsBreakdownList(breakdowns.byAsset, "asset", {
+							navigationScope: "asset",
+							actionLabel: "Open asset trends",
+						})}
+					</div>
+					<div class="compare-card">
+						<strong>CMMS breakdown by backend</strong>
+						<div class="muted">Compare connector pressure and jump straight into backend-specific CMMS handoff trends.</div>
+						${renderCmmsBreakdownList(breakdowns.byBackend, "backend", {
+							navigationScope: "backend",
+							actionLabel: "Open backend trends",
+						})}
+					</div>
+				</div>
+			`;
+		}
+
+		function renderCmmsSummary(report) {
+			const summary = normalizeCmmsSummary(report);
+			const backlogTotal = summary.pendingTotal + summary.failureTotal;
+			const toneLabel = backlogTotal > 0 || summary.adminRetryRequiredTotal > 0 ? "Active" : "Clear";
+			const toneClass = backlogTotal > 0 || summary.adminRetryRequiredTotal > 0 ? "trend-rising" : "trend-falling";
+			const leadTimeLabel = summary.approvalToHandoffSecondsAvg !== null
+				? formatSecondsAsDuration(summary.approvalToHandoffSecondsAvg)
+				: "Not recorded";
+			const healthDetail = backlogTotal > 0
+				? `${backlogTotal} proposal${backlogTotal === 1 ? " is" : "s are"} still sitting in pending or failure states across the CMMS handoff path.`
+				: "No pending or failed CMMS handoffs are currently recorded in this outcomes window.";
+			const pressureDetail = summary.adminRetryRequiredTotal > 0 || summary.limitReachedTotal > 0
+				? `${summary.adminRetryRequiredTotal} proposal${summary.adminRetryRequiredTotal === 1 ? " needs" : "s need"} admin retry review and ${summary.limitReachedTotal} ${summary.limitReachedTotal === 1 ? "has" : "have"} already hit the configured retry ceiling.`
+				: "Retry pressure is currently low and no proposals have hit the configured retry ceiling in this outcomes window.";
+			return `
+				<div class="compare-summary-grid">
+					<div class="compare-card">
+						<strong>CMMS handoff health</strong>
+						<div class="outcomes-chip-row">
+							<span class="chip ${escapeHtml(toneClass)}">${escapeHtml(toneLabel)}</span>
+							<span class="chip">Success ${escapeHtml(summary.successTotal)}</span>
+							<span class="chip">Pending ${escapeHtml(summary.pendingTotal)}</span>
+							<span class="chip">Failure ${escapeHtml(summary.failureTotal)}</span>
+						</div>
+						<div class="muted">${escapeHtml(healthDetail)}</div>
+					</div>
+					<div class="compare-card">
+						<strong>CMMS retry pressure</strong>
+						<div class="outcomes-chip-row">
+							<span class="chip">Admin retry ${escapeHtml(summary.adminRetryRequiredTotal)}</span>
+							<span class="chip">Limit reached ${escapeHtml(summary.limitReachedTotal)}</span>
+							<span class="chip">Avg lead time ${escapeHtml(leadTimeLabel)}</span>
+							<span class="chip">Source outcomes.cmms_summary</span>
+						</div>
+						<div class="muted">${escapeHtml(pressureDetail)}</div>
+					</div>
+				</div>
+			`;
+		}
+
 		function renderOutcomesPanel(run) {
 			const report = asObject(state.outcomes.report);
 			const outcomesWindow = asNumber(report.window_days) || state.outcomes.windowDays;
+			const cmmsSummaryMarkup = renderCmmsSummary(report);
+			const cmmsBreakdownsMarkup = renderCmmsBreakdowns(report);
 			if (state.outcomes.loading) {
 				return `
 					<div class="outcomes-panel">
@@ -3833,6 +4477,8 @@
 			if (!availableScopes.length) {
 				return `
 					<div class="outcomes-panel">
+						${cmmsSummaryMarkup}
+						${cmmsBreakdownsMarkup}
 						${renderOutcomesNote("Quiet window", "No live trends yet", "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive.")}
 					</div>
 				`;
@@ -3853,18 +4499,26 @@
 			const selectedEntityId = preferredOutcomeEntityId(run, selectedScope, entityIds);
 			rememberOutcomeEntity(run.run_id, selectedScope, selectedEntityId);
 			const selectedMetrics = asObject(metricsByEntity[selectedEntityId]);
+			const primaryMetricKey = config.primaryMetricKey || "acceptance_rate";
+			const primaryMetricName = config.primaryMetricName || "acceptance_rate";
+			const primaryMetricKind = config.primaryMetricKind || (primaryMetricName === "acceptance_rate" ? "rate" : "count");
+			const secondaryTitle = config.secondaryTitle || "Acceptance rate";
+			const secondaryMetricName = config.secondaryMetricName || "acceptance_rate";
+			const secondaryMetricKind = config.secondaryMetricKind || (secondaryMetricName === "acceptance_rate" ? "rate" : "count");
+			const totalMetricKey = config.totalMetricKey || "feedback_total";
+			const totalLabel = config.totalLabel || "Feedback total";
 			const volumeSeries = asPointList(selectedMetrics[config.volumeMetricKey]);
 			const acceptanceSeries = asPointList(selectedMetrics[config.acceptanceMetricKey]);
-			const selectedAcceptanceRate = asNumber(selectedMetrics.acceptance_rate);
-			const selectedFeedbackTotal = asNumber(selectedMetrics.feedback_total);
+			const selectedPrimaryMetric = asNumber(selectedMetrics[primaryMetricKey]);
+			const selectedTotalMetric = asNumber(selectedMetrics[totalMetricKey]);
 			const topRows = Array.isArray(report[config.topKey]) ? report[config.topKey] : [];
 			const topContributor = topRows[0] && topRows[0][config.topIdKey] ? topRows[0] : null;
 			const warnings = asStringList(report.warnings).slice(0, 2);
-			const primaryKpiValue = typeof selectedAcceptanceRate === "number"
-				? formatTrendValue(selectedAcceptanceRate, "acceptance_rate")
+			const primaryKpiValue = typeof selectedPrimaryMetric === "number"
+				? formatTrendValue(selectedPrimaryMetric, primaryMetricName, { metricKind: primaryMetricKind })
 				: "Waiting";
-			const primaryKpiMeta = typeof selectedAcceptanceRate === "number"
-				? `Decision quality across the last ${outcomesWindow} days.`
+			const primaryKpiMeta = typeof selectedPrimaryMetric === "number"
+				? (typeof config.primaryKpiMeta === "function" ? config.primaryKpiMeta(outcomesWindow) : `Decision quality across the last ${outcomesWindow} days.`)
 				: config.emptyAcceptanceSummary;
 			const warningMarkup = [
 				report.status === "partial"
@@ -3899,7 +4553,7 @@
 						</div>
 						<div class="outcomes-summary">
 							<div class="outcomes-hero-kpi">
-								<div id="outcomesPrimaryKpiLabel" class="outcomes-hero-label">Acceptance rate</div>
+								<div id="outcomesPrimaryKpiLabel" class="outcomes-hero-label">${escapeHtml(config.primaryKpiLabel || "Acceptance rate")}</div>
 								<div id="outcomesPrimaryKpiValue" class="outcomes-hero-value">${escapeHtml(primaryKpiValue)}</div>
 								<div class="outcomes-hero-meta">${escapeHtml(primaryKpiMeta)}</div>
 							</div>
@@ -3908,20 +4562,24 @@
 								<span class="chip">Current ${escapeHtml(selectedEntityId)}</span>
 								<span class="chip">Last ${escapeHtml(outcomesWindow)} days</span>
 								<span class="chip">${escapeHtml(config.sourceLabel)}</span>
-								${typeof selectedFeedbackTotal === "number" ? `<span class="chip">Feedback total ${escapeHtml(selectedFeedbackTotal)}</span>` : ""}
+								${typeof selectedTotalMetric === "number" ? `<span class="chip">${escapeHtml(totalLabel)} ${escapeHtml(selectedTotalMetric)}</span>` : ""}
 								${topContributor ? `<span class="chip">${escapeHtml(config.topLabel)} ${escapeHtml(topContributor[config.topIdKey])}</span>` : ""}
 							</div>
 						</div>
 					</div>
 					${warningMarkup}
+					${cmmsSummaryMarkup}
+					${cmmsBreakdownsMarkup}
 					<div class="outcomes-chart-grid">
-						${renderTrendCard(config.volumeTitle, "workorder_volume", volumeSeries, "#0e7c66", {
+						${renderTrendCard(config.volumeTitle, config.volumeMetricKey, volumeSeries, "#0e7c66", {
 							emptyVolumeSummary: config.emptyVolumeSummary,
 							emptyVolumeLabel: config.emptyVolumeLabel,
+							metricKind: config.volumeMetricKind || "count",
 						})}
-						${renderTrendCard("Acceptance rate", "acceptance_rate", acceptanceSeries, "#c5672f", {
+						${renderTrendCard(secondaryTitle, secondaryMetricName, acceptanceSeries, "#c5672f", {
 							emptyAcceptanceSummary: config.emptyAcceptanceSummary,
 							emptyAcceptanceLabel: config.emptyAcceptanceLabel,
+							metricKind: secondaryMetricKind,
 						})}
 					</div>
 				</div>
@@ -3983,6 +4641,11 @@
 			const actor = state.session.subject || "portal.user";
 			const actorOrg = state.session.orgId || "demo-org";
 			const recommendationId = run.recommendation_id || run.run_id;
+			const canSubmitFeedback = portalUserCanSubmitFeedback();
+			const feedbackDisabled = feedbackSubmitting || !canSubmitFeedback;
+			const feedbackHint = canSubmitFeedback
+				? "Edited title and immediate actions are only sent when you fill them in."
+				: feedbackPermissionMessage();
 			return `
 				<div class="feedback-shell">
 					<div class="feedback-head">
@@ -3994,11 +4657,12 @@
 						</div>
 						<span class="muted tiny">Feedback is submitted as ${escapeHtml(actor)} · Org ${escapeHtml(actorOrg)}</span>
 					</div>
+					${!canSubmitFeedback ? `<div class="outcomes-note warn">${escapeHtml(feedbackPermissionMessage())}</div>` : ""}
 					${feedbackError ? `<div class="outcomes-note warn">Unable to load feedback history: ${escapeHtml(feedbackError)}</div>` : ""}
 					<form id="feedbackForm" class="feedback-form">
 						<label>
 							Feedback decision
-							<select id="feedbackActionSelect" aria-label="Feedback decision">
+							<select id="feedbackActionSelect" aria-label="Feedback decision" ${feedbackDisabled ? "disabled" : ""}>
 								<option value="accept" ${draft.action === "accept" ? "selected" : ""}>Accept</option>
 								<option value="reject" ${draft.action === "reject" ? "selected" : ""}>Reject</option>
 								<option value="edited" ${draft.action === "edited" ? "selected" : ""}>Edited</option>
@@ -4006,19 +4670,19 @@
 						</label>
 						<label>
 							Edited title (optional)
-							<input id="feedbackTitleInput" type="text" value="${escapeHtml(draft.editedTitle)}" placeholder="Provide a replacement title when the recommendation should change">
+							<input id="feedbackTitleInput" type="text" value="${escapeHtml(draft.editedTitle)}" placeholder="Provide a replacement title when the recommendation should change" ${feedbackDisabled ? "disabled" : ""}>
 						</label>
 						<label class="feedback-span-2">
 							Reason or field note
-							<textarea id="feedbackReasonInput" placeholder="Explain why this run was accepted, rejected, or edited.">${escapeHtml(draft.reason)}</textarea>
+							<textarea id="feedbackReasonInput" placeholder="Explain why this run was accepted, rejected, or edited." ${feedbackDisabled ? "disabled" : ""}>${escapeHtml(draft.reason)}</textarea>
 						</label>
 						<label class="feedback-span-2">
 							Edited immediate actions (optional)
-							<textarea id="feedbackActionsInput" placeholder="Enter one action per line when the operator wants to adjust the prescribed next steps.">${escapeHtml(draft.editedActions)}</textarea>
+							<textarea id="feedbackActionsInput" placeholder="Enter one action per line when the operator wants to adjust the prescribed next steps." ${feedbackDisabled ? "disabled" : ""}>${escapeHtml(draft.editedActions)}</textarea>
 						</label>
 						<div class="pm-actions feedback-span-2">
-							<button id="feedbackSubmitButton" type="submit" ${feedbackSubmitting ? "disabled" : ""}>${escapeHtml(feedbackSubmitting ? "Saving feedback..." : "Submit feedback")}</button>
-							<span class="muted tiny">Edited title and immediate actions are only sent when you fill them in.</span>
+							<button id="feedbackSubmitButton" type="submit" ${feedbackDisabled ? "disabled" : ""}>${escapeHtml(feedbackSubmitting ? "Saving feedback..." : "Submit feedback")}</button>
+							<span class="muted tiny">${escapeHtml(feedbackHint)}</span>
 						</div>
 					</form>
 					<div class="section-head feedback-history">
@@ -4046,8 +4710,33 @@
 			return (state.session.role || readPortalIdentity().role || "planner").toLowerCase();
 		}
 
+		function portalUserCanSubmitFeedback() {
+			return ["planner", "maintainer", "admin"].includes(portalUserRole());
+		}
+
 		function portalUserIsAdmin() {
 			return ["admin", "maintainer"].includes(portalUserRole());
+		}
+
+		function portalUserCanApprove(retryState) {
+			if (!["planner", "maintainer", "admin"].includes(portalUserRole())) {
+				return false;
+			}
+			if (retryState?.isRetry) {
+				return portalUserIsAdmin();
+			}
+			return true;
+		}
+
+		function feedbackPermissionMessage() {
+			return `Current role ${portalUserRole()} is read-only and cannot submit feedback.`;
+		}
+
+		function approvalPermissionMessage(retryState) {
+			if (retryState?.isRetry) {
+				return "Manual retries require an admin or maintainer role.";
+			}
+			return `Current role ${portalUserRole()} is read-only and cannot approve PM proposals.`;
 		}
 
 		function metricMedianConfidence(runs) {
@@ -4141,6 +4830,42 @@
 			elements.metricUpdated.textContent = latest ? formatDate(latest.updated_at) : "-";
 		}
 
+		function renderWorkflowRail() {
+			const steps = [
+				{ targetId: "pmSuggestionsSection", label: "Review PM proposal" },
+				{ targetId: "approvalHistorySection", label: "Open approval history" },
+				{ targetId: "repairPlanSection", label: "Open repair plan" },
+				{ targetId: "followThroughSection", label: "Open follow-through" },
+			];
+			return `
+				<div class="workflow-rail" aria-label="Run workflow navigation">
+					<span class="workflow-rail-label">Workflow path</span>
+					${steps.map((step) => `
+						<button class="workflow-link" type="button" data-workflow-target="${escapeHtml(step.targetId)}">
+							${escapeHtml(step.label)}
+						</button>
+					`).join("")}
+				</div>
+			`;
+		}
+
+		function focusWorkflowSection(targetId) {
+			const target = document.getElementById(targetId);
+			if (!target) {
+				return;
+			}
+			const hash = `#${targetId}`;
+			if (typeof window.history?.replaceState === "function") {
+				window.history.replaceState(null, "", hash);
+			} else {
+				window.location.hash = hash;
+			}
+			target.scrollIntoView({ behavior: "smooth", block: "start" });
+			if (typeof target.focus === "function") {
+				target.focus({ preventScroll: true });
+			}
+		}
+
 		function renderDetail(run) {
 			if (!run) {
 				elements.detailStamp.textContent = "No run selected";
@@ -4173,12 +4898,17 @@
 			const proposalId = run.recommendation_id || run.run_id;
 			const retryState = getRetryState(approvalResult, approvalHistory);
 			const isAdmin = portalUserIsAdmin();
-			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin });
-			const actionHint = retryState.isRetry
-				? (isAdmin
-					? `Admin retry attempts remaining: ${retryState.attemptsRemaining} of ${retryState.maxAttempts}.`
-					: "Manual retries require an admin or maintainer role.")
-				: "Approval uses the PM advisor analyze + approve flow for this run.";
+			const canApproveAction = canApprove && retryState.enabled && portalUserCanApprove(retryState);
+			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin, canAct: canApproveAction });
+			const actionHint = !canApprove
+				? "No PM suggestions were stored for this run."
+				: !portalUserCanApprove(retryState)
+					? approvalPermissionMessage(retryState)
+					: retryState.isRetry
+						? (isAdmin
+							? `Admin retry attempts remaining: ${retryState.attemptsRemaining} of ${retryState.maxAttempts}.`
+							: "Manual retries require an admin or maintainer role.")
+						: "Approval uses the PM advisor analyze + approve flow for this run.";
 
 			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
 			elements.detailView.className = "";
@@ -4216,6 +4946,8 @@
 						</div>
 					</div>
 
+					${renderWorkflowRail()}
+
 					<div class="section">
 						<div class="section-head">
 							<h3>Live evidence</h3>
@@ -4234,11 +4966,12 @@
 						${renderList(run.immediate_actions, "No immediate actions were stored for this run.")}
 					</div>
 
-					<div class="section">
+					<div id="pmSuggestionsSection" class="section workflow-target" tabindex="-1">
 						<h3>PM suggestions</h3>
 						${renderList(run.pm_suggestions, "No PM suggestions were stored for this run.")}
+						${!portalUserCanApprove(retryState) ? `<div class="outcomes-note warn">${escapeHtml(approvalPermissionMessage(retryState))}</div>` : ""}
 						<div class="pm-actions">
-							<button id="approvePmButton" type="button" ${(canApprove && retryState.enabled) ? "" : "disabled"}>
+							<button id="approvePmButton" type="button" ${canApproveAction ? "" : "disabled"}>
 								${escapeHtml(buttonLabel)}
 							</button>
 							<span class="muted tiny approval-action-hint">${escapeHtml(actionHint)}</span>
@@ -4262,7 +4995,7 @@
 						${renderFeedbackPanel(run)}
 					</div>
 
-					<div class="section">
+					<div id="approvalHistorySection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
 							<h3>Approval history</h3>
 							<span class="muted tiny">Trace every approval and retry attempt without leaving the run view.</span>
@@ -4270,7 +5003,15 @@
 						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
 					</div>
 
-					<div class="section">
+					<div id="repairPlanSection" class="section workflow-target" tabindex="-1">
+						<div class="section-head">
+							<h3>Repair plan snapshot</h3>
+							<span class="muted tiny">Expose the persisted repair-plan record and the structured execution outline tied to this RCA run.</span>
+						</div>
+						${renderRepairPlanPanel(run)}
+					</div>
+
+					<div id="followThroughSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
 							<h3>Recommendation follow-through snapshot</h3>
 							<span class="muted tiny">Track whether the current PM proposal is still waiting on approval, sitting in handoff, or already moving through a work order lifecycle.</span>
@@ -4373,6 +5114,12 @@
 				});
 			}
 
+			elements.detailView.querySelectorAll("[data-workflow-target]").forEach((button) => {
+				button.addEventListener("click", () => {
+					focusWorkflowSection(asString(button.getAttribute("data-workflow-target")));
+				});
+			});
+
 			elements.detailView.querySelectorAll("[data-handoff-retry-proposal-id]").forEach((button) => {
 				button.addEventListener("click", async () => {
 					const proposalId = asString(button.getAttribute("data-handoff-retry-proposal-id"));
@@ -4394,6 +5141,17 @@
 						return;
 					}
 					await selectRun(targetRunId);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-handoff-open-audit-run-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const targetRunId = asString(button.getAttribute("data-handoff-open-audit-run-id"));
+					if (!targetRunId) {
+						return;
+					}
+					await selectRun(targetRunId);
+					focusWorkflowSection("approvalHistorySection");
 				});
 			});
 
@@ -4458,6 +5216,16 @@
 				});
 			}
 
+			elements.detailView.querySelectorAll("[data-outcomes-scope][data-outcomes-entity]").forEach((button) => {
+				button.addEventListener("click", () => {
+					navigateToOutcomeSelection(
+						run,
+						asString(button.getAttribute("data-outcomes-scope")) || "asset",
+						asString(button.getAttribute("data-outcomes-entity")),
+					);
+				});
+			});
+
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
 			}
@@ -4480,7 +5248,9 @@
 				renderDetail(selectedRun);
 			}
 			try {
-				state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals");
+				state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {
+					headers: portalIdentityHeaders(),
+				});
 			} catch (error) {
 				state.handoffExceptions.error = error instanceof Error ? error.message : "Unknown handoff queue error";
 			} finally {
@@ -4510,7 +5280,9 @@
 				renderDetail(selectedRun);
 			}
 			try {
-				state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`);
+				state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {
+					headers: portalIdentityHeaders(),
+				});
 			} catch (error) {
 				state.outcomes.error = error instanceof Error ? error.message : "Unknown outcomes error";
 			} finally {
@@ -4539,7 +5311,9 @@
 				renderDetail(selectedRun);
 			}
 			try {
-				state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`);
+				state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`, {
+					headers: portalIdentityHeaders(),
+				});
 			} catch (error) {
 				state.triage.error = error instanceof Error ? error.message : "Unknown triage error";
 			} finally {
@@ -4577,9 +5351,12 @@
 			};
 		}
 
-		function getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin }) {
+		function getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin, canAct }) {
 			if (!canApprove) {
 				return "Approve PM proposal";
+			}
+			if (!canAct && !retryState.isRetry) {
+				return "Approval restricted";
 			}
 			if (approvalBusy) {
 				return retryState.isRetry ? (isAdmin ? "Admin retry in progress..." : "Retrying handoff...") : "Submitting approval...";
@@ -4654,7 +5431,7 @@
 				return `
 					<p class="muted">No approval attempts recorded yet.</p>
 					<p class="footer-note">Showing 0 of ${escapeHtml(history?.total_count ?? 0)} attempts.</p>
-					<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">View full audit</a></p>
+					<p class="footer-note">Audit history stays in the current run view.</p>
 				`;
 			}
 			const loadMore = history?.has_more
@@ -4700,7 +5477,7 @@
 					${loadMore}
 					<span class="muted tiny">Paged audit uses the same normalized approval history API.</span>
 				</div>
-				<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=${encodeURIComponent(history?.size || 3)}" target="_blank" rel="noreferrer">View full audit</a></p>
+				<p class="footer-note">Showing the in-app audit trail for ${escapeHtml(proposalId || "this proposal")}.</p>
 			`;
 		}
 
@@ -4864,6 +5641,11 @@
 			if (!run?.run_id) {
 				return;
 			}
+			if (!portalUserCanSubmitFeedback()) {
+				state.feedbackErrorByRunId.set(run.run_id, feedbackPermissionMessage());
+				renderDetail(run);
+				return;
+			}
 			syncFeedbackDraftFromDom(run.run_id);
 			const draft = getFeedbackDraft(run.run_id);
 			const changes = buildFeedbackChanges(draft);
@@ -4893,6 +5675,25 @@
 
 		async function approveRun(run, retryState = getRetryState(state.approvalResultsById.get(run?.run_id), state.approvalHistoryById.get(run?.run_id)), options = {}) {
 			if (!run?.run_id) {
+				return;
+			}
+			if (!portalUserCanApprove(retryState)) {
+				state.approvalResultsById.set(run.run_id, {
+					status: "error",
+					handoff_state: "failure",
+					attempt_status: "failure",
+					attempt_count: retryState.attemptCount,
+					attempts_remaining: retryState.attemptsRemaining,
+					max_attempts: retryState.maxAttempts,
+					retry_allowed: retryState.retryAllowed,
+					last_attempt_info: { attempted_at: "", attempt_number: 0, connector_result: {}, error_message: approvalPermissionMessage(retryState) },
+					reused_result: false,
+					approved: false,
+					detail: approvalPermissionMessage(retryState),
+					proposal: { approved_by: "", approved_at: "", work_order_id: "" },
+					work_order: {},
+				});
+				renderDetail(run);
 				return;
 			}
 			const adminRetry = Boolean(options.adminRetry);
@@ -4980,7 +5781,9 @@
 				renderDetail(run);
 			}
 			try {
-				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`);
+				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`, {
+					headers: portalIdentityHeaders(),
+				});
 				const nextHistory = append
 					? appendApprovalHistoryPage(state.approvalHistoryById.get(run.run_id), history)
 					: history;
@@ -5022,7 +5825,9 @@
 			state.loading = true;
 			setListLoading();
 			try {
-				const runs = await fetchJson("/api/v1/portal/runs?limit=24");
+				const runs = await fetchJson("/api/v1/portal/runs?limit=24", {
+					headers: portalIdentityHeaders(),
+				});
 				state.runs = Array.isArray(runs) ? runs.map((run) => normalizeRun(run)) : [];
 				renderMetrics();
 				applyFilter();

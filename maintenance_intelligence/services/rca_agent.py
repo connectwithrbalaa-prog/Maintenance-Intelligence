@@ -6,6 +6,7 @@ from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
+from maintenance_intelligence.services.repair_plan_service import create_repair_plan, add_part_to_plan
 import backoff
 from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
 
@@ -53,6 +54,88 @@ def _ordered_unique_strings(values):
         ordered.append(candidate)
     return ordered
 
+
+def _build_rationale(structured: dict, fallback_text: str) -> str:
+    hypotheses = structured.get("hypothesis") or []
+    if isinstance(hypotheses, list) and hypotheses:
+        return "\n".join(hypotheses[:4])
+
+    root_causes = structured.get("root_causes") or []
+    if isinstance(root_causes, list) and root_causes:
+        return "\n".join(root_causes[:4])
+
+    summary = structured.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary.strip()
+
+    return fallback_text
+
+
+def _as_trimmed_string(value):
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    return candidate or None
+
+
+def _repair_plan_payload_has_content(repair_plan: dict) -> bool:
+    if not isinstance(repair_plan, dict):
+        return False
+    keys_with_values = (
+        "parts_list",
+        "tools_required",
+        "procedure_steps",
+        "estimated_duration_hrs",
+        "safety_requirements",
+        "permit_type",
+        "spare_parts_cost_estimate",
+    )
+    for key in keys_with_values:
+        value = repair_plan.get(key)
+        if isinstance(value, list) and value:
+            return True
+        if isinstance(value, (int, float)) and value not in (0, 0.0):
+            return True
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def _persist_repair_plan(settings: Settings, evt: dict, run_id: str, recommendation_id: str, structured: dict, rationale: str):
+    repair_plan = structured.get("repair_plan") or {}
+    if not _repair_plan_payload_has_content(repair_plan):
+        return None
+
+    summary_text = _as_trimmed_string(structured.get("summary")) or _as_trimmed_string(structured.get("title"))
+    plan = create_repair_plan(
+        settings.pg_dsn,
+        run_id=run_id,
+        recommendation_id=recommendation_id,
+        org_id=evt.get("org_id"),
+        asset_id=evt.get("asset_id"),
+        summary=summary_text,
+        rationale=rationale,
+        confidence=structured.get("confidence"),
+    )
+
+    for raw_part in repair_plan.get("parts_list") or []:
+        if not isinstance(raw_part, dict):
+            continue
+        add_part_to_plan(
+            settings.pg_dsn,
+            plan["plan_id"],
+            name=_as_trimmed_string(raw_part.get("part_no")) or _as_trimmed_string(raw_part.get("description")),
+            description=_as_trimmed_string(raw_part.get("description")),
+            quantity=raw_part.get("qty"),
+            unit=None,
+            metadata={
+                "part_no": raw_part.get("part_no"),
+                "lead_time_days": raw_part.get("lead_time_days"),
+            },
+        )
+
+    return plan
+
 def process_event(evt: dict, settings: Settings, producer, gateway=None):
     if evt.get("kind") not in ("alarm", "anomaly"):
         return None
@@ -63,7 +146,7 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
     if gateway:
         g = gateway.call_rca(evt, ctx)
         structured = g.get("structured") or {}
-        rationale = "\n".join(structured.get("hypothesis", [])[:4]) or g.get("text", "No output")
+        rationale = _build_rationale(structured, g.get("text", "No output"))
         model_meta = {
             "name": "openai",
             "version": g.get("model_version"),
@@ -96,13 +179,14 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
     out = {
         "event_type": "recommendation.created",
         "event_id": str(uuid.uuid4()),
-        "occurred_at": dt.datetime.utcnow().isoformat() + "Z",
+        "occurred_at": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
         "org_id": evt.get("org_id"),
         "recommendation": {
             "id": rec_id,
             "asset_id": evt.get("asset_id"),
             "title": (structured.get("title") or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"),
             "rationale": rationale,
+            "repair_plan": structured.get("repair_plan") or {},
             "evidence": _ordered_unique_strings(
                 [evt.get("event_id")] + doc_chunk_ids + signal_ids + (structured.get("evidence_ids") or [])
             ),
@@ -111,14 +195,38 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         },
         "lineage": {"source": "agent-rca-genai"},
         "context_meta": {
+            "org_id": evt.get("org_id"),
+            "asset_id": evt.get("asset_id"),
+            "event_kind": evt.get("kind"),
+            "event_summary": evt.get("summary"),
             "wo_titles_count": len(ctx.get("last_wo_titles", [])),
             "doc_chunk_ids": doc_chunk_ids,
+            "signal_ids": signal_ids,
         },
     }
 
     send_recommendation(producer, out)
 
     run_id = out["event_id"]
+    persisted_plan = None
+    try:
+        persisted_plan = _persist_repair_plan(settings, evt, run_id, rec_id, structured, rationale)
+    except Exception as exc:
+        logger.warning(
+            {
+                "event": "rca.repair_plan.persistence_failed",
+                "run_id": run_id,
+                "recommendation_id": rec_id,
+                "error": str(exc),
+            }
+        )
+
+    if persisted_plan is not None:
+        out["recommendation"]["repair_plan"] = {
+            **(structured.get("repair_plan") or {}),
+            "plan_id": persisted_plan["plan_id"],
+        }
+
     summary_payload = {
         "run_id": run_id,
         "status": "ok",
@@ -128,6 +236,8 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "structured": structured,
         "context_meta": out.get("context_meta", {}),
     }
+    if persisted_plan is not None:
+        summary_payload["repair_plan_id"] = persisted_plan["plan_id"]
     write_run_summary(getattr(settings, "run_summary_dir", "outputs"), run_id, summary_payload)
 
     logger.info({"event": "rca.recommendation.created", "id": rec_id, "model": model_meta, "ctx": out.get("context_meta")})

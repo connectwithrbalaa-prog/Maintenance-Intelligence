@@ -17,7 +17,14 @@ from maintenance_intelligence.cmms.adapter import (
     UnsupportedBackendError,
     create_cmms_adapter,
 )
-from maintenance_intelligence.api.middleware.identity import get_identity
+from maintenance_intelligence.api.middleware.identity import (
+    ADMIN_ROLES,
+    APPROVAL_ROLES,
+    get_identity,
+    get_identity_role,
+    get_identity_subject,
+    require_authenticated_identity,
+)
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.services.wo_bridge import process_recommendation, with_pg
 
@@ -362,16 +369,35 @@ def _load_payload(path: Path) -> Optional[Dict[str, Any]]:
 
 def _identity_from_request(request: Request) -> Optional[str]:
     identity = get_identity(request)
-    return identity.get("subject") if identity else None
+    return get_identity_subject(identity) if identity else None
 
 
 def _role_from_request(request: Request) -> Optional[str]:
     identity = get_identity(request)
-    return _as_text(identity.get("role")) if identity else None
+    return _as_text(get_identity_role(identity)) if identity else None
 
 
 def _is_admin_role(role: Optional[str]) -> bool:
-    return (role or "").strip().lower() in {"admin", "maintainer"}
+    return (role or "").strip().lower() in ADMIN_ROLES
+
+
+def _is_approval_role(role: Optional[str]) -> bool:
+    return (role or "").strip().lower() in APPROVAL_ROLES
+
+
+def _require_approval_actor(request: Request) -> tuple[str, str]:
+    identity = get_identity(request)
+    actor_id = _as_text(get_identity_subject(identity)) if identity else None
+    actor_role = _as_text(get_identity_role(identity)) if identity else None
+    if actor_id is None:
+        raise HTTPException(status_code=403, detail="PM approval requires an authenticated identity")
+    if not _is_approval_role(actor_role):
+        raise HTTPException(status_code=403, detail="PM approval requires planner, maintainer, or admin role")
+    return actor_id, actor_role or ""
+
+
+def _require_read_access(request: Request) -> None:
+    require_authenticated_identity(request, detail="PM proposal reads require an authenticated identity")
 
 
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
@@ -575,10 +601,10 @@ def _load_persisted_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
 
 @router.post("/advisor/analyze")
 def analyze_run(payload: AnalyzePayload, request: Request):
+    proposed_by, _actor_role = _require_approval_actor(request)
     found = _find_proposal_payload(payload.run_id)
     summary = found["payload"]
     source_path = found["source_path"]
-    proposed_by = _identity_from_request(request)
 
     try:
         conn = _with_proposal_connection()
@@ -598,7 +624,8 @@ def analyze_run(payload: AnalyzePayload, request: Request):
 
 
 @router.get("/proposals")
-def list_proposals() -> List[Dict[str, Any]]:
+def list_proposals(request: Request) -> List[Dict[str, Any]]:
+    _require_read_access(request)
     max_attempts = _proposal_attempt_limit(Settings())
     try:
         conn = _with_proposal_connection()
@@ -626,10 +653,12 @@ def list_proposals() -> List[Dict[str, Any]]:
 
 @router.get("/proposals/{proposal_id}/history")
 def proposal_history(
+    request: Request,
     proposal_id: str,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=3, ge=1, le=25),
 ) -> Dict[str, Any]:
+    _require_read_access(request)
     settings = Settings()
     proposal = None
     try:
@@ -668,8 +697,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
     settings = Settings()
     max_attempts = _proposal_attempt_limit(settings)
     recommendation = _build_recommendation(payload)
-    approved_by = _identity_from_request(request)
-    actor_role = _role_from_request(request)
+    approved_by, actor_role = _require_approval_actor(request)
     existing = None
     try:
         existing = _load_persisted_proposal(proposal_id)
@@ -710,7 +738,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             proposal = _upsert_proposal(conn, proposal)
             adapter = adapter_factory(settings)
             result = process_recommendation(
-                {"recommendation": recommendation},
+                {
+                    "recommendation": recommendation,
+                    "handoff_context": {
+                        "proposal_id": proposal_id,
+                        "recommendation_id": recommendation.get("id"),
+                        "approved_by": approved_by,
+                        "origin": attempt_origin,
+                    },
+                },
                 conn,
                 adapter,
                 retry_attempts=min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining),

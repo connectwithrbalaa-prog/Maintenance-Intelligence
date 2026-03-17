@@ -66,7 +66,23 @@ test('portal follow-through snapshot: shows completed work order lifecycle when 
           workorder_created_at: '2026-03-15T10:06:00Z',
           handoff_completed_at: '2026-03-15T10:05:00Z',
           workorder_completed_at: '2026-03-15T12:15:00Z',
-          metadata: {},
+          metadata: {
+            handoff: {
+              proposal_id: 'REC-44',
+              recommendation_id: 'REC-44',
+              approved_by: 'demo.admin',
+              origin: 'approval',
+              backend: 'maximo',
+              lifecycle_phase: 'completed',
+              status_before: 'created',
+              status_after: 'complete',
+              attempt_count: 1,
+              last_attempt: {
+                attempted_at: '2026-03-15T10:05:00Z',
+                handoff_state: 'success',
+              },
+            },
+          },
         },
       },
     ],
@@ -81,4 +97,12 @@ test('portal follow-through snapshot: shows completed work order lifecycle when 
   await expect(followThroughSection).toContainText('WO-REC-44');
   await expect(followThroughSection).toContainText('Work order follow-through complete');
   await expect(followThroughSection).toContainText('Completed at');
+  await expect(followThroughSection).toContainText('Lifecycle merge');
+  await expect(followThroughSection).toContainText('Phase Completed');
+  await expect(followThroughSection).toContainText('Transition Created to Complete');
+  await expect(followThroughSection).toContainText('Handoff provenance');
+  await expect(followThroughSection).toContainText('Origin Approval');
+  await expect(followThroughSection).toContainText('Approved by demo.admin');
+  await expect(followThroughSection).toContainText('Backend Maximo');
+  await expect(followThroughSection).toContainText('Mar 15');
 });

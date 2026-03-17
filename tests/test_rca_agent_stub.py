@@ -18,6 +18,7 @@ def test_rca_agent_stub_path(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(rca_mod, "send_recommendation", lambda producer, recommendation: sent.setdefault("event", recommendation))
     monkeypatch.setattr(rca_mod, "write_run_summary", lambda dir_path, run_id, payload: written.setdefault("payload", payload) or str(tmp_path / "summary.json"))
+    monkeypatch.setattr(rca_mod, "create_repair_plan", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not persist empty repair plan")))
 
     result = rca_mod.process_event(
         {"org_id": "O1", "asset_id": "A1", "kind": "alarm", "event_id": "E1"},
@@ -31,4 +32,8 @@ def test_rca_agent_stub_path(monkeypatch, tmp_path):
     assert sent["event"]["recommendation"]["model"]["version"] == "unset"
     assert sent["event"]["recommendation"]["evidence"] == ["E1", "DOC-1", "SIG-1"]
     assert written["payload"]["structured"]["title"] == "RCA Draft"
+    assert written["payload"]["context_meta"]["asset_id"] == "A1"
+    assert written["payload"]["context_meta"]["org_id"] == "O1"
     assert written["payload"]["context_meta"]["doc_chunk_ids"] == ["DOC-1"]
+    assert written["payload"]["context_meta"]["signal_ids"] == ["SIG-1"]
+    assert "repair_plan_id" not in written["payload"]

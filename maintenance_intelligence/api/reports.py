@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from typing import List, Dict, Any
 import psycopg2
+from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
@@ -14,7 +15,8 @@ def with_pg(dsn: str):
             time.sleep(1)
 
 @router.get("/bad-actors")
-def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
+def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
+    require_authenticated_identity(request, detail="Bad-actor reports require an authenticated identity")
     """
     Ranks assets by recent event/WO activity (MVP heuristic):
     - score = (#events last 90d) + 2*(#workorders last 90d)
