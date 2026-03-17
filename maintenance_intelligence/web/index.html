@@ -1850,6 +1850,9 @@
 				loading: false,
 				error: "",
 				limit: 6,
+				resolvedRunByAssetId: new Map(),
+				lookupLoadingByAssetId: new Set(),
+				lookupErrorByAssetId: new Map(),
 			},
 			outcomes: {
 				report: null,
@@ -4038,6 +4041,10 @@
 			if (!normalizedAssetId) {
 				return null;
 			}
+			const cachedResolvedRun = state.triage.resolvedRunByAssetId.get(normalizedAssetId);
+			if (cachedResolvedRun) {
+				return cachedResolvedRun;
+			}
 			const matchingRuns = state.runs.filter((candidate) => asString(asObject(candidate?.context_meta).asset_id) === normalizedAssetId);
 			if (!matchingRuns.length) {
 				return null;
@@ -4052,6 +4059,75 @@
 				}
 				return asString(right?.run_id).localeCompare(asString(left?.run_id));
 			})[0];
+		}
+
+		async function resolveLatestRunForAsset(assetId) {
+			const normalizedAssetId = asString(assetId);
+			if (!normalizedAssetId) {
+				return null;
+			}
+			const existingRun = triagePreferredRun(normalizedAssetId);
+			if (existingRun) {
+				return existingRun;
+			}
+			if (state.triage.lookupLoadingByAssetId.has(normalizedAssetId)) {
+				return null;
+			}
+			state.triage.lookupLoadingByAssetId.add(normalizedAssetId);
+			state.triage.lookupErrorByAssetId.delete(normalizedAssetId);
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {
+					headers: portalIdentityHeaders(),
+				});
+				const normalizedRun = normalizeRun(latestRun);
+				const detailedRun = normalizedRun?.run_id ? await ensureRunDetail(normalizedRun.run_id) : normalizedRun;
+				if (detailedRun) {
+					state.triage.resolvedRunByAssetId.set(normalizedAssetId, detailedRun);
+				}
+				return detailedRun;
+			} catch (error) {
+				state.triage.lookupErrorByAssetId.set(normalizedAssetId, error instanceof Error ? error.message : "Unable to resolve latest run");
+				throw error;
+			} finally {
+				state.triage.lookupLoadingByAssetId.delete(normalizedAssetId);
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		async function openResolvedTriageRun(run) {
+			if (!run?.run_id) {
+				return;
+			}
+			state.detailsById.set(run.run_id, run);
+			const existingIndex = state.runs.findIndex((candidate) => asString(candidate?.run_id) === run.run_id);
+			if (existingIndex >= 0) {
+				state.runs.splice(existingIndex, 1, run);
+			} else {
+				state.runs.unshift(run);
+			}
+			const query = elements.searchInput.value.trim().toLowerCase();
+			state.filteredRuns = query
+				? state.runs.filter((candidate) => getSearchText(candidate).includes(query))
+				: [...state.runs];
+			state.selectedRunId = run.run_id;
+			renderRunList();
+			renderDetail(run);
+			const compareRunId = preferredCompareRunId(run);
+			if (compareRunId) {
+				void ensureCompareRunData(run, compareRunId);
+			}
+			await Promise.allSettled([
+				loadEvidenceSummary(run),
+				loadFeedbackHistory(run),
+				loadApprovalHistory(run),
+			]);
 		}
 
 		function scrollDetailSection(selector) {
@@ -4118,6 +4194,8 @@
 						const assetId = asString(row.asset_id);
 						const matchingRun = triagePreferredRun(assetId);
 						const matchingRunId = asString(matchingRun?.run_id);
+						const lookupLoading = state.triage.lookupLoadingByAssetId.has(assetId);
+						const lookupError = asString(state.triage.lookupErrorByAssetId.get(assetId));
 						return `
 						<li class="triage-item ${asString(row.asset_id) === currentAssetId ? "current-asset" : ""}">
 							<div class="triage-item-head">
@@ -4139,9 +4217,10 @@
 								<button class="workflow-link" type="button" data-triage-asset-id="${escapeHtml(assetId)}">Open asset trends</button>
 								${matchingRunId
 									? `<button class="workflow-link" type="button" data-triage-run-id="${escapeHtml(matchingRunId)}">${escapeHtml(matchingRunId === run?.run_id ? "Open current evidence" : "Open matching run")}</button>`
-									: '<span class="muted tiny">No matching run is loaded for evidence drill-through yet.</span>'}
+									: `<button class="workflow-link" type="button" data-triage-evidence-asset-id="${escapeHtml(assetId)}">${escapeHtml(lookupLoading ? "Resolving evidence..." : "Open latest evidence")}</button>`}
 							</div>
 							${matchingRunId ? `<div class="footer-note">Freshest linked run ${escapeHtml(matchingRunId)} · Updated ${escapeHtml(formatDate(matchingRun?.updated_at) || "-")}</div>` : ""}
+							${lookupError ? `<div class="footer-note">Evidence drill-through unavailable right now: ${escapeHtml(lookupError)}</div>` : ""}
 						</li>
 						`;
 					}).join("")}</ol>
@@ -5293,6 +5372,25 @@
 				});
 			});
 
+			elements.detailView.querySelectorAll("[data-triage-evidence-asset-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const assetId = asString(button.getAttribute("data-triage-evidence-asset-id"));
+					if (!assetId) {
+						return;
+					}
+					try {
+						const resolvedRun = await resolveLatestRunForAsset(assetId);
+						if (!resolvedRun?.run_id) {
+							return;
+						}
+						await openResolvedTriageRun(resolvedRun);
+						scrollDetailSection(".evidence-shell");
+					} catch (error) {
+						void error;
+					}
+				});
+			});
+
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
 			}
@@ -5396,6 +5494,9 @@
 			state.triage.report = null;
 			state.triage.error = "";
 			state.triage.loading = false;
+			state.triage.resolvedRunByAssetId.clear();
+			state.triage.lookupLoadingByAssetId.clear();
+			state.triage.lookupErrorByAssetId.clear();
 		}
 
 		function getRetryState(result, history) {

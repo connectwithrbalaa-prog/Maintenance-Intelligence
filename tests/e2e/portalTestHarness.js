@@ -404,6 +404,7 @@ function createPortalHarness(options = {}) {
     ...defaultRunDetailsById,
     ...(options.runDetailsById || {}),
   };
+  const latestRunByAssetId = options.latestRunByAssetId || {};
   const defaultBadActorsReport = [
     {
       asset_id: 'PUMP-202',
@@ -716,8 +717,38 @@ function createPortalHarness(options = {}) {
       await fulfillJson(route, runSummaries);
     });
 
+    await page.route('**/api/v1/portal/runs/latest**', async (route) => {
+      const url = new URL(route.request().url());
+      const assetId = url.searchParams.get('asset_id');
+      if (!assetId) {
+        await fulfillError(route, 400, 'asset_id is required');
+        return;
+      }
+      const latestRun = latestRunByAssetId[assetId];
+      if (!latestRun) {
+        await fulfillError(route, 404, `Unknown asset: ${assetId}`);
+        return;
+      }
+      await fulfillJson(route, latestRun);
+    });
+
     await page.route('**/api/v1/portal/runs/*', async (route) => {
-      const runId = decodeURIComponent(route.request().url().split('/').pop() || '');
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/latest')) {
+        const assetId = url.searchParams.get('asset_id');
+        if (!assetId) {
+          await fulfillError(route, 400, 'asset_id is required');
+          return;
+        }
+        const latestRun = latestRunByAssetId[assetId];
+        if (!latestRun) {
+          await fulfillError(route, 404, `Unknown asset: ${assetId}`);
+          return;
+        }
+        await fulfillJson(route, latestRun);
+        return;
+      }
+      const runId = decodeURIComponent(url.pathname.split('/').pop() || '');
       const detail = runDetailsById[runId];
       if (!detail) {
         await fulfillError(route, 404, `Unknown run: ${runId}`);

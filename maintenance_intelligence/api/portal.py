@@ -242,6 +242,13 @@ def _validate_run_id(run_id: str) -> str:
     return candidate
 
 
+def _validate_asset_id(asset_id: str) -> str:
+    candidate = asset_id.strip()
+    if not candidate or candidate != asset_id or len(candidate) > 255 or any(ord(char) < 32 for char in candidate):
+        raise HTTPException(status_code=400, detail="Invalid asset id")
+    return candidate
+
+
 def _require_read_access(request: Request) -> None:
     require_authenticated_identity(request, detail="Portal run data requires an authenticated identity")
 
@@ -299,6 +306,18 @@ def _list_run_files(root: Path) -> List[Path]:
     return sorted(root.glob("*/*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
 
 
+def _find_latest_run_by_asset(root: Path, asset_id: str) -> Optional[Dict[str, Any]]:
+    for path in _list_run_files(root):
+        payload = _load_run_payload(path)
+        if payload is None:
+            continue
+        context_meta = _sanitize_context_meta(payload.get("context_meta"))
+        if _as_safe_text(context_meta.get("asset_id")) != asset_id:
+            continue
+        return _extract_run_summary(payload, path)
+    return None
+
+
 @router.get("/", include_in_schema=False)
 def root_redirect():
     return RedirectResponse(url="/portal", status_code=307)
@@ -322,6 +341,16 @@ def recent_runs(request: Request, limit: int = Query(12, ge=1, le=50)) -> List[D
         if len(items) >= limit:
             break
     return items
+
+
+@router.get("/api/v1/portal/runs/latest")
+def latest_run_for_asset(request: Request, asset_id: str = Query(..., min_length=1, description="Asset ID to resolve to the freshest run summary")) -> Dict[str, Any]:
+    _require_read_access(request)
+    resolved_asset_id = _validate_asset_id(asset_id)
+    latest_run = _find_latest_run_by_asset(_run_summary_root(), resolved_asset_id)
+    if latest_run is None:
+        raise HTTPException(status_code=404, detail="Run summary not found for asset")
+    return latest_run
 
 
 @router.get("/api/v1/portal/runs/{run_id}")

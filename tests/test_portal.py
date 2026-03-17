@@ -70,6 +70,12 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail_payload["model"]["latency_ms"] == 812
     assert detail_payload["structured"]["summary"] == ""
 
+    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS)
+    assert latest.status_code == 200
+    latest_payload = latest.json()
+    assert latest_payload["run_id"] == "RUN-123"
+    assert latest_payload["context_meta"]["asset_id"] == "PUMP-101"
+
 
 def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path, monkeypatch):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
@@ -195,6 +201,41 @@ def test_portal_run_detail_rejects_invalid_run_id(tmp_path, monkeypatch):
     detail = client.get("/api/v1/portal/runs/%20RUN-123", headers=READ_HEADERS)
     assert detail.status_code == 400
     assert detail.json()["detail"] == "Invalid run id"
+
+
+def test_portal_latest_run_lookup_rejects_invalid_asset_id(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+
+    client = TestClient(app)
+
+    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": " PUMP-101"}, headers=READ_HEADERS)
+    assert latest.status_code == 400
+    assert latest.json()["detail"] == "Invalid asset id"
+
+
+def test_portal_latest_run_lookup_returns_404_when_asset_is_missing(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-123",
+                "status": "ok",
+                "structured": {"title": "Replace bearing before next shift"},
+                "context_meta": {"asset_id": "PUMP-101"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+
+    client = TestClient(app)
+
+    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-999"}, headers=READ_HEADERS)
+    assert latest.status_code == 404
+    assert latest.json()["detail"] == "Run summary not found for asset"
 
 
 def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, monkeypatch):
@@ -561,17 +602,20 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Current run asset" in page.text
     assert "Open asset trends" in page.text
     assert "Open current evidence" in page.text
+    assert "Open latest evidence" in page.text
     assert "Freshest linked run" in page.text
-    assert "No matching run is loaded for evidence drill-through yet." in page.text
     assert "triageCurrentAssetRow" in page.text
     assert "triagePreferredRun" in page.text
+    assert "resolveLatestRunForAsset" in page.text
     assert "scrollDetailSection" in page.text
     assert "renderTriagePanel" in page.text
     assert "ensureTriageReport" in page.text
     assert "resetTriageReport" in page.text
     assert "data-triage-asset-id" in page.text
     assert "data-triage-run-id" in page.text
+    assert "data-triage-evidence-asset-id" in page.text
     assert 'state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {' in page.text
+    assert 'const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {' in page.text
     assert "headers: portalIdentityHeaders()" in page.text
     assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30" in page.text
     assert "Asset trend snapshot" in page.text
