@@ -2869,6 +2869,7 @@
 			const candidateSet = new Set(asStringList(candidateItems));
 			return {
 				added: [...baseSet].filter((item) => !candidateSet.has(item)),
+				unchanged: [...baseSet].filter((item) => candidateSet.has(item)),
 				removed: [...candidateSet].filter((item) => !baseSet.has(item)),
 			};
 		}
@@ -2893,6 +2894,41 @@
 				return `<p class="muted tiny">${escapeHtml(emptyText)}</p>`;
 			}
 			return `<ol class="compare-delta-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`;
+		}
+
+		function renderCompareEvidenceReferenceDeltaList(items, emptyText, run, compareRun, sourceSide) {
+			if (!items.length) {
+				return `<p class="muted tiny">${escapeHtml(emptyText)}</p>`;
+			}
+			const targetRun = sourceSide === "compare" ? compareRun : run;
+			return `<ol class="compare-delta-list">${items.map((item) => {
+				const referenceType = evidenceReferenceType(item, targetRun);
+				return `
+					<li>
+						<button
+							class="chip evidence-reference-chip"
+							type="button"
+							data-compare-evidence-ref-id="${escapeHtml(item)}"
+							data-compare-evidence-ref-type="${escapeHtml(referenceType)}"
+							data-compare-evidence-side="${escapeHtml(sourceSide)}"
+							data-compare-evidence-run-id="${escapeHtml(asString(targetRun?.run_id))}"
+						>
+							${escapeHtml(evidenceReferenceLabel(referenceType, item))}
+						</button>
+					</li>
+				`;
+			}).join("")}</ol>`;
+		}
+
+		async function activateCompareEvidenceReference(run, compareRun, referenceId, referenceType, sourceSide) {
+			const targetRun = sourceSide === "compare" ? compareRun : run;
+			if (!targetRun?.run_id) {
+				return;
+			}
+			if (sourceSide === "compare" && state.selectedRunId !== targetRun.run_id) {
+				await selectRun(targetRun.run_id);
+			}
+			focusEvidenceReference(targetRun, referenceId, referenceType);
 		}
 
 		function renderComparePanel(run) {
@@ -2942,6 +2978,9 @@
 			}
 
 			const hypothesisDelta = compareListValues(run.hypothesis, compareRun.hypothesis);
+			const rootCauseDelta = compareListValues(run.root_causes, compareRun.root_causes);
+			const contributingFactorDelta = compareListValues(run.contributing_factors, compareRun.contributing_factors);
+			const evidenceReferenceDelta = compareListValues(run.evidence_ids, compareRun.evidence_ids);
 			const immediateActionDelta = compareListValues(run.immediate_actions, compareRun.immediate_actions);
 			const pmSuggestionDelta = compareListValues(run.pm_suggestions, compareRun.pm_suggestions);
 			const compareAssetId = asString(asObject(compareRun.context_meta).asset_id) || "Unscoped asset";
@@ -2994,6 +3033,40 @@
 							</div>
 						</div>
 						<div class="compare-delta-card">
+							<h4>Root cause drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(rootCauseDelta.added, "No new root causes against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Present in both runs</div>
+									${renderCompareDeltaList(rootCauseDelta.unchanged, "No root causes overlap across these runs.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(rootCauseDelta.removed, "No root causes were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Contributing factor drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(contributingFactorDelta.added, "No new contributing factors against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Present in both runs</div>
+									${renderCompareDeltaList(contributingFactorDelta.unchanged, "No contributing factors overlap across these runs.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(contributingFactorDelta.removed, "No contributing factors were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
 							<h4>Immediate action changes</h4>
 							<div class="compare-delta-columns">
 								<div>
@@ -3016,6 +3089,23 @@
 								<div>
 									<div class="compare-delta-label">Only in compare run</div>
 									${renderCompareDeltaList(pmSuggestionDelta.removed, "No PM suggestions were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Evidence reference drift</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareEvidenceReferenceDeltaList(evidenceReferenceDelta.added, "No new evidence references against the compare run.", run, compareRun, "current")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Present in both runs</div>
+									${renderCompareEvidenceReferenceDeltaList(evidenceReferenceDelta.unchanged, "No evidence references overlap across these runs.", run, compareRun, "current")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareEvidenceReferenceDeltaList(evidenceReferenceDelta.removed, "No evidence references were dropped from the compare run.", run, compareRun, "compare")}
 								</div>
 							</div>
 						</div>
@@ -5349,6 +5439,21 @@
 						run,
 						asString(button.getAttribute("data-evidence-ref-id")),
 						asString(button.getAttribute("data-evidence-ref-type"))
+					);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-compare-evidence-ref-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const compareRunId = asString(button.getAttribute("data-compare-evidence-run-id"));
+					const sourceSide = asString(button.getAttribute("data-compare-evidence-side")) || "current";
+					const compareRun = compareRunId ? state.detailsById.get(compareRunId) || null : null;
+					await activateCompareEvidenceReference(
+						run,
+						compareRun,
+						asString(button.getAttribute("data-compare-evidence-ref-id")),
+						asString(button.getAttribute("data-compare-evidence-ref-type")),
+						sourceSide,
 					);
 				});
 			});

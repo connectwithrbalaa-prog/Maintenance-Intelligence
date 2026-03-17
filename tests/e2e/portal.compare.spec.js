@@ -20,10 +20,30 @@ test('portal compare: highlights confidence, feedback, and action drift against 
   await expect(comparePanel.getByText('Edited -1', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Bearing wear is increasing vibration', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Seal misalignment is raising load', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Bearing degradation from lubrication loss', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Seal alignment drift', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Lubrication instability', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Recent overload trip', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByText('Recent coupling wear', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Inspect lubrication', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Capture vibration spectrum', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Schedule bearing replacement', { exact: true })).toBeVisible();
   await expect(compareDeltaGrid.getByText('Plan coupling rebalance', { exact: true })).toBeVisible();
+  await expect(compareDeltaGrid.getByRole('button', { name: 'Signal SIG-901' })).toBeVisible();
+  await expect(compareDeltaGrid.getByRole('button', { name: 'Document DOC-COMMON' })).toBeVisible();
+  await expect(compareDeltaGrid.getByRole('button', { name: 'Signal SIG-777' })).toBeVisible();
+
+  await compareDeltaGrid.getByRole('button', { name: 'Signal SIG-901' }).click();
+  await expect(page.locator('[data-evidence-ref-id="SIG-901"]')).toHaveClass(/active/);
+  await expect(page.locator('[data-evidence-signal-id="SIG-901"]')).toHaveClass(/active/);
+
+  await compareDeltaGrid.getByRole('button', { name: 'Signal SIG-777' }).click();
+  await expect(page.locator('#detailStamp')).toContainText('RUN-099');
+  await expect(page.locator('[data-evidence-ref-id="SIG-777"]')).toBeVisible();
+  await expect(page.locator('#evidenceSection')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Document DOC-COMMON' }).first().click();
+  await expect(page).toHaveURL(/#contextMetadataSection$/);
 
   expect(harness.outcomesCalls).toBeGreaterThan(0);
 });
