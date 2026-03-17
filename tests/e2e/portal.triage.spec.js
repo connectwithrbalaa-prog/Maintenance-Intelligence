@@ -12,14 +12,18 @@ test('portal triage: ranks bad actors and highlights the current run asset', asy
   await expect(page.getByRole('heading', { name: 'Asset triage queue' })).toBeVisible();
   await expect(triagePanel.getByText('Current asset queue rank', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#2', { exact: true })).toBeVisible();
-  await expect(triagePanel.getByText('PUMP-101 is ranked #2 with score 11.', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PUMP-101 is ranked #2 with priority score 19.', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Higher-pressure assets exist', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('PUMP-202 currently ranks above PUMP-101 in the triage queue.', { exact: true })).toBeVisible();
-  await expect(triagePanel.getByText('Source /api/v1/reports/bad-actors', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Source /api/v1/reports/prioritized-assets', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead asset PUMP-202', { exact: true })).toBeVisible();
-  await expect(triagePanel.getByText('Lead score 16', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Lead score 28', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Lead severity high', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#1 · PUMP-202', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#2 · PUMP-101', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Open WOs 2', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Signal risk 6', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Acceptance 25%', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Current run asset', { exact: true })).toBeVisible();
 });
 
@@ -33,5 +37,5 @@ test('portal triage: shows a failure state when the bad-actors report is unavail
   const triagePanel = page.locator('.triage-panel');
 
   await expect(triagePanel.getByText('Triage queue unavailable', { exact: true })).toBeVisible();
-  await expect(triagePanel.getByText('We could not load the bad-actor queue right now: Triage report unavailable', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('We could not load the prioritized asset queue right now: Triage report unavailable', { exact: true })).toBeVisible();
 });

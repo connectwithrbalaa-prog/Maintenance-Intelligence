@@ -407,25 +407,34 @@ function createPortalHarness(options = {}) {
   const defaultBadActorsReport = [
     {
       asset_id: 'PUMP-202',
-      score: 16,
-      events_90d: 4,
-      workorders_90d: 6,
+      priority_score: 28,
+      events_window: 4,
+      workorders_window: 6,
+      open_workorders: 2,
+      signal_anomaly_score: 6,
+      feedback_acceptance_rate: 0.25,
       latest_severity: 'high',
       last_event_at: '2026-03-15T09:30:00Z',
     },
     {
       asset_id: 'PUMP-101',
-      score: 11,
-      events_90d: 3,
-      workorders_90d: 4,
+      priority_score: 19,
+      events_window: 3,
+      workorders_window: 4,
+      open_workorders: 1,
+      signal_anomaly_score: 2,
+      feedback_acceptance_rate: 0.75,
       latest_severity: 'medium',
       last_event_at: '2026-03-15T08:55:00Z',
     },
     {
       asset_id: 'FAN-9',
-      score: 7,
-      events_90d: 1,
-      workorders_90d: 3,
+      priority_score: 9,
+      events_window: 1,
+      workorders_window: 3,
+      open_workorders: 1,
+      signal_anomaly_score: 0,
+      feedback_acceptance_rate: 1,
       latest_severity: 'medium',
       last_event_at: '2026-03-14T17:10:00Z',
     },
@@ -794,9 +803,10 @@ function createPortalHarness(options = {}) {
       await fulfillJson(route, buildOutcomesReport(feedbackHistory));
     });
 
-    await page.route('**/api/v1/reports/bad-actors**', async (route) => {
+  	await page.route('**/api/v1/reports/prioritized-assets**', async (route) => {
       const url = new URL(route.request().url());
       expect(url.searchParams.get('limit')).toBe('6');
+  	  expect(url.searchParams.get('window')).toBe('30');
       if (badActorsFailure) {
         await fulfillError(route, 503, badActorsFailure);
         return;

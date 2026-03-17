@@ -547,24 +547,25 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "evidenceErrorByAssetId" in page.text
     assert "/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
     assert "Asset triage queue" in page.text
-    assert "Rank nearby bad actors so operators can pull the highest-pressure assets forward first." in page.text
+    assert "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first." in page.text
     assert "Current asset queue rank" in page.text
     assert "Loading triage queue" in page.text
     assert "Triage queue unavailable" in page.text
     assert "No triage pressure yet" in page.text
-    assert "There are no ranked assets in the current bad-actor window yet. The queue will populate as events and work orders accumulate." in page.text
+    assert "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate." in page.text
     assert "Current asset leads the queue" in page.text
     assert "Higher-pressure assets exist" in page.text
     assert "Current asset is outside the top queue" in page.text
-    assert "Source /api/v1/reports/bad-actors" in page.text
+    assert "Source /api/v1/reports/prioritized-assets" in page.text
+    assert "Lead severity" in page.text
     assert "Current run asset" in page.text
     assert "triageCurrentAssetRow" in page.text
     assert "renderTriagePanel" in page.text
     assert "ensureTriageReport" in page.text
     assert "resetTriageReport" in page.text
-    assert 'state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`, {' in page.text
+    assert 'state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {' in page.text
     assert "headers: portalIdentityHeaders()" in page.text
-    assert "/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}" in page.text
+    assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30" in page.text
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
     assert "outcomesScopeSelect" in page.text

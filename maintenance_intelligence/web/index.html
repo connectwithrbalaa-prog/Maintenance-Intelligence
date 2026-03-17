@@ -4038,21 +4038,21 @@
 			if (state.triage.loading) {
 				return `
 					<div class="triage-panel">
-						${renderOutcomesNote("Loading", "Loading triage queue", `Ranking the top ${state.triage.limit} assets by recent event and work order pressure.`)}
+						${renderOutcomesNote("Loading", "Loading triage queue", `Ranking the top ${state.triage.limit} assets by signal, lifecycle, and feedback risk.`)}
 					</div>
 				`;
 			}
 			if (state.triage.error) {
 				return `
 					<div class="triage-panel">
-						${renderOutcomesNote("Heads up", "Triage queue unavailable", `We could not load the bad-actor queue right now: ${state.triage.error}`, "warn")}
+						${renderOutcomesNote("Heads up", "Triage queue unavailable", `We could not load the prioritized asset queue right now: ${state.triage.error}`, "warn")}
 					</div>
 				`;
 			}
 			if (!triageRows.length) {
 				return `
 					<div class="triage-panel">
-						${renderOutcomesNote("Quiet window", "No triage pressure yet", "There are no ranked assets in the current bad-actor window yet. The queue will populate as events and work orders accumulate.")}
+						${renderOutcomesNote("Quiet window", "No triage pressure yet", "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate.")}
 					</div>
 				`;
 			}
@@ -4060,13 +4060,13 @@
 			const leadAsset = triageRows[0] || {};
 			const heroValue = currentAssetRank ? `#${currentAssetRank}` : "Out of queue";
 			const heroMeta = currentAssetRank
-				? `${escapeHtml(currentAssetId)} is ranked ${escapeHtml(`#${currentAssetRank}`)} with score ${escapeHtml(currentAssetRow?.score ?? "-")}.`
-				: `${escapeHtml(currentAssetId || "Current asset")} is not in the top ${escapeHtml(state.triage.limit)} bad actors right now.`;
+				? `${escapeHtml(currentAssetId)} is ranked ${escapeHtml(`#${currentAssetRank}`)} with priority score ${escapeHtml(currentAssetRow?.priority_score ?? "-")}.`
+				: `${escapeHtml(currentAssetId || "Current asset")} is not in the top ${escapeHtml(state.triage.limit)} prioritized assets right now.`;
 			const noteMarkup = currentAssetRank
 				? (currentAssetRank === 1
-					? renderOutcomesNote("Priority", "Current asset leads the queue", `${escapeHtml(currentAssetId)} is the top-ranked asset by recent event and work order pressure.`)
+					? renderOutcomesNote("Priority", "Current asset leads the queue", `${escapeHtml(currentAssetId)} is the top-ranked asset by combined signal, lifecycle, and feedback risk.`)
 					: renderOutcomesNote("Focus", "Higher-pressure assets exist", `${escapeHtml(leadAsset.asset_id || "Another asset")} currently ranks above ${escapeHtml(currentAssetId)} in the triage queue.`))
-				: renderOutcomesNote("Info", "Current asset is outside the top queue", "Use this list to pull forward the assets with the highest recent event and work order pressure first.");
+				: renderOutcomesNote("Info", "Current asset is outside the top queue", "Use this list to pull forward the assets with the highest combined signal, lifecycle, and feedback risk first.");
 			return `
 				<div class="triage-panel">
 					<div class="triage-summary">
@@ -4077,9 +4077,10 @@
 						</div>
 						<div class="outcomes-chip-row">
 							<span class="chip">Queue size ${escapeHtml(triageRows.length)}</span>
-							<span class="chip">Source /api/v1/reports/bad-actors</span>
+							<span class="chip">Source /api/v1/reports/prioritized-assets</span>
 							<span class="chip">Lead asset ${escapeHtml(leadAsset.asset_id || "-")}</span>
-							<span class="chip">Lead score ${escapeHtml(leadAsset.score ?? "-")}</span>
+							<span class="chip">Lead score ${escapeHtml(leadAsset.priority_score ?? "-")}</span>
+							${leadAsset.latest_severity ? `<span class="chip">Lead severity ${escapeHtml(leadAsset.latest_severity)}</span>` : ""}
 						</div>
 					</div>
 					${noteMarkup}
@@ -4090,11 +4091,14 @@
 									<div class="triage-rank">#${escapeHtml(index + 1)} · ${escapeHtml(row.asset_id || "Unknown asset")}</div>
 									<div class="footer-note">Latest severity ${escapeHtml(row.latest_severity || "unknown")} · Last event ${escapeHtml(formatDate(row.last_event_at) || "-")}</div>
 								</div>
-								<span class="chip ${asString(row.asset_id) === currentAssetId ? "trend-falling" : ""}">Score ${escapeHtml(row.score ?? 0)}</span>
+								<span class="chip ${asString(row.asset_id) === currentAssetId ? "trend-falling" : ""}">Score ${escapeHtml(row.priority_score ?? 0)}</span>
 							</div>
 							<div class="triage-meta">
-								<span class="chip">Events 90d ${escapeHtml(row.events_90d ?? 0)}</span>
-								<span class="chip">Workorders 90d ${escapeHtml(row.workorders_90d ?? 0)}</span>
+								<span class="chip">Events ${escapeHtml(row.events_window ?? 0)}</span>
+								<span class="chip">Workorders ${escapeHtml(row.workorders_window ?? 0)}</span>
+								<span class="chip">Open WOs ${escapeHtml(row.open_workorders ?? 0)}</span>
+								<span class="chip">Signal risk ${escapeHtml(row.signal_anomaly_score ?? 0)}</span>
+								${typeof row.feedback_acceptance_rate === "number" ? `<span class="chip">Acceptance ${escapeHtml(formatTrendValue(row.feedback_acceptance_rate, "acceptance_rate", { metricKind: "rate" }))}</span>` : ""}
 								${asString(row.asset_id) === currentAssetId ? '<span class="chip trend-falling">Current run asset</span>' : ""}
 							</div>
 						</li>
@@ -5038,7 +5042,7 @@
 					<div class="section">
 						<div class="section-head">
 							<h3>Asset triage queue</h3>
-							<span class="muted tiny">Rank nearby bad actors so operators can pull the highest-pressure assets forward first.</span>
+							<span class="muted tiny">Rank nearby prioritized assets so operators can pull the highest-risk assets forward first.</span>
 						</div>
 						${renderTriagePanel(run)}
 					</div>
@@ -5311,7 +5315,7 @@
 				renderDetail(selectedRun);
 			}
 			try {
-				state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`, {
+				state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {
 					headers: portalIdentityHeaders(),
 				});
 			} catch (error) {
