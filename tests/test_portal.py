@@ -559,10 +559,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Source /api/v1/reports/prioritized-assets" in page.text
     assert "Lead severity" in page.text
     assert "Current run asset" in page.text
+    assert "Open asset trends" in page.text
+    assert "Open current evidence" in page.text
+    assert "Freshest linked run" in page.text
+    assert "No matching run is loaded for evidence drill-through yet." in page.text
     assert "triageCurrentAssetRow" in page.text
+    assert "triagePreferredRun" in page.text
+    assert "scrollDetailSection" in page.text
     assert "renderTriagePanel" in page.text
     assert "ensureTriageReport" in page.text
     assert "resetTriageReport" in page.text
+    assert "data-triage-asset-id" in page.text
+    assert "data-triage-run-id" in page.text
     assert 'state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {' in page.text
     assert "headers: portalIdentityHeaders()" in page.text
     assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30" in page.text

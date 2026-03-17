@@ -4033,6 +4033,36 @@
 			};
 		}
 
+		function triagePreferredRun(assetId) {
+			const normalizedAssetId = asString(assetId);
+			if (!normalizedAssetId) {
+				return null;
+			}
+			const matchingRuns = state.runs.filter((candidate) => asString(asObject(candidate?.context_meta).asset_id) === normalizedAssetId);
+			if (!matchingRuns.length) {
+				return null;
+			}
+			return [...matchingRuns].sort((left, right) => {
+				const leftUpdatedAt = Date.parse(asString(left?.updated_at));
+				const rightUpdatedAt = Date.parse(asString(right?.updated_at));
+				const safeLeftUpdatedAt = Number.isNaN(leftUpdatedAt) ? 0 : leftUpdatedAt;
+				const safeRightUpdatedAt = Number.isNaN(rightUpdatedAt) ? 0 : rightUpdatedAt;
+				if (safeRightUpdatedAt !== safeLeftUpdatedAt) {
+					return safeRightUpdatedAt - safeLeftUpdatedAt;
+				}
+				return asString(right?.run_id).localeCompare(asString(left?.run_id));
+			})[0];
+		}
+
+		function scrollDetailSection(selector) {
+			requestAnimationFrame(() => {
+				const section = elements.detailView.querySelector(selector);
+				if (section?.scrollIntoView) {
+					section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+				}
+			});
+		}
+
 		function renderTriagePanel(run) {
 			const triageRows = Array.isArray(state.triage.report) ? state.triage.report : [];
 			if (state.triage.loading) {
@@ -4084,7 +4114,11 @@
 						</div>
 					</div>
 					${noteMarkup}
-					<ol class="triage-list">${triageRows.map((row, index) => `
+					<ol class="triage-list">${triageRows.map((row, index) => {
+						const assetId = asString(row.asset_id);
+						const matchingRun = triagePreferredRun(assetId);
+						const matchingRunId = asString(matchingRun?.run_id);
+						return `
 						<li class="triage-item ${asString(row.asset_id) === currentAssetId ? "current-asset" : ""}">
 							<div class="triage-item-head">
 								<div>
@@ -4101,8 +4135,16 @@
 								${typeof row.feedback_acceptance_rate === "number" ? `<span class="chip">Acceptance ${escapeHtml(formatTrendValue(row.feedback_acceptance_rate, "acceptance_rate", { metricKind: "rate" }))}</span>` : ""}
 								${asString(row.asset_id) === currentAssetId ? '<span class="chip trend-falling">Current run asset</span>' : ""}
 							</div>
+							<div class="pm-actions">
+								<button class="workflow-link" type="button" data-triage-asset-id="${escapeHtml(assetId)}">Open asset trends</button>
+								${matchingRunId
+									? `<button class="workflow-link" type="button" data-triage-run-id="${escapeHtml(matchingRunId)}">${escapeHtml(matchingRunId === run?.run_id ? "Open current evidence" : "Open matching run")}</button>`
+									: '<span class="muted tiny">No matching run is loaded for evidence drill-through yet.</span>'}
+							</div>
+							${matchingRunId ? `<div class="footer-note">Freshest linked run ${escapeHtml(matchingRunId)} · Updated ${escapeHtml(formatDate(matchingRun?.updated_at) || "-")}</div>` : ""}
 						</li>
-					`).join("")}</ol>
+						`;
+					}).join("")}</ol>
 				</div>
 			`;
 		}
@@ -5227,6 +5269,27 @@
 						asString(button.getAttribute("data-outcomes-scope")) || "asset",
 						asString(button.getAttribute("data-outcomes-entity")),
 					);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-triage-asset-id]").forEach((button) => {
+				button.addEventListener("click", () => {
+					navigateToOutcomeSelection(
+						run,
+						"asset",
+						asString(button.getAttribute("data-triage-asset-id")),
+					);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-triage-run-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const targetRunId = asString(button.getAttribute("data-triage-run-id"));
+					if (!targetRunId) {
+						return;
+					}
+					await selectRun(targetRunId);
+					scrollDetailSection(".evidence-shell");
 				});
 			});
 
