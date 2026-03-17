@@ -798,6 +798,26 @@
 			border: 1px solid rgba(24, 34, 38, 0.06);
 		}
 
+		.evidence-item.active,
+		.meta-tile.active,
+		.evidence-reference-chip.active {
+			border-color: rgba(14, 124, 102, 0.34);
+			box-shadow: 0 0 0 2px rgba(14, 124, 102, 0.14);
+			background: rgba(14, 124, 102, 0.08);
+		}
+
+		.evidence-reference-list {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.evidence-reference-chip {
+			border: 1px solid rgba(24, 34, 38, 0.08);
+			background: rgba(255, 255, 255, 0.7);
+			cursor: pointer;
+		}
+
 		.evidence-item-head {
 			display: flex;
 			flex-wrap: wrap;
@@ -1829,6 +1849,7 @@
 			approvalInFlightById: new Set(),
 			approvalHistoryById: new Map(),
 			auditLoadingById: new Set(),
+			evidenceReferenceFocusByRunId: new Map(),
 			selectedOutcomeScopeByRunId: new Map(),
 			selectedOutcomeAssetByRunId: new Map(),
 			selectedOutcomeBackendByRunId: new Map(),
@@ -2464,6 +2485,102 @@
 			return `<span class="chip ${escapeHtml(trend.className || "trend-steady")}">${escapeHtml(trend.label)}</span>`;
 		}
 
+		function evidenceReferenceType(referenceId, run) {
+			const normalizedReferenceId = asString(referenceId);
+			if (!normalizedReferenceId) {
+				return "context";
+			}
+			const contextMeta = asObject(run?.context_meta);
+			if (normalizedReferenceId.startsWith("SIG-") || asStringList(contextMeta.signal_ids).includes(normalizedReferenceId)) {
+				return "signal";
+			}
+			if (normalizedReferenceId.startsWith("DOC-") || asStringList(contextMeta.doc_chunk_ids).includes(normalizedReferenceId)) {
+				return "document";
+			}
+			if (normalizedReferenceId.startsWith("EVT-") || normalizedReferenceId === asString(run?.event_id)) {
+				return "event";
+			}
+			return "context";
+		}
+
+		function evidenceReferenceTargetId(referenceType) {
+			if (referenceType === "signal") {
+				return "evidenceSection";
+			}
+			if (referenceType === "event") {
+				return "eventMetaTile";
+			}
+			return "contextMetadataSection";
+		}
+
+		function evidenceReferenceLabel(referenceType, referenceId) {
+			if (referenceType === "signal") {
+				return `Signal ${referenceId}`;
+			}
+			if (referenceType === "event") {
+				return `Event ${referenceId}`;
+			}
+			if (referenceType === "document") {
+				return `Document ${referenceId}`;
+			}
+			return `Context ${referenceId}`;
+		}
+
+		function activeEvidenceReference(run) {
+			return state.evidenceReferenceFocusByRunId.get(asString(run?.run_id)) || null;
+		}
+
+		function renderEvidenceReferences(run) {
+			const references = Array.isArray(run?.evidence_ids) ? run.evidence_ids : [];
+			if (!references.length) {
+				return `<p class="muted">No evidence references were stored for this run.</p>`;
+			}
+			const activeReference = activeEvidenceReference(run);
+			return `
+				<div class="evidence-reference-list">${references.map((referenceId) => {
+					const referenceType = evidenceReferenceType(referenceId, run);
+					const isActive = activeReference?.id === referenceId;
+					return `
+						<button
+							class="chip evidence-reference-chip ${isActive ? "active" : ""}"
+							type="button"
+							data-evidence-ref-id="${escapeHtml(referenceId)}"
+							data-evidence-ref-type="${escapeHtml(referenceType)}"
+						>
+							${escapeHtml(evidenceReferenceLabel(referenceType, referenceId))}
+						</button>
+					`;
+				}).join("")}</div>
+				<p class="footer-note">Signals jump into live evidence. Event and document references focus the closest supporting context already loaded in the portal.</p>
+			`;
+		}
+
+		function focusEvidenceReference(run, referenceId, referenceType) {
+			const normalizedRunId = asString(run?.run_id);
+			const normalizedReferenceId = asString(referenceId);
+			if (!normalizedRunId || !normalizedReferenceId) {
+				return;
+			}
+			const targetId = evidenceReferenceTargetId(referenceType);
+			state.evidenceReferenceFocusByRunId.set(normalizedRunId, {
+				id: normalizedReferenceId,
+				type: referenceType,
+				targetId,
+			});
+			renderDetail(run);
+			requestAnimationFrame(() => {
+				if (referenceType === "signal") {
+					const signalItem = Array.from(elements.detailView.querySelectorAll("[data-evidence-signal-id]"))
+						.find((item) => asString(item.getAttribute("data-evidence-signal-id")) === normalizedReferenceId);
+					if (signalItem) {
+						signalItem.scrollIntoView({ behavior: "smooth", block: "center" });
+						return;
+					}
+				}
+				focusWorkflowSection(targetId);
+			});
+		}
+
 		function syncFeedbackDraftFromDom(runId) {
 			if (!runId) {
 				return;
@@ -2542,7 +2659,7 @@
 						<div class="evidence-card">
 							<h4>Recent signals</h4>
 							${recentSignals.length ? `<ol class="evidence-list">${recentSignals.map((signal) => `
-								<li class="evidence-item">
+								<li class="evidence-item ${activeEvidenceReference(run)?.type === "signal" && activeEvidenceReference(run)?.id === signal.signal_id ? "active" : ""}" data-evidence-signal-id="${escapeHtml(signal.signal_id || "")}">
 									${(() => {
 										const trend = latestEvidenceTrend(signal, evidence);
 										return trend ? `<div class="chips">${renderEvidenceTrendChip(trend)}</div>` : "";
@@ -5059,7 +5176,7 @@
 					</div>
 
 					<div class="detail-grid">
-						<div class="meta-tile">
+						<div id="eventMetaTile" class="meta-tile ${activeEvidenceReference(run)?.type === "event" && activeEvidenceReference(run)?.id === run.event_id ? "active" : ""}" tabindex="-1">
 							<div class="meta-label">Event</div>
 							<div class="meta-value">${escapeHtml(run.event_id || "-")}</div>
 						</div>
@@ -5079,7 +5196,7 @@
 
 					${renderWorkflowRail()}
 
-					<div class="section">
+					<div id="evidenceSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
 							<h3>Live evidence</h3>
 							<span class="muted tiny">Recent signals and rollups for the asset tied to this RCA run.</span>
@@ -5104,7 +5221,7 @@
 
 					<div class="section">
 						<h3>Evidence references</h3>
-						${renderList(run.evidence_ids, "No evidence references were stored for this run.")}
+						${renderEvidenceReferences(run)}
 					</div>
 
 					<div class="section">
@@ -5189,7 +5306,7 @@
 						${renderTriagePanel(run)}
 					</div>
 
-					<div class="section">
+					<div id="contextMetadataSection" class="section workflow-target" tabindex="-1">
 						<h3>Context metadata</h3>
 						${renderChips(contextMeta, "No context metadata was captured.")}
 					</div>
@@ -5225,6 +5342,16 @@
 					await ensureCompareRunData(run, compareRunId);
 				});
 			}
+
+			elements.detailView.querySelectorAll("[data-evidence-ref-id]").forEach((button) => {
+				button.addEventListener("click", () => {
+					focusEvidenceReference(
+						run,
+						asString(button.getAttribute("data-evidence-ref-id")),
+						asString(button.getAttribute("data-evidence-ref-type"))
+					);
+				});
+			});
 
 			if (feedbackActionSelect) {
 				feedbackActionSelect.addEventListener("change", () => {

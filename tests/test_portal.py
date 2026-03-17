@@ -32,7 +32,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
                     "hypothesis": ["Bearing wear is increasing vibration"],
                     "root_causes": ["Bearing degradation from lubrication loss"],
                     "contributing_factors": ["High ambient temperature"],
-                    "evidence_ids": ["DOC-1", "SIG-1"],
+                    "evidence_ids": ["EV-9", "DOC-1", "SIG-1"],
                     "immediate_actions": ["Inspect lubrication"],
                     "pm_suggestions": ["Schedule bearing replacement"],
                 },
@@ -72,7 +72,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail_payload["structured"]["hypothesis"] == ["Bearing wear is increasing vibration"]
     assert detail_payload["structured"]["root_causes"] == ["Bearing degradation from lubrication loss"]
     assert detail_payload["structured"]["contributing_factors"] == ["High ambient temperature"]
-    assert detail_payload["structured"]["evidence_ids"] == ["DOC-1", "SIG-1"]
+    assert detail_payload["structured"]["evidence_ids"] == ["EV-9", "DOC-1", "SIG-1"]
     assert detail_payload["model"]["latency_ms"] == 812
     assert detail_payload["structured"]["summary"] == ""
 
@@ -621,6 +621,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "root_causes" in page.text
     assert "contributing_factors" in page.text
     assert "evidence_ids" in page.text
+    assert "renderEvidenceReferences" in page.text
+    assert "focusEvidenceReference" in page.text
+    assert "evidenceReferenceType" in page.text
+    assert "evidenceReferenceTargetId" in page.text
+    assert "evidenceReferenceLabel" in page.text
+    assert "evidenceReferenceFocusByRunId" in page.text
+    assert "data-evidence-ref-id" in page.text
+    assert "data-evidence-ref-type" in page.text
+    assert "evidence-reference-chip" in page.text
+    assert "contextMetadataSection" in page.text
+    assert "eventMetaTile" in page.text
+    assert "evidenceSection" in page.text
     assert "Freshest linked run" in page.text
     assert "triageCurrentAssetRow" in page.text
     assert "triagePreferredRun" in page.text

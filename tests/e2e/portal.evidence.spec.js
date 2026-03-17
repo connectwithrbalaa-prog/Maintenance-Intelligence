@@ -30,8 +30,22 @@ test('portal evidence: renders recent signals and rollups for the selected asset
   await expect(evidencePanel.getByText('Signal SIG-901 · Source /api/v1/signals/summary?asset_id=PUMP-101&limit=6', { exact: true })).toBeVisible();
   await expect(page.getByText('Bearing degradation from lubrication loss', { exact: true })).toBeVisible();
   await expect(page.getByText('High ambient temperature', { exact: true })).toBeVisible();
-  await expect(page.getByText('DOC-1', { exact: true })).toBeVisible();
-  await expect(page.getByText('SIG-901', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Event EV-9' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Document DOC-1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Signal SIG-901' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Signal SIG-901' }).click();
+  await expect(page.locator('[data-evidence-ref-id="SIG-901"]')).toHaveClass(/active/);
+  await expect(page.locator('[data-evidence-signal-id="SIG-901"]')).toHaveClass(/active/);
+
+  await page.getByRole('button', { name: 'Document DOC-1' }).click();
+  await expect(page).toHaveURL(/#contextMetadataSection$/);
+  await expect(page.locator('[data-evidence-ref-id="DOC-1"]')).toHaveClass(/active/);
+
+  await page.getByRole('button', { name: 'Event EV-9' }).click();
+  await expect(page).toHaveURL(/#eventMetaTile$/);
+  await expect(page.locator('[data-evidence-ref-id="EV-9"]')).toHaveClass(/active/);
+  await expect(page.locator('#eventMetaTile')).toHaveClass(/active/);
 
   expect(harness.outcomesCalls).toBeGreaterThan(0);
 });
