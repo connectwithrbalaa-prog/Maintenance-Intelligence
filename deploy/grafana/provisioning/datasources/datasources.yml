@@ -1,0 +1,47 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Maintenance Intelligence Prometheus
+    orgId: 1
+  - name: Maintenance Intelligence Postgres
+    orgId: 1
+  - name: Maintenance Intelligence Alertmanager
+    orgId: 1
+
+datasources:
+  - name: Maintenance Intelligence Prometheus
+    uid: mi-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+
+  - name: Maintenance Intelligence Postgres
+    uid: mi-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: postgres
+    secureJsonData:
+      password: postgres
+    editable: true
+    jsonData:
+      database: maintenance
+      sslmode: disable
+      postgresVersion: 1500
+      timescaledb: false
+      maxOpenConns: 25
+      maxIdleConns: 25
+      connMaxLifetime: 14400
+
+  - name: Maintenance Intelligence Alertmanager
+    uid: mi-alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: true
+    jsonData:
+      implementation: prometheus

@@ -7,6 +7,22 @@
   "templating": {
     "list": [
       {
+        "name": "prometheus_ds",
+        "label": "Prometheus Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "description": "Select the Prometheus datasource used for top-level RCA outcome KPIs."
+      },
+      {
+        "name": "postgres_ds",
+        "label": "Postgres Datasource",
+        "type": "datasource",
+        "query": "postgres",
+        "refresh": 1,
+        "description": "Select the PostgreSQL datasource that can query the workorders and rca_feedback tables."
+      },
+      {
         "name": "asset_id",
         "label": "Asset",
         "type": "textbox",
@@ -16,11 +32,45 @@
           "value": "PUMP-101"
         },
         "description": "Starter asset selector. Replace with a datasource-backed variable query when your Grafana datasource can list asset ids."
+      },
+      {
+        "name": "user_id",
+        "label": "Operator",
+        "type": "textbox",
+        "query": "demo.admin",
+        "current": {
+          "text": "demo.admin",
+          "value": "demo.admin"
+        },
+        "description": "Starter operator selector for outcomes.user_metrics. Replace with a datasource-backed variable query when your Grafana datasource can list user ids."
+      },
+      {
+        "name": "org_id",
+        "label": "Org",
+        "type": "textbox",
+        "query": "ops-demo",
+        "current": {
+          "text": "ops-demo",
+          "value": "ops-demo"
+        },
+        "description": "Starter org selector for outcomes.org_metrics. Replace with a datasource-backed variable query when your Grafana datasource can list org ids."
+      },
+      {
+        "name": "pm_handoff_max_attempts",
+        "label": "PM Handoff Max Attempts",
+        "type": "textbox",
+        "query": "3",
+        "current": {
+          "text": "3",
+          "value": "3"
+        },
+        "description": "Starter retry ceiling for CMMS leadership panels. Keep this aligned with MI_PM_HANDOFF_MAX_ATTEMPTS_PER_PROPOSAL when you change the app setting."
       }
     ]
   },
   "panels": [
     {
+      "datasource": "${prometheus_ds}",
       "type": "stat",
       "title": "Acceptance Rate",
       "description": "Overall acceptance rate across the current window. Existing starter metric retained for high-level outcomes status.",
@@ -30,6 +80,7 @@
       ]
     },
     {
+      "datasource": "${prometheus_ds}",
       "type": "timeseries",
       "title": "Feedback Actions (7d)",
       "description": "Existing starter trend panel for feedback action volume.",
@@ -41,6 +92,7 @@
       ]
     },
     {
+      "datasource": "${prometheus_ds}",
       "type": "timeseries",
       "title": "RCA Duration p95",
       "description": "Existing starter panel for RCA latency tracking.",
@@ -50,9 +102,10 @@
       ]
     },
     {
+      "datasource": "${postgres_ds}",
       "type": "timeseries",
       "title": "Asset Daily Workorder Volume (30d)",
-      "description": "Starter panel for outcomes.asset_metrics[$asset_id].workorder_volume. Replace the placeholder target with a datasource-specific query that returns time, asset_id, and daily workorder count for the selected asset over the current 30-day range.",
+      "description": "Live panel for outcomes.asset_metrics[$asset_id].workorder_volume backed by the workorders table.",
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
       "fieldConfig": {
         "defaults": {
@@ -76,16 +129,17 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "asset_daily_workorder_volume{asset_id=\"$asset_id\"}",
-          "legendFormat": "{{$asset_id}}",
-          "placeholder": "Map to outcomes.asset_metrics[asset_id].workorder_volume[].value or an equivalent SQL/view result shaped as time, asset_id, value."
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(COALESCE(workorder_created_at, handoff_completed_at, workorder_completed_at, NOW()), '1d'),\n  COUNT(*)::double precision AS value\nFROM workorders\nWHERE asset_id = '${asset_id}'\n  AND $__timeFilter(COALESCE(workorder_created_at, handoff_completed_at, workorder_completed_at, NOW()))\nGROUP BY 1\nORDER BY 1"
         }
       ]
     },
     {
+      "datasource": "${postgres_ds}",
       "type": "timeseries",
       "title": "Asset Acceptance Rate (30d)",
-      "description": "Starter panel for outcomes.asset_metrics[$asset_id].acceptance_rate. Replace the placeholder target with a datasource-specific query that returns time, asset_id, and daily acceptance rate values between 0 and 1 for the selected asset.",
+      "description": "Live panel for outcomes.asset_metrics[$asset_id].acceptance_rate backed by rca_feedback accept and reject actions.",
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
       "fieldConfig": {
         "defaults": {
@@ -111,9 +165,475 @@
       "targets": [
         {
           "refId": "B",
-          "expr": "asset_daily_acceptance_rate{asset_id=\"$asset_id\"}",
-          "legendFormat": "{{$asset_id}}",
-          "placeholder": "Map to outcomes.asset_metrics[asset_id].acceptance_rate[].value or an equivalent SQL/view result shaped as time, asset_id, value."
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH daily_feedback AS (\n  SELECT\n    $__timeGroupAlias(created_at, '1d'),\n    SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END)::double precision AS accepted_count,\n    SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END)::double precision AS rejected_count\n  FROM rca_feedback\n  WHERE asset_id = '${asset_id}'\n    AND action IN ('accept', 'reject')\n    AND $__timeFilter(created_at)\n  GROUP BY 1\n)\nSELECT\n  time,\n  accepted_count / NULLIF(accepted_count + rejected_count, 0) AS value\nFROM daily_feedback\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "Operator Feedback Total (30d)",
+      "description": "Live panel for outcomes.user_metrics[$user_id].feedback_total backed by rca_feedback.",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 25 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "C",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  NOW() AS time,\n  COUNT(*)::double precision AS value\nFROM rca_feedback\nWHERE user_id = '${user_id}'\n  AND $__timeFilter(created_at)"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "Operator Acceptance Rate (30d)",
+      "description": "Live panel for outcomes.user_metrics[$user_id].acceptance_rate backed by rca_feedback accept and reject actions.",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 25 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "D",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  NOW() AS time,\n  CASE\n    WHEN COUNT(*) FILTER (WHERE action IN ('accept', 'reject')) = 0 THEN NULL\n    ELSE (COUNT(*) FILTER (WHERE action = 'accept'))::double precision\n      / NULLIF(COUNT(*) FILTER (WHERE action IN ('accept', 'reject')), 0)\n  END AS value\nFROM rca_feedback\nWHERE user_id = '${user_id}'\n  AND $__timeFilter(created_at)"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "timeseries",
+      "title": "Operator Feedback Volume (30d)",
+      "description": "Live panel for outcomes.user_metrics[$user_id].feedback_volume backed by rca_feedback.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "E",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '1d'),\n  COUNT(*)::double precision AS value\nFROM rca_feedback\nWHERE user_id = '${user_id}'\n  AND $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "timeseries",
+      "title": "Operator Acceptance Trend (30d)",
+      "description": "Live panel for outcomes.user_metrics[$user_id].acceptance_rate_series backed by rca_feedback accept and reject actions.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "F",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH daily_feedback AS (\n  SELECT\n    $__timeGroupAlias(created_at, '1d'),\n    SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END)::double precision AS accepted_count,\n    SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END)::double precision AS rejected_count\n  FROM rca_feedback\n  WHERE user_id = '${user_id}'\n    AND action IN ('accept', 'reject')\n    AND $__timeFilter(created_at)\n  GROUP BY 1\n)\nSELECT\n  time,\n  accepted_count / NULLIF(accepted_count + rejected_count, 0) AS value\nFROM daily_feedback\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "Org Feedback Total (30d)",
+      "description": "Live panel for outcomes.org_metrics[$org_id].feedback_total backed by rca_feedback.",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "G",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  NOW() AS time,\n  COUNT(*)::double precision AS value\nFROM rca_feedback\nWHERE org_id = '${org_id}'\n  AND $__timeFilter(created_at)"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "Org Acceptance Rate (30d)",
+      "description": "Live panel for outcomes.org_metrics[$org_id].acceptance_rate backed by rca_feedback accept and reject actions.",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "H",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  NOW() AS time,\n  CASE\n    WHEN COUNT(*) FILTER (WHERE action IN ('accept', 'reject')) = 0 THEN NULL\n    ELSE (COUNT(*) FILTER (WHERE action = 'accept'))::double precision\n      / NULLIF(COUNT(*) FILTER (WHERE action IN ('accept', 'reject')), 0)\n  END AS value\nFROM rca_feedback\nWHERE org_id = '${org_id}'\n  AND $__timeFilter(created_at)"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "timeseries",
+      "title": "Org Feedback Volume (30d)",
+      "description": "Live panel for outcomes.org_metrics[$org_id].feedback_volume backed by rca_feedback.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "I",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, '1d'),\n  COUNT(*)::double precision AS value\nFROM rca_feedback\nWHERE org_id = '${org_id}'\n  AND $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "timeseries",
+      "title": "Org Acceptance Trend (30d)",
+      "description": "Live panel for outcomes.org_metrics[$org_id].acceptance_rate_series backed by rca_feedback accept and reject actions.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "J",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH daily_feedback AS (\n  SELECT\n    $__timeGroupAlias(created_at, '1d'),\n    SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END)::double precision AS accepted_count,\n    SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END)::double precision AS rejected_count\n  FROM rca_feedback\n  WHERE org_id = '${org_id}'\n    AND action IN ('accept', 'reject')\n    AND $__timeFilter(created_at)\n  GROUP BY 1\n)\nSELECT\n  time,\n  accepted_count / NULLIF(accepted_count + rejected_count, 0) AS value\nFROM daily_feedback\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Success Total",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.success_total for the active dashboard window.",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 49 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "K",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  COUNT(*) FILTER (WHERE handoff_state = 'success')::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Pending Backlog",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.pending_total for the active dashboard window.",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 49 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "yellow"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "L",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  COUNT(*) FILTER (WHERE handoff_state = 'pending')::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Failure Total",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.failure_total for the active dashboard window.",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 49 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "M",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  COUNT(*) FILTER (WHERE handoff_state = 'failure')::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Avg Approval to Handoff",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.approval_to_handoff_seconds_avg for the active dashboard window.",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 49 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "N",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  AVG(EXTRACT(EPOCH FROM (handoff_completed_at - approved_at))) FILTER (\n    WHERE approved_at IS NOT NULL\n      AND handoff_completed_at IS NOT NULL\n      AND handoff_completed_at >= approved_at\n  )::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Admin Retry Required",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.admin_retry_required_total for proposals still awaiting manual intervention.",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 57 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "O",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count > 0)::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "stat",
+      "title": "CMMS Retry Limit Reached",
+      "description": "Leadership KPI aligned with outcomes.cmms_summary.limit_reached_total using the starter retry ceiling variable.",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 57 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "semi-dark-red"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  NOW() AS time,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count >= ${pm_handoff_max_attempts})::double precision AS value\nFROM cmms_proposals"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "timeseries",
+      "title": "CMMS Handoff Trend (30d)",
+      "description": "Daily success, pending, and failure counts so leadership can watch queue pressure and recoveries over time.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "Q",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.created_at,\n    p.metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  $__timeGroupAlias(created_at, '1d'),\n  COUNT(*) FILTER (WHERE handoff_state = 'success')::double precision AS success,\n  COUNT(*) FILTER (WHERE handoff_state = 'pending')::double precision AS pending,\n  COUNT(*) FILTER (WHERE handoff_state = 'failure')::double precision AS failure\nFROM cmms_proposals\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "table",
+      "title": "CMMS Breakdown by Asset",
+      "description": "Operational drill-down aligned with outcomes.cmms_breakdowns.by_asset for the active dashboard window.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 65 },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "R",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.asset_id AS proposal_asset_id,\n    w.asset_id AS workorder_asset_id,\n    p.metadata AS proposal_metadata,\n    w.metadata AS workorder_metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  COALESCE(NULLIF(BTRIM(COALESCE(proposal_asset_id, workorder_asset_id, '')), ''), 'unknown') AS asset_id,\n  COUNT(*) FILTER (WHERE handoff_state = 'success')::bigint AS success_total,\n  COUNT(*) FILTER (WHERE handoff_state = 'pending')::bigint AS pending_total,\n  COUNT(*) FILTER (WHERE handoff_state = 'failure')::bigint AS failure_total,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count > 0)::bigint AS admin_retry_required_total,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count >= ${pm_handoff_max_attempts})::bigint AS limit_reached_total,\n  AVG(EXTRACT(EPOCH FROM (handoff_completed_at - approved_at))) FILTER (\n    WHERE approved_at IS NOT NULL\n      AND handoff_completed_at IS NOT NULL\n      AND handoff_completed_at >= approved_at\n  )::double precision AS approval_to_handoff_seconds_avg\nFROM cmms_proposals\nGROUP BY 1\nORDER BY failure_total DESC, pending_total DESC, admin_retry_required_total DESC, asset_id ASC"
+        }
+      ]
+    },
+    {
+      "datasource": "${postgres_ds}",
+      "type": "table",
+      "title": "CMMS Breakdown by Backend",
+      "description": "Operational drill-down aligned with outcomes.cmms_breakdowns.by_backend for the active dashboard window.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 65 },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "S",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH cmms_proposals AS (\n  SELECT\n    p.proposal_id,\n    p.status,\n    p.work_order_id,\n    p.metadata AS proposal_metadata,\n    w.metadata AS workorder_metadata,\n    w.handoff_completed_at,\n    LOWER(\n      COALESCE(\n        NULLIF(BTRIM(p.metadata->'approval'->>'handoff_state'), ''),\n        CASE\n          WHEN p.status = 'approved' AND NULLIF(BTRIM(COALESCE(p.work_order_id, '')), '') IS NOT NULL THEN 'success'\n          ELSE 'pending'\n        END\n      )\n    ) AS handoff_state,\n    CASE\n      WHEN jsonb_typeof(p.metadata->'approval_attempts') = 'array' THEN jsonb_array_length(p.metadata->'approval_attempts')\n      WHEN jsonb_typeof(p.metadata->'approval') = 'object'\n        AND (\n          NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), '') IS NOT NULL\n          OR NULLIF(BTRIM(p.metadata->'approval'->>'approved_by'), '') IS NOT NULL\n        ) THEN 1\n      ELSE 0\n    END AS attempt_count,\n    COALESCE(\n      NULLIF(BTRIM(p.metadata->'approval'->>'approved_at'), ''),\n      NULLIF(BTRIM(p.metadata->'approval'->>'attempted_at'), '')\n    )::timestamptz AS approved_at,\n    COALESCE(\n      NULLIF(BTRIM(w.metadata->'handoff'->>'backend'), ''),\n      NULLIF(BTRIM(REPLACE(LOWER(COALESCE(w.metadata->>'source', '')), 'agent-wo-bridge-', '')), ''),\n      'unknown'\n    ) AS backend\n  FROM pm_proposals p\n  LEFT JOIN workorders w ON w.wo_id = p.work_order_id\n  WHERE $__timeFilter(p.created_at)\n)\nSELECT\n  backend,\n  COUNT(*) FILTER (WHERE handoff_state = 'success')::bigint AS success_total,\n  COUNT(*) FILTER (WHERE handoff_state = 'pending')::bigint AS pending_total,\n  COUNT(*) FILTER (WHERE handoff_state = 'failure')::bigint AS failure_total,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count > 0)::bigint AS admin_retry_required_total,\n  COUNT(*) FILTER (WHERE status <> 'approved' AND attempt_count >= ${pm_handoff_max_attempts})::bigint AS limit_reached_total,\n  AVG(EXTRACT(EPOCH FROM (handoff_completed_at - approved_at))) FILTER (\n    WHERE approved_at IS NOT NULL\n      AND handoff_completed_at IS NOT NULL\n      AND handoff_completed_at >= approved_at\n  )::double precision AS approval_to_handoff_seconds_avg\nFROM cmms_proposals\nGROUP BY 1\nORDER BY failure_total DESC, pending_total DESC, admin_retry_required_total DESC, backend ASC"
         }
       ]
     }
