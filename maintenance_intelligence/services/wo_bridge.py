@@ -10,14 +10,22 @@ from maintenance_intelligence.multitenancy import consumer_topics, event_in_scop
 from maintenance_intelligence.runner.config import Settings
 
 
-def with_pg(dsn: str):
+def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
+    """Open a PostgreSQL connection with bounded retries."""
     import time
 
-    while True:
+    last_error = None
+    for attempt in range(max_attempts):
         try:
             return psycopg2.connect(dsn)
-        except Exception:
-            time.sleep(1)
+        except Exception as exc:
+            last_error = exc
+            if attempt == max_attempts - 1:
+                break
+            time.sleep(retry_interval_s)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Failed to connect to PostgreSQL")
 
 
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
