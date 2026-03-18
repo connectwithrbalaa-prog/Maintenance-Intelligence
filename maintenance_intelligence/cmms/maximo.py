@@ -6,6 +6,7 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
+    CMMSUnavailableError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -17,6 +18,14 @@ class MaximoCMMSAdapter(CMMSAdapter):
     backend_name = "maximo"
     backend_label = "IBM Maximo"
     backend_description = "Maximo OSLC work order connector scaffold"
+    lifecycle_status_map = {
+        "WAPPR": "handoff-complete",
+        "APPR": "handoff-complete",
+        "INPRG": "active",
+        "WMATL": "active",
+        "COMP": "completed",
+        "CLOSE": "completed",
+    }
     config_fields = [
         {
             "setting_name": "maximo_base_url",
@@ -108,4 +117,5 @@ class MaximoCMMSAdapter(CMMSAdapter):
             },
             recommendation=recommendation,
             backend_name=self.backend_name,
+            lifecycle_status_map=self.lifecycle_status_map,
         )

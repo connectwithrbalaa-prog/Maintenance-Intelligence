@@ -15,6 +15,7 @@ from maintenance_intelligence.cmms.adapter import (
     UnsupportedBackendError,
     create_cmms_adapter,
     discover_cmms_backends,
+    lifecycle_phase_for_status,
     normalize_work_order_lifecycle,
     parse_json_response_body,
     post_json_request,
@@ -74,6 +75,7 @@ def test_discover_cmms_backends_reports_required_config_fields():
     sap_backend = next(item for item in metadata["supported_backends"] if item["backend"] == "sap_pm")
     assert sap_backend["configured"] is True
     assert any(field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"] for field in sap_backend["config_fields"])
+    assert {entry["phase"]: entry["statuses"] for entry in sap_backend["lifecycle_statuses"]}["completed"] == ["CLSD", "TECO"]
     maximo_backend = next(item for item in metadata["supported_backends"] if item["backend"] == "maximo")
     assert maximo_backend["configured"] is False
 
@@ -155,6 +157,19 @@ def test_normalize_work_order_lifecycle_marks_incomplete_handoff_as_pending():
     assert lifecycle["handoff_completed_at"] is None
     assert lifecycle["phase"] == "pending"
     assert lifecycle["terminal"] is False
+
+
+def test_lifecycle_phase_for_status_uses_connector_mapping():
+    assert lifecycle_phase_for_status("teco", {"TECO": "completed"}) == "completed"
+    assert lifecycle_phase_for_status("wappr", {"WAPPR": "handoff-complete"}) == "handoff-complete"
+
+
+def test_normalize_work_order_result_preserves_connector_phase_hints_on_second_pass():
+    first_pass = MockCMMSAdapter(Settings()).create_work_order({"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"})
+
+    second_pass = normalize_work_order_lifecycle(first_pass)
+
+    assert second_pass["phase"] == "handoff-complete"
 
 
 def test_mock_adapter_returns_normalized_work_order():

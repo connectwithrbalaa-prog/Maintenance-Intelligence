@@ -2334,6 +2334,14 @@
 				configFields: Array.isArray(source.config_fields)
 					? source.config_fields.map((item) => normalizeConnectorConfigField(item))
 					: [],
+				lifecycleStatuses: Array.isArray(source.lifecycle_statuses)
+					? source.lifecycle_statuses.map((item) => ({
+						phase: asString(asObject(item).phase),
+						statuses: Array.isArray(asObject(item).statuses)
+							? asObject(item).statuses.map((status) => asString(status)).filter(Boolean)
+							: [],
+					}))
+					: [],
 			};
 		}
 
@@ -4287,9 +4295,13 @@
 
 		function normalizeFollowThroughProposal(proposal) {
 			const workOrderSnapshot = asObject(proposal?.work_order_snapshot);
+			const workOrderLifecycle = asObject(workOrderSnapshot.lifecycle);
 			const workOrderMetadata = asObject(workOrderSnapshot.metadata);
 			const handoffMetadata = asObject(workOrderMetadata.handoff);
+			const handoffLifecycle = asObject(handoffMetadata.lifecycle);
 			const latestAttempt = asObject(proposal?.last_attempt_info);
+			const latestConnectorResult = asObject(latestAttempt.connector_result);
+			const latestConnectorLifecycle = asObject(latestConnectorResult.lifecycle);
 			const attemptCount = asNumber(proposal?.attempt_count) || 0;
 			const maxAttempts = asNumber(proposal?.max_attempts) || Math.max(attemptCount, 0);
 			const attemptsRemaining = typeof proposal?.attempts_remaining === "number" ? proposal.attempts_remaining : Math.max(0, maxAttempts - attemptCount);
@@ -4306,30 +4318,52 @@
 				retryAllowed: Boolean(proposal?.retry_allowed),
 				adminRetryRequired: Boolean(proposal?.admin_retry_required),
 				lastAttemptAt: asString(latestAttempt.attempted_at),
-				lastMessage: asString(latestAttempt.error_message || asObject(latestAttempt.connector_result).message),
+				lastMessage: asString(latestAttempt.error_message || latestConnectorResult.message),
 				workOrderId: asString(workOrderSnapshot.wo_id || proposal?.work_order_id),
 				workOrderStatus: asString(workOrderSnapshot.status || asObject(workOrderSnapshot.metadata).status || ""),
+				workOrderLifecyclePhase: asString(workOrderSnapshot.lifecycle_phase || workOrderLifecycle.phase || handoffLifecycle.phase),
+				workOrderTerminalState: Boolean(workOrderSnapshot.terminal_state || workOrderLifecycle.terminal),
 				workOrderCreatedAt: asString(workOrderSnapshot.workorder_created_at),
 				handoffCompletedAt: asString(workOrderSnapshot.handoff_completed_at),
 				workOrderCompletedAt: asString(workOrderSnapshot.workorder_completed_at),
 				handoffOrigin: asString(handoffMetadata.origin || latestAttempt.origin),
-				handoffBackend: asString(handoffMetadata.backend),
+				handoffBackend: asString(handoffMetadata.backend || latestConnectorResult.backend),
 				handoffProposalId: asString(handoffMetadata.proposal_id || proposal?.proposal_id),
 				handoffRecommendationId: asString(handoffMetadata.recommendation_id || proposal?.recommendation_id),
-				handoffLifecyclePhase: asString(handoffMetadata.lifecycle_phase),
+				handoffLifecyclePhase: asString(handoffMetadata.lifecycle_phase || handoffLifecycle.phase),
 				handoffStatusBefore: asString(handoffMetadata.status_before),
 				handoffStatusAfter: asString(handoffMetadata.status_after),
 				handoffRecordedAt: handoffAttemptTimestamp(handoffMetadata.last_attempt, latestAttempt.attempted_at),
 				handoffAttemptCount: asNumber(handoffMetadata.attempt_count),
+				connectorLifecyclePhase: asString(latestConnectorResult.lifecycle_phase || latestConnectorLifecycle.phase),
+				connectorStatus: asString(latestConnectorResult.status),
+				connectorTerminalState: Boolean(latestConnectorResult.terminal_state || latestConnectorLifecycle.terminal),
+				connectorMessage: asString(latestConnectorResult.message || latestAttempt.error_message),
 			};
 		}
 
 		function currentFollowThroughPhase(followThrough) {
-			if (followThrough.workOrderCompletedAt) {
+			if (followThrough.workOrderLifecyclePhase === "completed" || followThrough.workOrderCompletedAt) {
 				return {
 					label: "Work order completed",
 					detail: `${followThrough.workOrderId || "This work order"} closed in ${formatElapsed(followThrough.workOrderCreatedAt || followThrough.handoffCompletedAt, followThrough.workOrderCompletedAt)}.`,
 					badge: "Closed",
+					className: "trend-falling",
+				};
+			}
+			if (followThrough.workOrderLifecyclePhase === "active") {
+				return {
+					label: "Work order active",
+					detail: `${followThrough.workOrderId || "The linked work order"} is progressing in the CMMS lifecycle as ${formatFollowThroughValue(followThrough.workOrderStatus || followThrough.workOrderLifecyclePhase)}.`,
+					badge: "Active",
+					className: "trend-steady",
+				};
+			}
+			if (followThrough.workOrderLifecyclePhase === "handoff-complete") {
+				return {
+					label: "Connector handoff complete",
+					detail: `${followThrough.workOrderId || "The linked work order"} is recorded in the CMMS and waiting on downstream progress updates.`,
+					badge: "Handoff complete",
 					className: "trend-falling",
 				};
 			}
@@ -4447,6 +4481,8 @@
 					? `Cycle ${formatElapsed(followThrough.workOrderCreatedAt, followThrough.workOrderCompletedAt)}`
 					: "");
 			const lifecyclePhaseLabel = formatFollowThroughValue(followThrough.handoffLifecyclePhase);
+			const connectorLifecycleLabel = formatFollowThroughValue(followThrough.connectorLifecyclePhase);
+			const workOrderLifecycleLabel = formatFollowThroughValue(followThrough.workOrderLifecyclePhase);
 			const transitionLabel = followThrough.handoffStatusBefore || followThrough.handoffStatusAfter
 				? `${formatFollowThroughValue(followThrough.handoffStatusBefore)} to ${formatFollowThroughValue(followThrough.handoffStatusAfter)}`
 				: "Not recorded";
@@ -4485,6 +4521,8 @@
 							<strong>Lifecycle merge</strong>
 							<div class="outcomes-chip-row">
 								<span class="chip">Phase ${escapeHtml(lifecyclePhaseLabel)}</span>
+								${followThrough.connectorLifecyclePhase ? `<span class="chip ${escapeHtml(followThrough.connectorTerminalState ? "trend-falling" : "trend-steady")}">Connector lifecycle ${escapeHtml(connectorLifecycleLabel)}</span>` : ""}
+								${followThrough.workOrderLifecyclePhase ? `<span class="chip ${escapeHtml(followThrough.workOrderTerminalState ? "trend-falling" : "trend-steady")}">Work order lifecycle ${escapeHtml(workOrderLifecycleLabel)}</span>` : ""}
 								<span class="chip">Transition ${escapeHtml(transitionLabel)}</span>
 								${followThrough.workOrderStatus ? `<span class="chip">Current ${escapeHtml(formatFollowThroughValue(followThrough.workOrderStatus))}</span>` : ""}
 							</div>
@@ -4548,8 +4586,14 @@
 									<div class="outcomes-chip-row">
 										<span class="chip">Backend ${escapeHtml(backend.backend || "unknown")}</span>
 										<span class="chip">Required fields ${escapeHtml(requiredFields.length)}</span>
+										${backend.lifecycleStatuses.length ? `<span class="chip">Lifecycle mappings ${escapeHtml(backend.lifecycleStatuses.reduce((total, entry) => total + entry.statuses.length, 0))}</span>` : ""}
 										${missingRequired.length ? `<span class="chip trend-rising">Missing required ${escapeHtml(missingRequired.length)}</span>` : `<span class="chip">Required config complete</span>`}
 									</div>
+									${backend.lifecycleStatuses.length ? `
+										<div class="outcomes-chip-row">
+											${backend.lifecycleStatuses.map((entry) => `<span class="chip">${escapeHtml(formatFollowThroughValue(entry.phase))}: ${escapeHtml(entry.statuses.join(", "))}</span>`).join("")}
+										</div>
+									` : ""}
 									${backend.configFields.length ? `
 										<ol class="list">
 											${backend.configFields.map((field) => `
@@ -6468,6 +6512,8 @@
 			const attemptNumber = typeof lastAttempt.attempt_number === "number" ? lastAttempt.attempt_number : attemptCount;
 			const connectorMessage = lastAttempt.connector_result?.message || lastAttempt.error_message || result.detail || "Approval update recorded";
 			const connectorStatus = lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
+			const connectorLifecyclePhase = lastAttempt.connector_result?.lifecycle_phase || lastAttempt.connector_result?.lifecycle?.phase || result.work_order?.lifecycle_phase || "unknown";
+			const connectorBackend = lastAttempt.connector_result?.backend || result.work_order?.backend || "unknown";
 			const reuseLine = result.reused_result ? "Reused existing CMMS handoff result." : "Fresh handoff result.";
 			const attemptSummary = attemptCount > 0 ? `Attempt ${attemptNumber} of ${attemptCount}` : "No attempts recorded";
 			const retryLine = result.retry_allowed
@@ -6496,11 +6542,15 @@
 							<div class="approval-stat-label">Work order</div>
 							<div class="approval-stat-value">${escapeHtml(workOrderId)}</div>
 						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Lifecycle phase</div>
+							<div class="approval-stat-value">${escapeHtml(formatFollowThroughValue(connectorLifecyclePhase, "Unknown"))}</div>
+						</div>
 					</div>
 					<div class="approval-connector-note">
 						<div class="approval-connector-title">Latest connector outcome</div>
 						<div>${escapeHtml(connectorMessage)}</div>
-						<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Connector: ${escapeHtml(connectorStatus)}</div>
+						<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Backend: ${escapeHtml(connectorBackend)} · Connector: ${escapeHtml(connectorStatus)} · Lifecycle: ${escapeHtml(formatFollowThroughValue(connectorLifecyclePhase, "Unknown"))}</div>
 					</div>
 					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved at: ${escapeHtml(approvedAt)}</div>
 					<div class="footer-note">${escapeHtml(retryLine)}</div>
@@ -6538,6 +6588,18 @@
 								<div class="audit-detail-label">Attempted at</div>
 								<div>${escapeHtml(attempt.attempted_at || "Unknown time")}</div>
 							</div>
+							${attempt.connector_result?.lifecycle_phase || attempt.connector_result?.lifecycle?.phase ? `
+								<div class="audit-detail">
+									<div class="audit-detail-label">Lifecycle phase</div>
+									<div>${escapeHtml(formatFollowThroughValue(attempt.connector_result?.lifecycle_phase || attempt.connector_result?.lifecycle?.phase, "Unknown"))}</div>
+								</div>
+							` : ""}
+							${attempt.connector_result?.backend ? `
+								<div class="audit-detail">
+									<div class="audit-detail-label">Backend</div>
+									<div>${escapeHtml(attempt.connector_result.backend)}</div>
+								</div>
+							` : ""}
 							${attempt.connector_result?.message ? `
 								<div class="audit-detail">
 									<div class="audit-detail-label">Connector message</div>

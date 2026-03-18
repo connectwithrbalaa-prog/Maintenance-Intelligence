@@ -422,6 +422,7 @@ def test_connectors_endpoint_reports_supported_backends_and_required_fields(monk
     sap_backend = next(item for item in payload["supported_backends"] if item["backend"] == "sap_pm")
     assert sap_backend["configured"] is True
     assert any(field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"] for field in sap_backend["config_fields"])
+    assert {entry["phase"]: entry["statuses"] for entry in sap_backend["lifecycle_statuses"]}["active"] == ["CNF", "PCNF"]
 
 
 def test_approve_proposal_with_sap_pm_backend_preserves_normalized_connector_metadata(monkeypatch, tmp_path):

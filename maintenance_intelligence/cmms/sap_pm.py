@@ -19,6 +19,13 @@ class SAPPMCMMSAdapter(CMMSAdapter):
     backend_name = "sap_pm"
     backend_label = "SAP PM"
     backend_description = "SAP Plant Maintenance OData connector scaffold"
+    lifecycle_status_map = {
+        "REL": "handoff-complete",
+        "PCNF": "active",
+        "CNF": "active",
+        "TECO": "completed",
+        "CLSD": "completed",
+    }
     config_fields = [
         {
             "setting_name": "sap_pm_base_url",
@@ -142,4 +149,5 @@ class SAPPMCMMSAdapter(CMMSAdapter):
             },
             recommendation=recommendation,
             backend_name=self.backend_name,
+            lifecycle_status_map=self.lifecycle_status_map,
         )

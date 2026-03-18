@@ -8,6 +8,12 @@ from maintenance_intelligence.cmms.adapter import CMMSAdapter, normalize_work_or
 
 class MockCMMSAdapter(CMMSAdapter):
     backend_name = "mock"
+    backend_label = "Mock connector"
+    backend_description = "Local deterministic connector used for development and tests"
+    lifecycle_status_map = {
+        "DRAFT": "handoff-complete",
+        "COMP": "completed",
+    }
 
     def create_work_order(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
         rec_id = recommendation.get("id", "")
@@ -24,4 +30,5 @@ class MockCMMSAdapter(CMMSAdapter):
             },
             recommendation=recommendation,
             backend_name=self.backend_name,
+            lifecycle_status_map=self.lifecycle_status_map,
         )

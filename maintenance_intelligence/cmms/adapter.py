@@ -13,6 +13,7 @@ from maintenance_intelligence.runner.config import Settings
 
 TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
 REGRESSIVE_WORK_ORDER_STATUSES = {"PENDING", "QUEUED", "DRAFT", "NEW"}
+VALID_LIFECYCLE_PHASES = {"pending", "created", "handoff-complete", "active", "completed"}
 
 
 class CMMSAdapterError(RuntimeError):
@@ -73,7 +74,42 @@ def _status_upper(status: Any) -> Optional[str]:
     return text.upper() if text else None
 
 
-def is_terminal_work_order_status(status: Any) -> bool:
+def normalize_lifecycle_status_map(status_map: Any) -> Dict[str, str]:
+    if not isinstance(status_map, dict):
+        return {}
+    normalized: Dict[str, str] = {}
+    for raw_status, raw_phase in status_map.items():
+        status = _status_upper(raw_status)
+        phase = (_as_text(raw_phase) or "").lower()
+        if not status or phase not in VALID_LIFECYCLE_PHASES:
+            continue
+        normalized[status] = phase
+    return normalized
+
+
+def lifecycle_status_catalog(status_map: Any) -> list[dict[str, Any]]:
+    grouped: Dict[str, list[str]] = {}
+    for status, phase in normalize_lifecycle_status_map(status_map).items():
+        grouped.setdefault(phase, []).append(status)
+    phase_order = ["pending", "created", "handoff-complete", "active", "completed"]
+    return [
+        {"phase": phase, "statuses": sorted(grouped[phase])}
+        for phase in phase_order
+        if grouped.get(phase)
+    ]
+
+
+def lifecycle_phase_for_status(status: Any, lifecycle_status_map: Any = None) -> Optional[str]:
+    normalized_status = _status_upper(status)
+    if not normalized_status:
+        return None
+    return normalize_lifecycle_status_map(lifecycle_status_map).get(normalized_status)
+
+
+def is_terminal_work_order_status(status: Any, lifecycle_status_map: Any = None) -> bool:
+    explicit_phase = lifecycle_phase_for_status(status, lifecycle_status_map)
+    if explicit_phase == "completed":
+        return True
     return (_status_upper(status) or "") in TERMINAL_WORK_ORDER_STATUSES
 
 
@@ -84,13 +120,23 @@ def work_order_lifecycle_phase(
     *,
     workorder_created_at: Any = None,
     handoff_complete: Optional[bool] = None,
+    lifecycle_status_map: Any = None,
 ) -> str:
-    if workorder_completed_at or is_terminal_work_order_status(status):
+    explicit_phase = lifecycle_phase_for_status(status, lifecycle_status_map)
+    if workorder_completed_at or is_terminal_work_order_status(status, lifecycle_status_map):
         return "completed"
+    if handoff_complete is False and explicit_phase != "completed":
+        return "pending"
+    if explicit_phase == "active":
+        return "active"
+    if explicit_phase == "handoff-complete":
+        return "handoff-complete"
+    if explicit_phase == "created":
+        return "created"
+    if explicit_phase == "pending":
+        return "pending"
     if handoff_completed_at:
         return "handoff-complete"
-    if handoff_complete is False:
-        return "pending"
     status_upper = _status_upper(status)
     if workorder_created_at or status_upper in REGRESSIVE_WORK_ORDER_STATUSES:
         return "created"
@@ -104,8 +150,10 @@ def normalize_work_order_lifecycle(
     *,
     status: Any = None,
     handoff_complete: Optional[bool] = None,
+    lifecycle_status_map: Any = None,
 ) -> Dict[str, Any]:
     payload = _as_dict(result)
+    existing_lifecycle = _as_dict(payload.get("lifecycle"))
     response_payload = _as_dict(payload.get("response"))
     raw_response = _as_dict(payload.get("raw_response")) or payload
     workorder_created_at = _first_timestamp(
@@ -130,7 +178,8 @@ def normalize_work_order_lifecycle(
         raw_response.get("closed_at"),
         raw_response.get("finishdate"),
     )
-    if explicit_completed_at is None and is_terminal_work_order_status(normalized_status):
+    normalized_status_map = normalize_lifecycle_status_map(lifecycle_status_map or existing_lifecycle.get("status_map"))
+    if explicit_completed_at is None and is_terminal_work_order_status(normalized_status, normalized_status_map):
         explicit_completed_at = _first_timestamp(
             response_payload.get("statusdate"),
             response_payload.get("changedate"),
@@ -161,6 +210,7 @@ def normalize_work_order_lifecycle(
         explicit_completed_at,
         workorder_created_at=workorder_created_at,
         handoff_complete=actual_handoff_complete,
+        lifecycle_status_map=normalized_status_map,
     )
     return {
         "status": normalized_status,
@@ -169,8 +219,10 @@ def normalize_work_order_lifecycle(
         "workorder_created_at": workorder_created_at,
         "handoff_completed_at": handoff_completed_at,
         "workorder_completed_at": explicit_completed_at,
-        "terminal": bool(explicit_completed_at or is_terminal_work_order_status(normalized_status)),
+        "terminal": bool(explicit_completed_at or is_terminal_work_order_status(normalized_status, normalized_status_map)),
         "phase": phase,
+        "phase_hint": lifecycle_phase_for_status(normalized_status, normalized_status_map),
+        "status_map": normalized_status_map,
     }
 
 
@@ -179,6 +231,7 @@ def normalize_work_order_result(
     *,
     recommendation: Dict[str, Any],
     backend_name: Optional[str] = None,
+    lifecycle_status_map: Any = None,
 ) -> Dict[str, Any]:
     if not isinstance(result, dict):
         logger.warning(
@@ -191,7 +244,7 @@ def normalize_work_order_result(
 
     backend = _as_text(result.get("backend")) or backend_name or "unknown"
     response_payload = _as_dict(result.get("response"))
-    lifecycle = normalize_work_order_lifecycle(result)
+    lifecycle = normalize_work_order_lifecycle(result, lifecycle_status_map=lifecycle_status_map)
     normalized = {
         "wo_id": _as_text(result.get("wo_id")),
         "status": lifecycle["status"],
@@ -220,6 +273,7 @@ def normalize_work_order_result(
                 lifecycle["workorder_completed_at"],
                 workorder_created_at=lifecycle["workorder_created_at"],
                 handoff_complete=False,
+                lifecycle_status_map=lifecycle.get("status_map"),
             ),
         }
         normalized["lifecycle_phase"] = normalized["lifecycle"]["phase"]
@@ -238,6 +292,7 @@ class CMMSAdapter(ABC):
     backend_label = "Base"
     backend_description = "Base CMMS connector"
     config_fields: list[dict[str, Any]] = []
+    lifecycle_status_map: dict[str, str] = {}
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -276,6 +331,7 @@ class CMMSAdapter(ABC):
             "description": cls.backend_description,
             "configured": configured,
             "config_fields": fields,
+            "lifecycle_statuses": lifecycle_status_catalog(cls.lifecycle_status_map),
         }
 
 
@@ -386,6 +442,7 @@ def submit_work_order_with_retry(
                 adapter.create_work_order(recommendation),
                 recommendation=recommendation,
                 backend_name=getattr(adapter, "backend_name", None),
+                lifecycle_status_map=getattr(adapter, "lifecycle_status_map", None),
             )
             handoff_state = "success" if result.get("handoff_complete") else "pending"
             attempts.append(

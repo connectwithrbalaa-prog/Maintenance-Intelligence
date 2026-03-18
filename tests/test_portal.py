@@ -81,6 +81,8 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Edge mode status" in page.text
     assert "Queued handoffs" in page.text
     assert "Connector catalog" in page.text
+    assert "Lifecycle phase" in page.text
+    assert "Lifecycle mappings" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
     assert "/api/v1/agents/pm/connectors" in page.text
