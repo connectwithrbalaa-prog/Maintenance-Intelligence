@@ -1257,6 +1257,22 @@
 			border-color: rgba(14, 124, 102, 0.18);
 		}
 
+		.triage-item.pdm-elevated {
+			border-color: rgba(197, 103, 47, 0.24);
+			box-shadow: inset 0 0 0 1px rgba(197, 103, 47, 0.08);
+		}
+
+		.triage-item.pdm-critical {
+			background: linear-gradient(135deg, rgba(197, 103, 47, 0.1), rgba(197, 103, 47, 0.03));
+			border-color: rgba(197, 103, 47, 0.28);
+			box-shadow: inset 0 0 0 1px rgba(197, 103, 47, 0.12);
+		}
+
+		.triage-item.current-asset.pdm-elevated,
+		.triage-item.current-asset.pdm-critical {
+			background: linear-gradient(135deg, rgba(197, 103, 47, 0.1), rgba(14, 124, 102, 0.06));
+		}
+
 		.handoff-item.current-proposal {
 			background: linear-gradient(135deg, rgba(197, 103, 47, 0.12), rgba(197, 103, 47, 0.04));
 			border-color: rgba(197, 103, 47, 0.2);
@@ -3571,6 +3587,18 @@
 			}
 		}
 
+		function earlyWarningToneClass(status) {
+			switch (asString(status, "normal")) {
+				case "critical":
+				case "elevated":
+					return "trend-rising";
+				case "watch":
+					return "trend-steady";
+				default:
+					return "trend-falling";
+			}
+		}
+
 		function renderEarlyWarningSummary(report, selectedScope, selectedEntityId, selectedMetrics) {
 			const summary = asObject(report.early_warning_summary);
 			const statusCounts = asObject(summary.status_counts);
@@ -4630,6 +4658,12 @@
 			}
 			const { currentAssetId, currentAssetRow, currentAssetRank } = triageCurrentAssetRow(run, triageRows);
 			const leadAsset = triageRows[0] || {};
+			const flaggedAssets = triageRows.filter((row) => ["critical", "elevated"].includes(asString(row.early_warning_status)));
+			const leadWarningStatus = asString(leadAsset.early_warning_status);
+			const leadWarningScore = asNumber(leadAsset.early_warning_score);
+			const currentWarningStatus = asString(currentAssetRow?.early_warning_status);
+			const currentWarningScore = asNumber(currentAssetRow?.early_warning_score);
+			const currentWarningReasons = asStringList(currentAssetRow?.early_warning_reasons).slice(0, 2);
 			const heroValue = currentAssetRank ? `#${currentAssetRank}` : "Out of queue";
 			const heroMeta = currentAssetRank
 				? `${escapeHtml(currentAssetId)} is ranked ${escapeHtml(`#${currentAssetRank}`)} with priority score ${escapeHtml(currentAssetRow?.priority_score ?? "-")}.`
@@ -4639,6 +4673,25 @@
 					? renderOutcomesNote("Priority", "Current asset leads the queue", `${escapeHtml(currentAssetId)} is the top-ranked asset by combined signal, lifecycle, and feedback risk.`)
 					: renderOutcomesNote("Focus", "Higher-pressure assets exist", `${escapeHtml(leadAsset.asset_id || "Another asset")} currently ranks above ${escapeHtml(currentAssetId)} in the triage queue.`))
 				: renderOutcomesNote("Info", "Current asset is outside the top queue", "Use this list to pull forward the assets with the highest combined signal, lifecycle, and feedback risk first.");
+			const pdmNoteMarkup = currentWarningStatus === "critical" || currentWarningStatus === "elevated"
+				? renderOutcomesNote(
+					"PdM",
+					`${escapeHtml(currentAssetId)} is ${escapeHtml(formatEarlyWarningLabel(currentWarningStatus))}`,
+					typeof currentWarningScore === "number"
+						? `${escapeHtml(currentAssetId)} is carrying a PdM early-warning score of ${escapeHtml(currentWarningScore.toFixed(1))}${currentWarningReasons.length ? `. ${escapeHtml(currentWarningReasons.join(" | "))}` : "."}`
+						: `${escapeHtml(currentAssetId)} is carrying elevated predictive warning pressure in the current scoring window.`,
+					"warn"
+				)
+				: (leadWarningStatus === "critical" || leadWarningStatus === "elevated")
+					? renderOutcomesNote(
+						"PdM",
+						`${escapeHtml(leadAsset.asset_id || "Lead asset")} is ${escapeHtml(formatEarlyWarningLabel(leadWarningStatus))}`,
+						typeof leadWarningScore === "number"
+							? `${escapeHtml(leadAsset.asset_id || "Lead asset")} should stay near the front of triage while its PdM early-warning score remains at ${escapeHtml(leadWarningScore.toFixed(1))}.`
+							: "The lead asset is also carrying predictive warning pressure, so the queue should stay focused there first.",
+						"warn"
+					)
+					: "";
 			return `
 				<div class="triage-panel">
 					<div class="triage-summary">
@@ -4653,17 +4706,26 @@
 							<span class="chip">Lead asset ${escapeHtml(leadAsset.asset_id || "-")}</span>
 							<span class="chip">Lead score ${escapeHtml(leadAsset.priority_score ?? "-")}</span>
 							${leadAsset.latest_severity ? `<span class="chip">Lead severity ${escapeHtml(leadAsset.latest_severity)}</span>` : ""}
+							${flaggedAssets.length ? `<span class="chip trend-rising">PdM flagged ${escapeHtml(flaggedAssets.length)}</span>` : ""}
+							${leadWarningStatus === "critical" || leadWarningStatus === "elevated" ? `<span class="chip ${escapeHtml(earlyWarningToneClass(leadWarningStatus))}">Lead PdM ${escapeHtml(formatEarlyWarningLabel(leadWarningStatus))}${typeof leadWarningScore === "number" ? ` ${escapeHtml(leadWarningScore.toFixed(1))}` : ""}</span>` : ""}
 						</div>
 					</div>
 					${noteMarkup}
+					${pdmNoteMarkup}
 					<ol class="triage-list">${triageRows.map((row, index) => {
 						const assetId = asString(row.asset_id);
 						const matchingRun = triagePreferredRun(assetId);
 						const matchingRunId = asString(matchingRun?.run_id);
 						const lookupLoading = state.triage.lookupLoadingByAssetId.has(assetId);
 						const lookupError = asString(state.triage.lookupErrorByAssetId.get(assetId));
+						const earlyWarningStatus = asString(row.early_warning_status);
+						const earlyWarningScore = asNumber(row.early_warning_score);
+						const earlyWarningReasons = asStringList(row.early_warning_reasons).slice(0, 2);
+						const highlightClass = earlyWarningStatus === "critical"
+							? "pdm-critical"
+							: (earlyWarningStatus === "elevated" ? "pdm-elevated" : "");
 						return `
-						<li class="triage-item ${asString(row.asset_id) === currentAssetId ? "current-asset" : ""}">
+						<li class="triage-item ${asString(row.asset_id) === currentAssetId ? "current-asset" : ""} ${highlightClass}">
 							<div class="triage-item-head">
 								<div>
 									<div class="triage-rank">#${escapeHtml(index + 1)} · ${escapeHtml(row.asset_id || "Unknown asset")}</div>
@@ -4677,6 +4739,7 @@
 								<span class="chip">Open WOs ${escapeHtml(row.open_workorders ?? 0)}</span>
 								<span class="chip">Signal risk ${escapeHtml(row.signal_anomaly_score ?? 0)}</span>
 								${typeof row.feedback_acceptance_rate === "number" ? `<span class="chip">Acceptance ${escapeHtml(formatTrendValue(row.feedback_acceptance_rate, "acceptance_rate", { metricKind: "rate" }))}</span>` : ""}
+								${earlyWarningStatus === "critical" || earlyWarningStatus === "elevated" ? `<span class="chip ${escapeHtml(earlyWarningToneClass(earlyWarningStatus))}">PdM ${escapeHtml(formatEarlyWarningLabel(earlyWarningStatus))}${typeof earlyWarningScore === "number" ? ` ${escapeHtml(earlyWarningScore.toFixed(1))}` : ""}</span>` : ""}
 								${asString(row.asset_id) === currentAssetId ? '<span class="chip trend-falling">Current run asset</span>' : ""}
 							</div>
 							<div class="pm-actions">
@@ -4685,6 +4748,7 @@
 									? `<button class="workflow-link" type="button" data-triage-run-id="${escapeHtml(matchingRunId)}">${escapeHtml(matchingRunId === run?.run_id ? "Open current evidence" : "Open matching run")}</button>`
 									: `<button class="workflow-link" type="button" data-triage-evidence-asset-id="${escapeHtml(assetId)}">${escapeHtml(lookupLoading ? "Resolving evidence..." : "Open latest evidence")}</button>`}
 							</div>
+							${earlyWarningReasons.length && (earlyWarningStatus === "critical" || earlyWarningStatus === "elevated") ? `<div class="footer-note">PdM warning ${escapeHtml(earlyWarningReasons.join(" | "))}</div>` : ""}
 							${matchingRunId ? `<div class="footer-note">Freshest linked run ${escapeHtml(matchingRunId)} · Updated ${escapeHtml(formatDate(matchingRun?.updated_at) || "-")}</div>` : ""}
 							${lookupError ? `<div class="footer-note">Evidence drill-through unavailable right now: ${escapeHtml(lookupError)}</div>` : ""}
 						</li>

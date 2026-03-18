@@ -657,6 +657,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Current asset is outside the top queue" in page.text
     assert "Source /api/v1/reports/prioritized-assets" in page.text
     assert "Lead severity" in page.text
+    assert "Lead PdM" in page.text
+    assert "PdM flagged" in page.text
+    assert "PdM warning" in page.text
     assert "Current run asset" in page.text
     assert "Open asset trends" in page.text
     assert "Open current evidence" in page.text
@@ -666,6 +669,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "evidence_ids" in page.text
     assert "renderEvidenceReferences" in page.text
     assert "focusEvidenceReference" in page.text
+    assert "earlyWarningToneClass" in page.text
+    assert "early_warning_status" in page.text
+    assert "early_warning_reasons" in page.text
     assert "evidenceReferenceType" in page.text
     assert "evidenceReferenceTargetId" in page.text
     assert "evidenceReferenceLabel" in page.text

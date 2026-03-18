@@ -479,6 +479,12 @@ function createPortalHarness(options = {}) {
       feedback_acceptance_rate: 0.25,
       latest_severity: 'high',
       last_event_at: '2026-03-15T09:30:00Z',
+      early_warning_status: 'critical',
+      early_warning_score: 78.0,
+      early_warning_reasons: [
+        'Signal rollups still carry anomaly flags',
+        'Temperature remains at 94.0 C',
+      ],
     },
     {
       asset_id: 'PUMP-101',
@@ -490,6 +496,12 @@ function createPortalHarness(options = {}) {
       feedback_acceptance_rate: 0.75,
       latest_severity: 'medium',
       last_event_at: '2026-03-15T08:55:00Z',
+      early_warning_status: 'elevated',
+      early_warning_score: 63.0,
+      early_warning_reasons: [
+        'High-severity events have repeated for this asset',
+        'Vibration is trending high at 8.1 mm/s',
+      ],
     },
     {
       asset_id: 'FAN-9',
@@ -501,6 +513,9 @@ function createPortalHarness(options = {}) {
       feedback_acceptance_rate: 1,
       latest_severity: 'medium',
       last_event_at: '2026-03-14T17:10:00Z',
+      early_warning_status: 'watch',
+      early_warning_score: 28.0,
+      early_warning_reasons: ['Low-volume warning signals are present but not yet persistent'],
     },
   ];
   const badActorsReport = options.badActorsReport || defaultBadActorsReport;

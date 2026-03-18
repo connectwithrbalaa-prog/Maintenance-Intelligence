@@ -39,10 +39,19 @@ class FakePrioritizedCursor:
                 ("PUMP-202", 0, 1),
             ]
             return
-        if "SELECT asset_id, period, anomaly_flags FROM signal_rollups" in normalized:
+        if "SELECT asset_id, signal_type, period, end_time, mean, max, anomaly_flags FROM signal_rollups" in normalized:
             self.rows = [
-                ("PUMP-101", "24h", {"high_vibration": True}),
-                ("PUMP-202", "1h", {"high_temperature": True, "z_score_spike": True}),
+                ("PUMP-101", "vibration", "24h", datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc), 7.8, 8.1, {"high_vibration": True}),
+                ("PUMP-202", "temperature", "1h", datetime(2026, 3, 15, 11, 0, tzinfo=timezone.utc), 91.0, 94.0, {"high_temperature": True, "z_score_spike": True}),
+            ]
+            return
+        if "SELECT asset_id, severity, occurred_at, details FROM events" in normalized:
+            self.rows = [
+                ("PUMP-101", "high", datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc), {"rms": 8.1, "threshold": 9.0}),
+                ("PUMP-101", "high", datetime(2026, 3, 12, 8, 0, tzinfo=timezone.utc), {"rms": 7.9, "threshold": 9.0}),
+                ("PUMP-101", "high", datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc), {"rms": 8.0, "threshold": 9.0}),
+                ("PUMP-202", "medium", datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc), {"temperature": 92.0, "threshold": 90.0}),
+                ("PUMP-202", "medium", datetime(2026, 3, 15, 11, 0, tzinfo=timezone.utc), {"temperature": 93.0, "threshold": 90.0}),
             ]
             return
         if "SELECT asset_id, occurred_at FROM events" in normalized:
@@ -114,6 +123,12 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
     assert highest["signal_anomaly_score"] == 6.0
     assert highest["feedback_acceptance_rate"] == 0.0
     assert highest["mtbf_seconds"] == 14400.0
+    assert highest["early_warning_status"] == "critical"
+    assert highest["early_warning_score"] == 72.0
+    assert highest["early_warning_reasons"] == [
+        "Signal rollups still carry anomaly flags",
+        "Temperature remains at 94.0 C",
+    ]
     assert highest["score_components"]["feedback_risk"] == 4.0
     assert highest["score_components"]["mtbf_risk"] == 6.0
     assert highest["score_components"]["signal_risk"] == 18.0
@@ -124,6 +139,13 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
     assert second["signal_anomaly_score"] == 1.0
     assert second["feedback_acceptance_rate"] == 1.0
     assert second["mtbf_seconds"] == 216000.0
+    assert second["early_warning_status"] == "elevated"
+    assert second["early_warning_score"] == 57.0
+    assert second["early_warning_reasons"] == [
+        "High-severity events have repeated for this asset",
+        "Signal rollups still carry anomaly flags",
+        "Vibration is trending high at 8.1 mm/s",
+    ]
     assert second["last_event_at"] == "2026-03-15T10:00:00Z"
     assert second["score_components"]["feedback_risk"] == 0.0
 

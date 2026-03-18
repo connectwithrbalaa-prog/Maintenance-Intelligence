@@ -19,11 +19,17 @@ test('portal triage: ranks prioritized assets and highlights the current run ass
   await expect(triagePanel.getByText('Lead asset PUMP-202', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead score 28', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead severity high', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PdM flagged 2', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Lead PdM Critical 78.0', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PUMP-101 is Elevated', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#1 · PUMP-202', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#2 · PUMP-101', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Open WOs 2', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Signal risk 6', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Acceptance 25%', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PdM Critical 78.0', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PdM Elevated 63.0', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('PdM warning High-severity events have repeated for this asset | Vibration is trending high at 8.1 mm/s', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Current run asset', { exact: true })).toBeVisible();
   await expect(page.locator('[data-triage-asset-id="PUMP-202"]')).toBeVisible();
   await expect(page.locator('[data-triage-evidence-asset-id="PUMP-202"]')).toBeVisible();

@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 import psycopg2
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.pdm_scorer import build_early_warning_report
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
@@ -265,12 +266,26 @@ def prioritized_assets(
             feedback = _feedback_summary(cur.fetchall())
 
             cur.execute("""
-                SELECT asset_id, period, anomaly_flags
+                SELECT asset_id, signal_type, period, end_time, mean, max, anomaly_flags
                 FROM signal_rollups
                 WHERE end_time > NOW() - INTERVAL '24 hours'
                   AND asset_id IS NOT NULL
             """)
-            signal_scores = _signal_anomaly_scores(cur.fetchall())
+            rollup_rows = cur.fetchall()
+            signal_scores = _signal_anomaly_scores([
+                (row[0], row[2], row[6])
+                for row in (rollup_rows or [])
+                if row and len(row) > 6 and row[0]
+            ])
+
+            cur.execute(f"""
+                SELECT asset_id, severity, occurred_at, details
+                FROM events
+                WHERE occurred_at > {_window_clause(window)}
+                  AND asset_id IS NOT NULL
+            """)
+            early_warning_report = build_early_warning_report(cur.fetchall(), rollup_rows)
+            early_warning_metrics = early_warning_report.get("asset_metrics", {}) if isinstance(early_warning_report, dict) else {}
 
             cur.execute(f"""
                 SELECT asset_id, occurred_at
@@ -299,6 +314,7 @@ def prioritized_assets(
                 acceptance_rate=acceptance_rate,
                 mtbf_seconds=mtbf_seconds,
             )
+            early_warning = early_warning_metrics.get(asset_id, {}) if isinstance(early_warning_metrics, dict) else {}
             rows.append(
                 {
                     "asset_id": asset_id,
@@ -311,6 +327,9 @@ def prioritized_assets(
                     "signal_anomaly_score": signal_anomaly_score,
                     "feedback_acceptance_rate": acceptance_rate,
                     "mtbf_seconds": mtbf_seconds,
+                    "early_warning_score": early_warning.get("early_warning_score"),
+                    "early_warning_status": early_warning.get("early_warning_status"),
+                    "early_warning_reasons": early_warning.get("early_warning_reasons") or [],
                     "score_components": {
                         key: value
                         for key, value in score_components.items()
