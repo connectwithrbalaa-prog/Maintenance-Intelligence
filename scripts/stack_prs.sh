@@ -9,6 +9,11 @@ PUSH_BRANCHES="${PUSH_BRANCHES:-0}"
 CREATE_PRS="${CREATE_PRS:-0}"
 FORCE_BRANCH_RESET="${FORCE_BRANCH_RESET:-0}"
 
+FOUNDATION_REF="${FOUNDATION_REF:-59340f3}"
+HANDOFF_REF="${HANDOFF_REF:-bc9bd59}"
+TRIAGE_REF="${TRIAGE_REF:-b4e1516}"
+EDGE_REF="${EDGE_REF:-7a74b8e}"
+
 FOUNDATION_BRANCH="stack/foundation-workflows"
 HANDOFF_BRANCH="stack/handoff-queue-ux"
 TRIAGE_BRANCH="stack/rca-triage-intelligence"
@@ -42,6 +47,38 @@ create_branch() {
     fi
 
     git switch -c "$branch" "$start_point"
+}
+
+verify_ancestry_chain() {
+    local foundation_base
+    local handoff_base
+    local triage_base
+    local edge_base
+
+    foundation_base="$(git merge-base "$REMOTE/$BASE_BRANCH" "$FOUNDATION_REF")"
+    handoff_base="$(git merge-base "$FOUNDATION_REF" "$HANDOFF_REF")"
+    triage_base="$(git merge-base "$HANDOFF_REF" "$TRIAGE_REF")"
+    edge_base="$(git merge-base "$TRIAGE_REF" "$EDGE_REF")"
+
+    if [[ "$foundation_base" != "$(git rev-parse "$REMOTE/$BASE_BRANCH")" ]]; then
+        echo "Foundation ref '$FOUNDATION_REF' is not based on $REMOTE/$BASE_BRANCH as expected." >&2
+        exit 1
+    fi
+
+    if [[ "$handoff_base" != "$(git rev-parse "$FOUNDATION_REF")" ]]; then
+        echo "Handoff ref '$HANDOFF_REF' does not descend from foundation ref '$FOUNDATION_REF'." >&2
+        exit 1
+    fi
+
+    if [[ "$triage_base" != "$(git rev-parse "$HANDOFF_REF")" ]]; then
+        echo "Triage ref '$TRIAGE_REF' does not descend from handoff ref '$HANDOFF_REF'." >&2
+        exit 1
+    fi
+
+    if [[ "$edge_base" != "$(git rev-parse "$TRIAGE_REF")" ]]; then
+        echo "Edge ref '$EDGE_REF' does not descend from triage ref '$TRIAGE_REF'." >&2
+        exit 1
+    fi
 }
 
 maybe_push_branch() {
@@ -82,9 +119,9 @@ main() {
     cd "$ROOT_DIR"
     require_clean_worktree
     git fetch "$REMOTE"
+    verify_ancestry_chain
 
-    create_branch "$FOUNDATION_BRANCH" "$REMOTE/$BASE_BRANCH"
-    git cherry-pick 6ae5d24^..59340f3
+    create_branch "$FOUNDATION_BRANCH" "$FOUNDATION_REF"
     maybe_push_branch "$FOUNDATION_BRANCH"
     foundation_body="$(mktemp)"
     write_body_file "$foundation_body" "## Summary
@@ -107,8 +144,7 @@ Establishes the branch foundation for RCA, PM, outcomes, migrations, and service
 - outcomes persistence and smoke coverage"
     maybe_create_pr "$BASE_BRANCH" "$FOUNDATION_BRANCH" "feat: establish RCA, PM, outcomes, and migration foundations" "$foundation_body"
 
-    create_branch "$HANDOFF_BRANCH" "$FOUNDATION_BRANCH"
-    git cherry-pick 35db076^..bc9bd59
+    create_branch "$HANDOFF_BRANCH" "$HANDOFF_REF"
     maybe_push_branch "$HANDOFF_BRANCH"
     handoff_body="$(mktemp)"
     write_body_file "$handoff_body" "## Summary
@@ -129,8 +165,7 @@ Adds PM follow-through and the portal handoff queue operator workflow on top of 
 - PM/operator workflow coherence"
     maybe_create_pr "$FOUNDATION_BRANCH" "$HANDOFF_BRANCH" "feat(portal): add PM follow-through and handoff queue operator UX" "$handoff_body"
 
-    create_branch "$TRIAGE_BRANCH" "$HANDOFF_BRANCH"
-    git cherry-pick 2fb1cc3^..b4e1516
+    create_branch "$TRIAGE_BRANCH" "$TRIAGE_REF"
     maybe_push_branch "$TRIAGE_BRANCH"
     triage_body="$(mktemp)"
     write_body_file "$triage_body" "## Summary
@@ -153,8 +188,7 @@ Adds structured repair-plan persistence, RCA evidence UX, prioritized asset scor
 - warnings-only and PdM ordering semantics"
     maybe_create_pr "$HANDOFF_BRANCH" "$TRIAGE_BRANCH" "feat: add RCA evidence, prioritized triage, and PdM early-warning intelligence" "$triage_body"
 
-    create_branch "$EDGE_BRANCH" "$TRIAGE_BRANCH"
-    git cherry-pick 7b9f996^..7a74b8e
+    create_branch "$EDGE_BRANCH" "$EDGE_REF"
     maybe_push_branch "$EDGE_BRANCH"
     edge_body="$(mktemp)"
     write_body_file "$edge_body" "## Summary
