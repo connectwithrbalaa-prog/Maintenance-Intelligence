@@ -12,6 +12,7 @@ from maintenance_intelligence.runner.config import Settings
 
 
 TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
+REGRESSIVE_WORK_ORDER_STATUSES = {"PENDING", "QUEUED", "DRAFT", "NEW"}
 
 
 class CMMSAdapterError(RuntimeError):
@@ -67,6 +68,112 @@ def _first_timestamp(*values: Any) -> Optional[str]:
     return None
 
 
+def _status_upper(status: Any) -> Optional[str]:
+    text = _as_text(status)
+    return text.upper() if text else None
+
+
+def is_terminal_work_order_status(status: Any) -> bool:
+    return (_status_upper(status) or "") in TERMINAL_WORK_ORDER_STATUSES
+
+
+def work_order_lifecycle_phase(
+    status: Any,
+    handoff_completed_at: Any,
+    workorder_completed_at: Any,
+    *,
+    workorder_created_at: Any = None,
+    handoff_complete: Optional[bool] = None,
+) -> str:
+    if workorder_completed_at or is_terminal_work_order_status(status):
+        return "completed"
+    if handoff_completed_at:
+        return "handoff-complete"
+    if handoff_complete is False:
+        return "pending"
+    status_upper = _status_upper(status)
+    if workorder_created_at or status_upper in REGRESSIVE_WORK_ORDER_STATUSES:
+        return "created"
+    if status_upper:
+        return "active"
+    return "pending"
+
+
+def normalize_work_order_lifecycle(
+    result: Any,
+    *,
+    status: Any = None,
+    handoff_complete: Optional[bool] = None,
+) -> Dict[str, Any]:
+    payload = _as_dict(result)
+    response_payload = _as_dict(payload.get("response"))
+    raw_response = _as_dict(payload.get("raw_response")) or payload
+    workorder_created_at = _first_timestamp(
+        payload.get("workorder_created_at"),
+        payload.get("created_at"),
+        response_payload.get("workorder_created_at"),
+        response_payload.get("created_at"),
+        raw_response.get("workorder_created_at"),
+        raw_response.get("created_at"),
+    )
+    normalized_status = _as_text(status if status is not None else payload.get("status")) or "PENDING"
+    explicit_completed_at = _first_timestamp(
+        payload.get("workorder_completed_at"),
+        response_payload.get("workorder_completed_at"),
+        response_payload.get("actfinish"),
+        response_payload.get("completed_at"),
+        response_payload.get("closed_at"),
+        response_payload.get("finishdate"),
+        raw_response.get("workorder_completed_at"),
+        raw_response.get("actfinish"),
+        raw_response.get("completed_at"),
+        raw_response.get("closed_at"),
+        raw_response.get("finishdate"),
+    )
+    if explicit_completed_at is None and is_terminal_work_order_status(normalized_status):
+        explicit_completed_at = _first_timestamp(
+            response_payload.get("statusdate"),
+            response_payload.get("changedate"),
+            raw_response.get("statusdate"),
+            raw_response.get("changedate"),
+        )
+    if handoff_complete is not None:
+        actual_handoff_complete = bool(handoff_complete)
+    elif "handoff_complete" in payload:
+        actual_handoff_complete = bool(payload.get("handoff_complete"))
+    else:
+        actual_handoff_complete = bool(payload.get("wo_id"))
+    handoff_completed_at = _first_timestamp(
+        payload.get("handoff_completed_at"),
+        response_payload.get("handoff_completed_at"),
+        raw_response.get("handoff_completed_at"),
+        response_payload.get("statusdate"),
+        response_payload.get("changedate"),
+        raw_response.get("statusdate"),
+        raw_response.get("changedate"),
+        workorder_created_at if actual_handoff_complete else None,
+    )
+    if not actual_handoff_complete:
+        handoff_completed_at = None
+    phase = work_order_lifecycle_phase(
+        normalized_status,
+        handoff_completed_at,
+        explicit_completed_at,
+        workorder_created_at=workorder_created_at,
+        handoff_complete=actual_handoff_complete,
+    )
+    return {
+        "status": normalized_status,
+        "status_upper": _status_upper(normalized_status) or "PENDING",
+        "handoff_complete": actual_handoff_complete,
+        "workorder_created_at": workorder_created_at,
+        "handoff_completed_at": handoff_completed_at,
+        "workorder_completed_at": explicit_completed_at,
+        "terminal": bool(explicit_completed_at or is_terminal_work_order_status(normalized_status)),
+        "phase": phase,
+    }
+
+
 def normalize_work_order_result(
     result: Any,
     *,
@@ -84,62 +191,38 @@ def normalize_work_order_result(
 
     backend = _as_text(result.get("backend")) or backend_name or "unknown"
     response_payload = _as_dict(result.get("response"))
-    raw_response = result if isinstance(result, dict) else {}
-    workorder_created_at = _first_timestamp(
-        result.get("workorder_created_at"),
-        result.get("created_at"),
-        response_payload.get("workorder_created_at"),
-        response_payload.get("created_at"),
-        raw_response.get("workorder_created_at"),
-        raw_response.get("created_at"),
-    )
-    handoff_completed_at = _first_timestamp(
-        result.get("handoff_completed_at"),
-        response_payload.get("handoff_completed_at"),
-        raw_response.get("handoff_completed_at"),
-        response_payload.get("statusdate"),
-        response_payload.get("changedate"),
-        raw_response.get("statusdate"),
-        raw_response.get("changedate"),
-        workorder_created_at,
-    )
-    workorder_status = (_as_text(result.get("status")) or "PENDING").upper()
-    explicit_completed_at = _first_timestamp(
-        result.get("workorder_completed_at"),
-        response_payload.get("workorder_completed_at"),
-        response_payload.get("actfinish"),
-        response_payload.get("completed_at"),
-        response_payload.get("closed_at"),
-        response_payload.get("finishdate"),
-        raw_response.get("workorder_completed_at"),
-        raw_response.get("actfinish"),
-        raw_response.get("completed_at"),
-        raw_response.get("closed_at"),
-        raw_response.get("finishdate"),
-    )
-    if explicit_completed_at is None and workorder_status in TERMINAL_WORK_ORDER_STATUSES:
-        explicit_completed_at = _first_timestamp(
-            response_payload.get("statusdate"),
-            response_payload.get("changedate"),
-            raw_response.get("statusdate"),
-            raw_response.get("changedate"),
-        )
+    lifecycle = normalize_work_order_lifecycle(result)
     normalized = {
         "wo_id": _as_text(result.get("wo_id")),
-        "status": _as_text(result.get("status")) or "PENDING",
+        "status": lifecycle["status"],
         "backend": backend,
         "created_at": _as_text(result.get("created_at")),
         "request": _as_dict(result.get("request")),
         "response": response_payload,
         "raw_response": result,
         "message": _as_text(result.get("message")),
-        "workorder_created_at": workorder_created_at,
-        "handoff_completed_at": handoff_completed_at,
-        "workorder_completed_at": explicit_completed_at,
+        "workorder_created_at": lifecycle["workorder_created_at"],
+        "handoff_completed_at": lifecycle["handoff_completed_at"],
+        "workorder_completed_at": lifecycle["workorder_completed_at"],
+        "lifecycle_phase": lifecycle["phase"],
+        "terminal_state": lifecycle["terminal"],
+        "lifecycle": lifecycle,
     }
-    normalized["handoff_complete"] = bool(normalized["wo_id"])
+    normalized["handoff_complete"] = lifecycle["handoff_complete"]
     if not normalized["handoff_complete"]:
         normalized["handoff_completed_at"] = None
+        normalized["lifecycle"] = {
+            **lifecycle,
+            "handoff_completed_at": None,
+            "phase": work_order_lifecycle_phase(
+                lifecycle["status"],
+                None,
+                lifecycle["workorder_completed_at"],
+                workorder_created_at=lifecycle["workorder_created_at"],
+                handoff_complete=False,
+            ),
+        }
+        normalized["lifecycle_phase"] = normalized["lifecycle"]["phase"]
     if not normalized["handoff_complete"]:
         logger.warning(
             "cmms.adapter.handoff_incomplete backend={} recommendation_id={} raw_payload={}",

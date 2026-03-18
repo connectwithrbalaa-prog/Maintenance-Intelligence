@@ -3,7 +3,15 @@ import time
 from kafka import KafkaConsumer
 import psycopg2
 from loguru import logger
-from maintenance_intelligence.cmms.adapter import CMMSAdapterError, CMMSPayloadError, TERMINAL_WORK_ORDER_STATUSES, create_cmms_adapter, submit_work_order_with_retry
+from maintenance_intelligence.cmms.adapter import (
+    CMMSAdapterError,
+    CMMSPayloadError,
+    create_cmms_adapter,
+    is_terminal_work_order_status,
+    normalize_work_order_lifecycle,
+    submit_work_order_with_retry,
+    work_order_lifecycle_phase,
+)
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
@@ -46,71 +54,17 @@ def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
         raise last_error
     raise RuntimeError("Failed to connect to PostgreSQL")
 
-
-def _lifecycle_timestamps(result):
-    response = result.get("response") if isinstance(result.get("response"), dict) else {}
-    raw_response = result.get("raw_response") if isinstance(result.get("raw_response"), dict) else {}
-    workorder_created_at = (
-        result.get("workorder_created_at")
-        or result.get("created_at")
-        or response.get("workorder_created_at")
-        or response.get("created_at")
-        or raw_response.get("workorder_created_at")
-        or raw_response.get("created_at")
-    )
-    handoff_completed_at = (
-        result.get("handoff_completed_at")
-        or response.get("handoff_completed_at")
-        or raw_response.get("handoff_completed_at")
-        or response.get("statusdate")
-        or response.get("changedate")
-        or raw_response.get("statusdate")
-        or raw_response.get("changedate")
-        or (workorder_created_at if result.get("handoff_complete") else None)
-    )
-    workorder_completed_at = (
-        result.get("workorder_completed_at")
-        or response.get("workorder_completed_at")
-        or response.get("actfinish")
-        or response.get("completed_at")
-        or response.get("closed_at")
-        or response.get("finishdate")
-        or raw_response.get("workorder_completed_at")
-        or raw_response.get("actfinish")
-        or raw_response.get("completed_at")
-        or raw_response.get("closed_at")
-        or raw_response.get("finishdate")
-    )
-    return workorder_created_at, handoff_completed_at, workorder_completed_at
-
-
 def _status_upper(status):
     value = _as_text(status)
     return value.upper() if value else None
 
 
-def _is_terminal_status(status):
-    return _status_upper(status) in TERMINAL_WORK_ORDER_STATUSES
-
-
-def _lifecycle_phase(status, handoff_completed_at, workorder_completed_at):
-    if workorder_completed_at or _is_terminal_status(status):
-        return "completed"
-    if handoff_completed_at:
-        return "handoff-complete"
-    if _status_upper(status) in REGRESSIVE_WORK_ORDER_STATUSES:
-        return "created"
-    if status:
-        return "active"
-    return "pending"
-
-
 def _merged_status(existing_status, next_status, existing_handoff_completed_at, next_handoff_completed_at, existing_completed_at, next_completed_at):
     existing_upper = _status_upper(existing_status)
     next_upper = _status_upper(next_status)
-    if existing_completed_at and not next_completed_at and not _is_terminal_status(next_upper):
+    if existing_completed_at and not next_completed_at and not is_terminal_work_order_status(next_upper):
         return existing_status or existing_upper or next_status or "DRAFT"
-    if _is_terminal_status(existing_upper) and not _is_terminal_status(next_upper) and not next_completed_at:
+    if is_terminal_work_order_status(existing_upper) and not is_terminal_work_order_status(next_upper) and not next_completed_at:
         return existing_status or existing_upper or next_status or "DRAFT"
     if existing_handoff_completed_at and not next_handoff_completed_at and next_upper in REGRESSIVE_WORK_ORDER_STATUSES:
         return existing_status or existing_upper or next_status or "DRAFT"
@@ -235,7 +189,7 @@ def _handoff_metadata(recommendation, result, handoff_context=None):
     context = _as_dict(handoff_context)
     attempts = result.get("_attempts") if isinstance(result.get("_attempts"), list) else []
     last_attempt = attempts[-1] if attempts else {}
-    workorder_created_at, handoff_completed_at, workorder_completed_at = _lifecycle_timestamps(result)
+    lifecycle = normalize_work_order_lifecycle(result)
     return {
         "proposal_id": _as_text(context.get("proposal_id")),
         "recommendation_id": _as_text(context.get("recommendation_id")) or _as_text(recommendation.get("id")),
@@ -246,15 +200,21 @@ def _handoff_metadata(recommendation, result, handoff_context=None):
         "last_attempt": last_attempt if isinstance(last_attempt, dict) else {},
         "wo_id": _as_text(result.get("wo_id")),
         "backend": _as_text(result.get("backend")) or "unknown",
-        "workorder_created_at": workorder_created_at,
-        "handoff_completed_at": handoff_completed_at,
-        "workorder_completed_at": workorder_completed_at,
+        "workorder_created_at": lifecycle.get("workorder_created_at"),
+        "handoff_completed_at": lifecycle.get("handoff_completed_at"),
+        "workorder_completed_at": lifecycle.get("workorder_completed_at"),
+        "lifecycle_phase": lifecycle.get("phase") or "pending",
+        "terminal_state": bool(lifecycle.get("terminal")),
+        "lifecycle": lifecycle,
     }
 
 
 def persist_work_order(conn, recommendation, result, handoff_context=None):
     existing = _existing_work_order_row(conn, result.get("wo_id"))
-    workorder_created_at, handoff_completed_at, workorder_completed_at = _lifecycle_timestamps(result)
+    lifecycle = normalize_work_order_lifecycle(result)
+    workorder_created_at = lifecycle.get("workorder_created_at")
+    handoff_completed_at = lifecycle.get("handoff_completed_at")
+    workorder_completed_at = lifecycle.get("workorder_completed_at")
     merged_workorder_created_at = existing.get("workorder_created_at") or workorder_created_at
     merged_handoff_completed_at = existing.get("handoff_completed_at") or handoff_completed_at
     merged_workorder_completed_at = existing.get("workorder_completed_at") or workorder_completed_at
@@ -276,16 +236,31 @@ def persist_work_order(conn, recommendation, result, handoff_context=None):
     }
     existing_metadata = _as_dict(existing.get("metadata"))
     metadata = {**existing_metadata, **metadata}
+    merged_lifecycle_phase = work_order_lifecycle_phase(
+        merged_status,
+        merged_handoff_completed_at,
+        merged_workorder_completed_at,
+        workorder_created_at=merged_workorder_created_at,
+        handoff_complete=bool(result.get("wo_id") or merged_workorder_created_at or merged_handoff_completed_at),
+    )
     metadata["handoff"] = {
         **_as_dict(existing_metadata.get("handoff")),
         **_as_dict(metadata.get("handoff")),
         "status_before": _as_text(existing.get("status")),
         "status_after": _as_text(merged_status),
-        "lifecycle_phase": _lifecycle_phase(
-            merged_status,
-            merged_handoff_completed_at,
-            merged_workorder_completed_at,
-        ),
+        "lifecycle_phase": merged_lifecycle_phase,
+        "terminal_state": bool(merged_workorder_completed_at or is_terminal_work_order_status(merged_status)),
+        "lifecycle": {
+            **_as_dict(_as_dict(metadata.get("handoff")).get("lifecycle")),
+            "status": _as_text(merged_status) or "PENDING",
+            "status_upper": _status_upper(merged_status) or "PENDING",
+            "handoff_complete": bool(result.get("wo_id") or merged_workorder_created_at or merged_handoff_completed_at),
+            "workorder_created_at": merged_workorder_created_at,
+            "handoff_completed_at": merged_handoff_completed_at,
+            "workorder_completed_at": merged_workorder_completed_at,
+            "terminal": bool(merged_workorder_completed_at or is_terminal_work_order_status(merged_status)),
+            "phase": merged_lifecycle_phase,
+        },
     }
     with conn:
         with conn.cursor() as cur:

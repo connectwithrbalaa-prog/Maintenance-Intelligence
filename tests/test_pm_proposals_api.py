@@ -470,7 +470,9 @@ def test_approve_proposal_with_sap_pm_backend_preserves_normalized_connector_met
     payload = response.json()
     assert payload["status"] == "approved"
     assert payload["work_order"]["wo_id"] == "50000123"
+    assert payload["work_order"]["lifecycle_phase"] == "completed"
     assert payload["last_attempt_info"]["connector_result"]["backend"] == "sap_pm"
+    assert payload["last_attempt_info"]["connector_result"]["lifecycle_phase"] == "completed"
     assert payload["last_attempt_info"]["connector_result"]["request"]["Plant"] == "1710"
     assert payload["last_attempt_info"]["connector_result"]["request"]["OrderType"] == "PM02"
     workorder_metadata = fake_connection.workorders["50000123"]["metadata"]
@@ -534,6 +536,8 @@ def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, 
     assert payload[0]["work_order_snapshot"]["workorder_created_at"] == "2026-03-15T10:05:00Z"
     assert payload[0]["work_order_snapshot"]["handoff_completed_at"] == "2026-03-15T10:05:30Z"
     assert payload[0]["work_order_snapshot"]["workorder_completed_at"] is None
+    assert payload[0]["work_order_snapshot"]["lifecycle_phase"] == "handoff-complete"
+    assert payload[0]["work_order_snapshot"]["terminal_state"] is False
 
 
 def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_path):
@@ -565,6 +569,7 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     assert payload["max_attempts"] == 3
     assert payload["retry_allowed"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 1
+    assert payload["work_order"]["lifecycle_phase"] == "pending"
     assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
     assert payload["approved"] is False
     assert fake_connection.proposals["REC-1"]["status"] == "pending"

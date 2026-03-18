@@ -174,6 +174,8 @@ def test_wo_bridge_loop_invokes_adapter_and_persists_result():
     assert metadata["handoff"]["recommendation_id"] == "REC-12345678"
     assert metadata["handoff"]["origin"] == "bridge"
     assert metadata["handoff"]["wo_id"] == "WO-REC-1234"
+    assert metadata["handoff"]["lifecycle_phase"] == "completed"
+    assert metadata["handoff"]["terminal_state"] is True
     assert params[7] == "2026-03-15T12:00:00Z"
     assert params[8] == "2026-03-15T12:05:00Z"
     assert params[9] == "2026-03-15T13:00:00Z"
@@ -211,6 +213,7 @@ def test_persist_work_order_uses_guarded_upsert_for_canonical_timestamps():
     metadata = json.loads(params[6])
     assert metadata["handoff"]["handoff_state"] == "success"
     assert metadata["handoff"]["backend"] == "mock"
+    assert metadata["handoff"]["lifecycle"]["phase"] == "completed"
     assert params[7] == "2026-03-15T12:00:00Z"
     assert params[8] == "2026-03-15T12:05:00Z"
     assert params[9] == "2026-03-15T13:00:00Z"
@@ -243,6 +246,7 @@ def test_persist_work_order_preserves_terminal_state_on_regressive_update():
     assert record["metadata"]["handoff"]["status_before"] == "COMP"
     assert record["metadata"]["handoff"]["status_after"] == "COMP"
     assert record["metadata"]["handoff"]["lifecycle_phase"] == "completed"
+    assert record["metadata"]["handoff"]["lifecycle"]["terminal"] is True
 
 
 def test_persist_work_order_promotes_terminal_transition_when_completion_arrives():
@@ -278,6 +282,7 @@ def test_persist_work_order_promotes_terminal_transition_when_completion_arrives
     assert record["metadata"]["handoff"]["status_before"] == "DRAFT"
     assert record["metadata"]["handoff"]["status_after"] == "COMP"
     assert record["metadata"]["handoff"]["lifecycle_phase"] == "completed"
+    assert record["metadata"]["handoff"]["lifecycle"]["phase"] == "completed"
 
 
 def test_wo_bridge_replays_queued_edge_commands_before_live_messages(tmp_path):

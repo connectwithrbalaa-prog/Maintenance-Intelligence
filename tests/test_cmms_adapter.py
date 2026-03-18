@@ -15,6 +15,7 @@ from maintenance_intelligence.cmms.adapter import (
     UnsupportedBackendError,
     create_cmms_adapter,
     discover_cmms_backends,
+    normalize_work_order_lifecycle,
     parse_json_response_body,
     post_json_request,
     supported_cmms_backends,
@@ -140,6 +141,22 @@ def test_translate_connector_response_maps_backend_specific_fields():
     assert translated["workorder_completed_at"] == "2026-03-15T11:00:00Z"
 
 
+def test_normalize_work_order_lifecycle_marks_incomplete_handoff_as_pending():
+    lifecycle = normalize_work_order_lifecycle(
+        {
+            "status": "queued",
+            "workorder_created_at": "2026-03-15T10:30:00Z",
+            "handoff_complete": False,
+        },
+        handoff_complete=False,
+    )
+
+    assert lifecycle["handoff_complete"] is False
+    assert lifecycle["handoff_completed_at"] is None
+    assert lifecycle["phase"] == "pending"
+    assert lifecycle["terminal"] is False
+
+
 def test_mock_adapter_returns_normalized_work_order():
     adapter = MockCMMSAdapter(Settings())
 
@@ -151,6 +168,8 @@ def test_mock_adapter_returns_normalized_work_order():
     assert result["workorder_created_at"] == result["created_at"]
     assert result["handoff_completed_at"] == result["created_at"]
     assert result["workorder_completed_at"] is None
+    assert result["lifecycle_phase"] == "handoff-complete"
+    assert result["lifecycle"]["terminal"] is False
 
 
 def test_maximo_adapter_maps_and_parses_response(monkeypatch):
@@ -200,6 +219,8 @@ def test_maximo_adapter_maps_and_parses_response(monkeypatch):
     assert result["backend"] == "maximo"
     assert result["handoff_completed_at"] == "2026-03-15T10:30:00Z"
     assert result["workorder_completed_at"] == "2026-03-15T11:00:00Z"
+    assert result["lifecycle_phase"] == "completed"
+    assert result["terminal_state"] is True
 
 
 def test_maximo_adapter_rejects_invalid_json(monkeypatch):
@@ -287,3 +308,5 @@ def test_sap_pm_adapter_maps_and_parses_odata_response():
     assert result["workorder_created_at"] == "2026-03-15T10:30:00Z"
     assert result["handoff_completed_at"] == "2026-03-15T10:30:00Z"
     assert result["workorder_completed_at"] == "2026-03-15T11:00:00Z"
+    assert result["lifecycle_phase"] == "completed"
+    assert result["lifecycle"]["terminal"] is True

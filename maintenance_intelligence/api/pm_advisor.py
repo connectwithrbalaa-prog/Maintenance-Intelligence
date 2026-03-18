@@ -17,6 +17,7 @@ from maintenance_intelligence.cmms.adapter import (
     UnsupportedBackendError,
     create_cmms_adapter,
     discover_cmms_backends,
+    normalize_work_order_lifecycle,
 )
 from maintenance_intelligence.api.middleware.identity import (
     ADMIN_ROLES,
@@ -185,6 +186,15 @@ def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> 
 
 def _work_order_snapshot_from_row(row: Any) -> Dict[str, Any]:
     metadata = row[8] if len(row) > 8 and isinstance(row[8], dict) else {}
+    lifecycle = normalize_work_order_lifecycle(
+        {
+            "wo_id": row[0],
+            "status": row[2],
+            "workorder_created_at": row[5],
+            "handoff_completed_at": row[6],
+            "workorder_completed_at": row[7],
+        }
+    )
     return {
         "wo_id": row[0],
         "asset_id": row[1],
@@ -194,6 +204,9 @@ def _work_order_snapshot_from_row(row: Any) -> Dict[str, Any]:
         "workorder_created_at": row[5],
         "handoff_completed_at": row[6],
         "workorder_completed_at": row[7],
+        "lifecycle_phase": lifecycle["phase"],
+        "terminal_state": lifecycle["terminal"],
+        "lifecycle": lifecycle,
         "metadata": metadata,
     }
 
