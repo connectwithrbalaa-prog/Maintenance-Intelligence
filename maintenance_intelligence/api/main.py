@@ -29,7 +29,9 @@ app.include_router(outcomes_router)
 app.include_router(pm_advisor_router)
 app.include_router(metrics_router)
 app.include_router(portal_router)
-app.mount("/portal/assets", StaticFiles(directory=WEB_DIR / "assets"), name="portal-assets")
+portal_assets_dir = WEB_DIR / "assets"
+if portal_assets_dir.exists():
+    app.mount("/portal/assets", StaticFiles(directory=portal_assets_dir), name="portal-assets")
 settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")
