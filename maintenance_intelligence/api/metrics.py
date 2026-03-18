@@ -10,6 +10,7 @@ from maintenance_intelligence.api.outcomes import (
     _workorder_backend,
 )
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.context.assembler import get_context_cache_snapshot
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 
@@ -266,12 +267,63 @@ class EdgeCommandBufferSnapshotCollector:
         yield replay_failures_total
 
 
+class ContextCacheSnapshotCollector:
+    def load_snapshot(self):
+        settings = Settings()
+        snapshot = get_context_cache_snapshot()
+        return {
+            "up": 1,
+            "context_cache_enabled": 1 if settings.context_cache_enabled else 0,
+            "ttl_s": int(settings.context_cache_ttl_s),
+            "max_entries": int(settings.context_cache_max_entries),
+            "snapshot": snapshot,
+        }
+
+    def collect(self):
+        payload = self.load_snapshot()
+        snapshot = payload.get("snapshot") or {}
+
+        metrics_up = GaugeMetricFamily("context_cache_metrics_up", "Whether context cache metrics scraped successfully")
+        metrics_up.add_metric([], float(payload.get("up") or 0))
+        yield metrics_up
+
+        enabled = GaugeMetricFamily("context_cache_enabled", "Whether the in-process context cache is enabled")
+        enabled.add_metric([], float(payload.get("context_cache_enabled") or 0))
+        yield enabled
+
+        ttl_metric = GaugeMetricFamily("context_cache_ttl_seconds", "Configured TTL for context cache entries in seconds")
+        ttl_metric.add_metric([], float(payload.get("ttl_s") or 0))
+        yield ttl_metric
+
+        max_entries_metric = GaugeMetricFamily("context_cache_max_entries", "Configured maximum number of context cache entries")
+        max_entries_metric.add_metric([], float(payload.get("max_entries") or 0))
+        yield max_entries_metric
+
+        entries_metric = GaugeMetricFamily("context_cache_entries", "Current number of cached context entries")
+        entries_metric.add_metric([], float(snapshot.get("entries") or 0))
+        yield entries_metric
+
+        counter_specs = {
+            "context_cache_hits_total": ("Total fresh context cache hits", "hits"),
+            "context_cache_misses_total": ("Total context cache misses", "misses"),
+            "context_cache_refreshes_total": ("Total stale context cache refreshes", "refreshes"),
+            "context_cache_evictions_total": ("Total context cache evictions", "evictions"),
+            "context_cache_prefetches_total": ("Total context cache prefetch operations", "prefetches"),
+        }
+        for metric_name, (description, key) in counter_specs.items():
+            metric = CounterMetricFamily(metric_name, description)
+            metric.add_metric([], float(snapshot.get(key) or 0))
+            yield metric
+
+
 cmms_handoff_snapshot_collector = CMMSSnapshotCollector()
 REGISTRY.register(cmms_handoff_snapshot_collector)
 edge_buffer_snapshot_collector = EdgeBufferSnapshotCollector()
 REGISTRY.register(edge_buffer_snapshot_collector)
 edge_command_buffer_snapshot_collector = EdgeCommandBufferSnapshotCollector()
 REGISTRY.register(edge_command_buffer_snapshot_collector)
+context_cache_snapshot_collector = ContextCacheSnapshotCollector()
+REGISTRY.register(context_cache_snapshot_collector)
 
 @router.get("/metrics")
 def metrics():

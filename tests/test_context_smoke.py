@@ -1,6 +1,13 @@
 import datetime as dt
 
-from maintenance_intelligence.context.assembler import _build_rag_query, get_event_context
+from maintenance_intelligence.context.assembler import (
+    _build_rag_query,
+    get_context_cache_snapshot,
+    get_event_context,
+    prefetch_event_contexts,
+    reset_context_cache,
+)
+from maintenance_intelligence.runner.config import Settings
 
 
 class FakeCursor:
@@ -40,6 +47,7 @@ class FakeConnection:
 
 
 def test_context_smoke():
+    reset_context_cache()
     evt = {"asset_id": "TEST-ASSET", "kind": "alarm"}
     ctx = get_event_context(evt)
     assert "asset_id" in ctx
@@ -86,6 +94,7 @@ def test_build_rag_query_is_order_invariant_for_details():
 
 
 def test_get_event_context_uses_retriever_and_preserves_recent_order():
+    reset_context_cache()
     fake_conn = FakeConnection(
         [
             [("WO newest",), ("WO older",)],
@@ -134,6 +143,7 @@ def test_get_event_context_uses_retriever_and_preserves_recent_order():
 
 
 def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
+    reset_context_cache()
     fake_conn = FakeConnection(
         [
             [("WO newest",)],
@@ -169,3 +179,55 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
         {"chunk_id": "DOC-3", "title": "General manual", "asset_id": "TEST-ASSET", "source": "manual.pdf", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
     ]
     assert ctx["context_scope"] == "local"
+
+
+def test_get_event_context_reuses_fresh_cached_payload():
+    reset_context_cache()
+
+    fake_conn = FakeConnection(
+        [
+            [("WO newest",)],
+            [],
+            [],
+            [("DOC-1", "Playbook", "pump vibration guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10))],
+        ]
+    )
+    settings = Settings(context_cache_enabled=True, context_cache_ttl_s=60, context_cache_max_entries=8)
+    event = {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration"}
+
+    first = get_event_context(event, settings=settings, connection_factory=lambda _dsn: fake_conn)
+    second = get_event_context(event, settings=settings, connection_factory=lambda _dsn: (_ for _ in ()).throw(AssertionError("should hit cache")))
+
+    assert first["context_cache"]["status"] == "miss"
+    assert second["context_cache"]["status"] == "hit"
+    assert second["last_wo_titles"] == ["WO newest"]
+
+    snapshot = get_context_cache_snapshot()
+    assert snapshot["entries"] == 1
+    assert snapshot["hits"] == 1
+    assert snapshot["misses"] == 1
+
+
+def test_prefetch_event_contexts_warms_cache_for_followup_lookup():
+    reset_context_cache()
+
+    fake_conn = FakeConnection(
+        [
+            [("WO newest",)],
+            [],
+            [],
+            [("DOC-1", "Playbook", "pump vibration guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10))],
+        ]
+    )
+    settings = Settings(context_cache_enabled=True, context_cache_ttl_s=60, context_cache_max_entries=8)
+    event = {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration"}
+
+    prefetched = prefetch_event_contexts([event], settings=settings, connection_factory=lambda _dsn: fake_conn)
+    cached = get_event_context(event, settings=settings, connection_factory=lambda _dsn: (_ for _ in ()).throw(AssertionError("should hit cache")))
+
+    assert prefetched[0]["context_cache"]["status"] == "miss"
+    assert cached["context_cache"]["status"] == "hit"
+
+    snapshot = get_context_cache_snapshot()
+    assert snapshot["prefetches"] == 1
+    assert snapshot["entries"] == 1

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.context.assembler import get_context_cache_snapshot
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 import socket
 import psycopg2
@@ -171,5 +172,12 @@ def healthz(deep: bool = Query(False, description="Enable deep checks (Kafka/PG)
                 "total_replay_failures": 0,
                 "error": str(e),
             }
+
+    info["context_cache"] = {
+        "enabled": bool(getattr(settings, "context_cache_enabled", False)),
+        "ttl_s": int(getattr(settings, "context_cache_ttl_s", 60)),
+        "max_entries": int(getattr(settings, "context_cache_max_entries", 256)),
+        **get_context_cache_snapshot(),
+    }
 
     return info

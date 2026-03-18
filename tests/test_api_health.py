@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import maintenance_intelligence.api.health as health_mod
+from maintenance_intelligence.context.assembler import reset_context_cache
 from fastapi.testclient import TestClient
 from maintenance_intelligence.api.main import app
 
@@ -33,6 +34,7 @@ class FakeConnection:
         return False
 
 def test_health_basic():
+    reset_context_cache()
     c = TestClient(app)
     r = c.get("/healthz")
     assert r.status_code == 200
@@ -40,9 +42,10 @@ def test_health_basic():
 
 
 def test_health_deep_reports_ok_when_pg_kafka_and_lag_are_healthy(monkeypatch):
+    reset_context_cache()
     fake_conn = FakeConnection()
 
-    monkeypatch.setattr(health_mod, "Settings", lambda: SimpleNamespace(pg_dsn="dsn", kafka_bootstrap="kafka:9092"))
+    monkeypatch.setattr(health_mod, "Settings", lambda: SimpleNamespace(pg_dsn="dsn", kafka_bootstrap="kafka:9092", context_cache_enabled=False, context_cache_ttl_s=60, context_cache_max_entries=256))
     monkeypatch.setattr(health_mod.psycopg2, "connect", lambda dsn: fake_conn)
     monkeypatch.setattr(health_mod, "KafkaAdminClient", lambda **kwargs: SimpleNamespace(list_topics=lambda: ["topic-a"]))
     monkeypatch.setattr(health_mod, "compute_kafka_lag", lambda *args, **kwargs: {"_summary": {"total_lag": 12}})
@@ -53,11 +56,13 @@ def test_health_deep_reports_ok_when_pg_kafka_and_lag_are_healthy(monkeypatch):
     assert payload["pg"] == "ok"
     assert payload["kafka"] == "ok"
     assert payload["kafka_lag"] == {"_summary": {"total_lag": 12}}
+    assert payload["context_cache"]["enabled"] is False
     assert fake_conn.closed is True
 
 
 def test_health_deep_degrades_when_dependencies_fail_or_lag_is_unknown(monkeypatch):
-    monkeypatch.setattr(health_mod, "Settings", lambda: SimpleNamespace(pg_dsn="dsn", kafka_bootstrap="kafka:9092"))
+    reset_context_cache()
+    monkeypatch.setattr(health_mod, "Settings", lambda: SimpleNamespace(pg_dsn="dsn", kafka_bootstrap="kafka:9092", context_cache_enabled=False, context_cache_ttl_s=60, context_cache_max_entries=256))
     monkeypatch.setattr(health_mod.psycopg2, "connect", lambda dsn: (_ for _ in ()).throw(RuntimeError("pg down")))
     monkeypatch.setattr(health_mod, "KafkaAdminClient", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("kafka down")))
     monkeypatch.setattr(health_mod, "compute_kafka_lag", lambda *args, **kwargs: {"_summary": {"total_lag": None}})
@@ -71,6 +76,7 @@ def test_health_deep_degrades_when_dependencies_fail_or_lag_is_unknown(monkeypat
 
 
 def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monkeypatch):
+    reset_context_cache()
     buffer_path = tmp_path / "edge" / "edge.sqlite3"
     buffer = health_mod.EdgeEventBuffer(str(buffer_path), max_events=10)
     buffer.buffer_event(
@@ -97,6 +103,9 @@ def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monk
             edge_mode_enabled=True,
             edge_buffer_path=str(buffer_path),
             edge_buffer_max_events=10,
+            context_cache_enabled=True,
+            context_cache_ttl_s=45,
+            context_cache_max_entries=32,
         ),
     )
     monkeypatch.setattr(health_mod.psycopg2, "connect", lambda dsn: FakeConnection())
@@ -116,3 +125,7 @@ def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monk
         "last_successful_central_write_at": None,
         "last_replay_attempt_at": None,
     }
+    assert payload["context_cache"]["enabled"] is True
+    assert payload["context_cache"]["ttl_s"] == 45
+    assert payload["context_cache"]["max_entries"] == 32
+    assert payload["context_cache"]["entries"] == 0

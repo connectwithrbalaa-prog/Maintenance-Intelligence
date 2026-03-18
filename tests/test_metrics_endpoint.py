@@ -1,10 +1,12 @@
 from fastapi.testclient import TestClient
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import metrics as metrics_module
+from maintenance_intelligence.context.assembler import reset_context_cache
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
 def test_metrics_endpoint(tmp_path, monkeypatch):
+    reset_context_cache()
     buffer_path = tmp_path / "edge-metrics.sqlite3"
     command_buffer_path = tmp_path / "edge-command-metrics.sqlite3"
     buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
@@ -35,6 +37,17 @@ def test_metrics_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
     monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
     monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
+    monkeypatch.setenv("MI_CONTEXT_CACHE_ENABLED", "true")
+    monkeypatch.setenv("MI_CONTEXT_CACHE_TTL_S", "90")
+    monkeypatch.setenv("MI_CONTEXT_CACHE_MAX_ENTRIES", "12")
+    metrics_module.get_context_cache_snapshot().update if False else None
+    from maintenance_intelligence.context import assembler as assembler_mod
+    assembler_mod._CONTEXT_CACHE_STATS.update({"hits": 3, "misses": 2, "refreshes": 1, "evictions": 0, "prefetches": 4})
+    assembler_mod._CONTEXT_CACHE.clear()
+    assembler_mod._CONTEXT_CACHE[("demo-org", None, "PUMP-101", True, "alarm")] = {
+        "cached_at": __import__("datetime").datetime.utcnow(),
+        "payload": {"asset_id": "PUMP-101", "context_cache": {"status": "miss"}},
+    }
     monkeypatch.setattr(
         metrics_module.cmms_handoff_snapshot_collector,
         "load_snapshot",
@@ -71,3 +84,9 @@ def test_metrics_endpoint(tmp_path, monkeypatch):
     assert 'edge_connectivity_state{status="offline"} 1.0' in body
     assert "edge_command_queue_depth 1.0" in body
     assert "edge_command_queued_total 1.0" in body
+    assert "context_cache_enabled 1.0" in body
+    assert "context_cache_ttl_seconds 90.0" in body
+    assert "context_cache_max_entries 12.0" in body
+    assert "context_cache_entries 1.0" in body
+    assert "context_cache_hits_total 3.0" in body
+    assert "context_cache_prefetches_total 4.0" in body

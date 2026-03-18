@@ -1,9 +1,21 @@
 import datetime as dt
+from collections import OrderedDict
+from copy import deepcopy
 import re
 from typing import Dict, Any, List, Optional
 import psycopg2
 from loguru import logger
 from maintenance_intelligence.runner.config import Settings
+
+
+_CONTEXT_CACHE: "OrderedDict[tuple[Any, ...], Dict[str, Any]]" = OrderedDict()
+_CONTEXT_CACHE_STATS: Dict[str, int] = {
+    "hits": 0,
+    "misses": 0,
+    "refreshes": 0,
+    "evictions": 0,
+    "prefetches": 0,
+}
 
 def with_pg(dsn: str):
     import time
@@ -15,6 +27,16 @@ def with_pg(dsn: str):
             last_error = exc
             time.sleep(0.2)
     raise last_error
+
+
+def reset_context_cache() -> None:
+    _CONTEXT_CACHE.clear()
+    for key in _CONTEXT_CACHE_STATS:
+        _CONTEXT_CACHE_STATS[key] = 0
+
+
+def get_context_cache_snapshot() -> Dict[str, int]:
+    return {**_CONTEXT_CACHE_STATS, "entries": len(_CONTEXT_CACHE)}
 
 
 def _normalize_wo_titles(rows: List[Any]) -> List[str]:
@@ -148,6 +170,62 @@ def _build_rag_query(event: Dict[str, Any]) -> str:
     return " ".join(part for part in [event_kind, event_summary, detail_values] if part).strip()
 
 
+def _context_cache_key(event: Dict[str, Any], fleet_wide: bool) -> tuple[Any, ...]:
+    return (
+        event.get("org_id"),
+        event.get("site_id"),
+        event.get("asset_id"),
+        fleet_wide,
+        _build_rag_query(event),
+    )
+
+
+def _context_cache_metadata(status: str, cached_at: Optional[dt.datetime], ttl_s: int) -> Dict[str, Any]:
+    expires_at = cached_at + dt.timedelta(seconds=max(0, ttl_s)) if cached_at else None
+    return {
+        "status": status,
+        "cached_at": cached_at.isoformat() if cached_at else None,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "ttl_s": ttl_s,
+    }
+
+
+def _cache_hit_payload(payload: Dict[str, Any], cached_at: dt.datetime, ttl_s: int) -> Dict[str, Any]:
+    cached_payload = deepcopy(payload)
+    cached_payload["context_cache"] = _context_cache_metadata("hit", cached_at, ttl_s)
+    return cached_payload
+
+
+def _remember_context_payload(cache_key: tuple[Any, ...], payload: Dict[str, Any], ttl_s: int, max_entries: int, status: str) -> Dict[str, Any]:
+    cached_at = dt.datetime.utcnow()
+    stored_payload = deepcopy(payload)
+    stored_payload["context_cache"] = _context_cache_metadata(status, cached_at, ttl_s)
+    _CONTEXT_CACHE[cache_key] = {
+        "cached_at": cached_at,
+        "payload": deepcopy(stored_payload),
+    }
+    _CONTEXT_CACHE.move_to_end(cache_key)
+    while len(_CONTEXT_CACHE) > max(1, max_entries):
+        _CONTEXT_CACHE.popitem(last=False)
+        _CONTEXT_CACHE_STATS["evictions"] += 1
+    return stored_payload
+
+
+def _get_cached_context(cache_key: tuple[Any, ...], ttl_s: int) -> Optional[Dict[str, Any]]:
+    cached_entry = _CONTEXT_CACHE.get(cache_key)
+    if not cached_entry:
+        return None
+    cached_at = cached_entry["cached_at"]
+    age_s = (dt.datetime.utcnow() - cached_at).total_seconds()
+    if age_s > max(0, ttl_s):
+        _CONTEXT_CACHE.pop(cache_key, None)
+        _CONTEXT_CACHE_STATS["refreshes"] += 1
+        return None
+    _CONTEXT_CACHE.move_to_end(cache_key)
+    _CONTEXT_CACHE_STATS["hits"] += 1
+    return _cache_hit_payload(cached_entry["payload"], cached_at, ttl_s)
+
+
 def _fetch_last_wo_titles(conn, asset_id: Optional[str]) -> List[str]:
     with conn, conn.cursor() as cur:
         cur.execute(
@@ -240,15 +318,8 @@ def _fetch_doc_chunks(conn, asset_id: Optional[str], query: str, dsn: str, retri
         logger.debug({"event": "ctx.hybrid_rag.skip", "err": str(exc)})
         return _fetch_fallback_doc_chunks(conn, asset_id, query, fleet_wide=fleet_wide)
 
-def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None, connection_factory=with_pg, retriever_cls=None, fleet_wide: Optional[bool] = None) -> Dict[str, Any]:
-    """
-    MVP bootstrap context assembly.
-    - last_wo_titles: last few WOs for the asset (90d)
-    - signal_summary: stub (placeholder)
-    - doc_chunks: stub (assumes optional doc_chunks table later)
-    Returns empty lists gracefully if tables not present.
-    """
-    settings = settings or Settings()
+
+def _assemble_event_context(event: Dict[str, Any], settings: Settings, connection_factory=with_pg, retriever_cls=None, fleet_wide: Optional[bool] = None) -> Dict[str, Any]:
     fleet_wide = settings.rca_fleet_wide_context if fleet_wide is None else fleet_wide
     asset_id = event.get("asset_id")
     out: Dict[str, Any] = {
@@ -269,37 +340,81 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
     conn = None
     try:
         conn = connection_factory(settings.pg_dsn)
-        # last few WOs (if table exists)
         try:
             out["last_wo_titles"] = _fetch_last_wo_titles(conn, asset_id)
         except Exception as e:
-            logger.debug({"event":"ctx.wo.skip","err":str(e)})
+            logger.debug({"event": "ctx.wo.skip", "err": str(e)})
 
-        # signal summary: recent rollups and anomalies
         try:
             out.update(_fetch_signal_context(conn, asset_id))
         except Exception as e:
-            logger.debug({"event":"ctx.signals.skip","err":str(e)})
+            logger.debug({"event": "ctx.signals.skip", "err": str(e)})
             out["signal_rollups"] = []
             out["recent_signals"] = []
 
-        # doc chunks via hybrid retrieval (BM25 + vector)
         try:
             query = _build_rag_query(event)
             out["doc_chunks"] = _fetch_doc_chunks(conn, asset_id, query, settings.pg_dsn, retriever_cls=retriever_cls, fleet_wide=fleet_wide)
             out["fleet_context_summary"] = _summarize_fleet_doc_chunks(asset_id, out["doc_chunks"])
             out["context_scope"] = "local+fleet" if out["fleet_context_summary"]["external_ref_count"] else "local"
         except Exception as e:
-            logger.debug({"event":"ctx.docs.skip","err":str(e)})
+            logger.debug({"event": "ctx.docs.skip", "err": str(e)})
             out["doc_chunks"] = []
-
-
-
     except Exception as e:
-        logger.debug({"event":"ctx.error","err":str(e)})
+        logger.debug({"event": "ctx.error", "err": str(e)})
     finally:
         try:
-            if conn: conn.close()
+            if conn:
+                conn.close()
         except Exception:
             pass
     return out
+
+def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None, connection_factory=with_pg, retriever_cls=None, fleet_wide: Optional[bool] = None) -> Dict[str, Any]:
+    """
+    MVP bootstrap context assembly.
+    - last_wo_titles: last few WOs for the asset (90d)
+    - signal_summary: stub (placeholder)
+    - doc_chunks: stub (assumes optional doc_chunks table later)
+    Returns empty lists gracefully if tables not present.
+    """
+    settings = settings or Settings()
+    fleet_wide = settings.rca_fleet_wide_context if fleet_wide is None else fleet_wide
+
+    if not settings.context_cache_enabled:
+        payload = _assemble_event_context(event, settings, connection_factory=connection_factory, retriever_cls=retriever_cls, fleet_wide=fleet_wide)
+        payload["context_cache"] = _context_cache_metadata("disabled", None, settings.context_cache_ttl_s)
+        return payload
+
+    cache_key = _context_cache_key(event, fleet_wide)
+    cached_payload = _get_cached_context(cache_key, settings.context_cache_ttl_s)
+    if cached_payload is not None:
+        return cached_payload
+
+    _CONTEXT_CACHE_STATS["misses"] += 1
+    payload = _assemble_event_context(event, settings, connection_factory=connection_factory, retriever_cls=retriever_cls, fleet_wide=fleet_wide)
+    return _remember_context_payload(
+        cache_key,
+        payload,
+        ttl_s=settings.context_cache_ttl_s,
+        max_entries=settings.context_cache_max_entries,
+        status="miss",
+    )
+
+
+def prefetch_event_contexts(events: List[Dict[str, Any]], settings: Optional[Settings] = None, connection_factory=with_pg, retriever_cls=None, fleet_wide: Optional[bool] = None) -> List[Dict[str, Any]]:
+    settings = settings or Settings()
+    prefetched: List[Dict[str, Any]] = []
+    for event in events:
+        prefetched.append(
+            get_event_context(
+                event,
+                settings=settings,
+                connection_factory=connection_factory,
+                retriever_cls=retriever_cls,
+                fleet_wide=fleet_wide,
+            )
+        )
+    if settings.context_cache_enabled:
+        _CONTEXT_CACHE_STATS["prefetches"] += len(prefetched)
+    return prefetched

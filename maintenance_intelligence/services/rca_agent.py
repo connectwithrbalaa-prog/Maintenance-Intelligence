@@ -5,7 +5,7 @@ from loguru import logger
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
-from maintenance_intelligence.context.assembler import get_event_context
+from maintenance_intelligence.context.assembler import get_event_context, prefetch_event_contexts
 from maintenance_intelligence.services.repair_plan_service import create_repair_plan, add_part_to_plan
 import backoff
 from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
@@ -84,6 +84,9 @@ def _as_trimmed_string(value):
 def _context_with_fallback(evt: dict, settings: Settings) -> dict:
     fleet_wide = getattr(settings, "rca_fleet_wide_context", True)
     try:
+        if getattr(settings, "context_cache_enabled", False):
+            prefetched = prefetch_event_contexts([evt], settings, fleet_wide=fleet_wide)
+            return prefetched[0] if prefetched else get_event_context(evt, settings, fleet_wide=fleet_wide)
         return get_event_context(evt, settings, fleet_wide=fleet_wide)
     except TypeError:
         # Older tests and call sites stub the helper with a 2-arg lambda.
@@ -315,6 +318,7 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             "context_scope": ctx.get("context_scope", "local"),
             "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get("external_ref_count", 0),
             "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get("referenced_asset_ids", []),
+            "context_cache": ctx.get("context_cache", {}),
             "inference_mode": inference_mode,
             "degraded_inference": inference_mode == "local-deterministic",
         },
