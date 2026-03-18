@@ -3,9 +3,10 @@ import time
 from kafka import KafkaConsumer
 import psycopg2
 from loguru import logger
-from maintenance_intelligence.cmms.adapter import TERMINAL_WORK_ORDER_STATUSES, create_cmms_adapter, submit_work_order_with_retry
+from maintenance_intelligence.cmms.adapter import CMMSAdapterError, CMMSPayloadError, TERMINAL_WORK_ORDER_STATUSES, create_cmms_adapter, submit_work_order_with_retry
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 
 
 def _as_dict(value):
@@ -24,6 +25,7 @@ def _as_text(value):
 
 
 REGRESSIVE_WORK_ORDER_STATUSES = {"PENDING", "QUEUED", "DRAFT", "NEW"}
+QUEUED_OFFLINE_STATUS = "queued-offline"
 
 def with_pg(dsn: str):
     import time
@@ -122,6 +124,100 @@ def _existing_work_order_row(conn, wo_id):
         "workorder_completed_at": row[3],
         "metadata": row[4] if isinstance(row[4], dict) else {},
     }
+
+
+def _existing_proposal_row(conn, proposal_id):
+    if not proposal_id:
+        return {}
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, approved_by, work_order_id, metadata FROM pm_proposals WHERE proposal_id = %s",
+            (proposal_id,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return {}
+    return {
+        "status": row[0],
+        "approved_by": row[1],
+        "work_order_id": row[2],
+        "metadata": row[3] if isinstance(row[3], dict) else {},
+    }
+
+
+def _attempt_entry(result=None, *, handoff_state="pending", approved_by=None, origin="bridge", error_message=None):
+    attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    return {
+        "attempt_number": None,
+        "attempted_at": attempted_at,
+        "approved_by": approved_by,
+        "approved_at": attempted_at if handoff_state == "success" else None,
+        "handoff_state": handoff_state,
+        "origin": origin,
+        "result": "success" if handoff_state == "success" else ("failure" if error_message else "pending"),
+        "connector_result": result if isinstance(result, dict) else {},
+        "error_message": error_message or "",
+    }
+
+
+def _approval_attempts(metadata):
+    if not isinstance(metadata, dict):
+        return []
+    attempts = metadata.get("approval_attempts")
+    if isinstance(attempts, list):
+        return [item for item in attempts if isinstance(item, dict)]
+    approval = metadata.get("approval")
+    return [approval] if isinstance(approval, dict) else []
+
+
+def _proposal_metadata_with_attempt(existing_metadata, attempt, *, approved_by=None, handoff_state="pending"):
+    metadata = existing_metadata if isinstance(existing_metadata, dict) else {}
+    attempts = list(_approval_attempts(metadata))
+    attempt_number = len(attempts) + 1
+    normalized_attempt = {
+        **attempt,
+        "attempt_number": attempt_number,
+        "approved_by": approved_by or attempt.get("approved_by"),
+    }
+    approval = {
+        "approved_by": normalized_attempt.get("approved_by"),
+        "approved_at": normalized_attempt.get("approved_at"),
+        "attempted_at": normalized_attempt.get("attempted_at"),
+        "handoff_state": handoff_state,
+        "origin": normalized_attempt.get("origin") or "bridge",
+        "result": normalized_attempt.get("connector_result") if isinstance(normalized_attempt.get("connector_result"), dict) else {},
+        "detail": normalized_attempt.get("error_message") or None,
+    }
+    return {
+        **metadata,
+        "approval": approval,
+        "approval_attempts": [*attempts, normalized_attempt],
+    }
+
+
+def update_proposal_handoff_status(conn, proposal_id, result=None, *, approved_by=None, origin="bridge", error_message=None):
+    existing = _existing_proposal_row(conn, proposal_id)
+    if not existing:
+        return {}
+    if error_message:
+        status = existing.get("status") or QUEUED_OFFLINE_STATUS
+        handoff_state = QUEUED_OFFLINE_STATUS
+        work_order_id = existing.get("work_order_id")
+        attempt = _attempt_entry(None, handoff_state=handoff_state, approved_by=approved_by or existing.get("approved_by"), origin=origin, error_message=error_message)
+    else:
+        handoff_complete = bool(result and result.get("handoff_complete"))
+        status = "approved" if handoff_complete else "pending"
+        handoff_state = "success" if handoff_complete else "pending"
+        work_order_id = result.get("wo_id") if isinstance(result, dict) else existing.get("work_order_id")
+        attempt = _attempt_entry(result, handoff_state=handoff_state, approved_by=approved_by or existing.get("approved_by"), origin=origin)
+    metadata = _proposal_metadata_with_attempt(existing.get("metadata"), attempt, approved_by=approved_by or existing.get("approved_by"), handoff_state=handoff_state)
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pm_proposals SET status = %s, approved_by = %s, work_order_id = %s, metadata = %s::jsonb WHERE proposal_id = %s",
+                (status, approved_by or existing.get("approved_by"), work_order_id, json.dumps(metadata), proposal_id),
+            )
+    return {"status": status, "work_order_id": work_order_id, "metadata": metadata}
 
 
 def _handoff_metadata(recommendation, result, handoff_context=None):
@@ -228,10 +324,52 @@ def process_recommendation(message_value, conn, adapter, retry_attempts: int = 3
         logger.warning({"event": "wo_bridge.handoff_pending", "recommendation_id": recommendation.get("id"), "backend": result.get("backend")})
     return result
 
+
+def _replay_edge_command_queue(conn, adapter, queue: EdgeCommandBuffer, *, batch_size: int = 25, retry_attempts: int = 1, retry_interval_s: float = 0.0):
+    replayed_total = 0
+    queue.mark_replay_attempt_started()
+    for command in queue.list_queued_commands(limit=batch_size):
+        payload = command.get("payload") if isinstance(command.get("payload"), dict) else {}
+        proposal_id = _as_text(command.get("proposal_id"))
+        try:
+            result = process_recommendation(
+                payload,
+                conn,
+                adapter,
+                retry_attempts=retry_attempts,
+                retry_interval_s=retry_interval_s,
+            )
+            if proposal_id:
+                context = _as_dict(payload.get("handoff_context"))
+                update_proposal_handoff_status(
+                    conn,
+                    proposal_id,
+                    result,
+                    approved_by=_as_text(context.get("approved_by")),
+                    origin="edge-replay",
+                )
+            queue.record_replay_success(proposal_id or "")
+            replayed_total += 1
+        except (CMMSAdapterError, CMMSPayloadError) as exc:
+            queue.record_replay_failure(proposal_id or "", str(exc))
+            if proposal_id:
+                context = _as_dict(payload.get("handoff_context"))
+                update_proposal_handoff_status(
+                    conn,
+                    proposal_id,
+                    None,
+                    approved_by=_as_text(context.get("approved_by")),
+                    origin="edge-replay",
+                    error_message=str(exc),
+                )
+            return {"replayed": replayed_total, "error": str(exc)}
+    return {"replayed": replayed_total, "error": None}
+
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str, settings: Settings | None = None, connection_factory=with_pg, consumer_factory=KafkaConsumer, adapter_factory=create_cmms_adapter):
     settings = settings or Settings()
     conn = connection_factory(pg_dsn)
     adapter = adapter_factory(settings)
+    command_queue = EdgeCommandBuffer(settings.edge_command_buffer_path) if settings.edge_mode_enabled else None
     cons = consumer_factory(
         "canonical.recommendation.created",
         bootstrap_servers=kafka_bootstrap,
@@ -241,6 +379,19 @@ def wo_bridge(kafka_bootstrap: str, pg_dsn: str, settings: Settings | None = Non
     )
     try:
         for msg in cons:
+            if command_queue and command_queue.queued_command_count() > 0:
+                replay_outcome = _replay_edge_command_queue(
+                    conn,
+                    adapter,
+                    command_queue,
+                    batch_size=settings.edge_replay_batch_size,
+                    retry_attempts=1,
+                    retry_interval_s=0.0,
+                )
+                if replay_outcome.get("replayed"):
+                    logger.info({"event": "wo_bridge.edge_replayed", "count": replay_outcome.get("replayed")})
+                if replay_outcome.get("error"):
+                    logger.warning({"event": "wo_bridge.edge_replay_failed", "error": replay_outcome.get("error")})
             process_recommendation(
                 msg.value,
                 conn,

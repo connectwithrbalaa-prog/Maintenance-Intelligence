@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Response
 from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
-from prometheus_client.core import GaugeMetricFamily
+from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 
 from maintenance_intelligence.api.outcomes import (
     _empty_cmms_summary,
@@ -10,6 +10,8 @@ from maintenance_intelligence.api.outcomes import (
     _workorder_backend,
 )
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 
 router = APIRouter()
 
@@ -134,8 +136,142 @@ class CMMSSnapshotCollector:
         yield backend_backlog_metric
 
 
+class EdgeBufferSnapshotCollector:
+    _CONNECTIVITY_STATES = ("disabled", "unknown", "online", "degraded", "offline")
+
+    def load_snapshot(self):
+        settings = Settings()
+        if not settings.edge_mode_enabled:
+            return {
+                "up": 1,
+                "edge_mode_enabled": 0,
+                "snapshot": {
+                    "connectivity_status": "disabled",
+                    "buffered_event_count": 0,
+                    "total_buffered_events": 0,
+                    "total_replayed_events": 0,
+                    "total_replay_failures": 0,
+                },
+            }
+        try:
+            buffer = EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events)
+            return {
+                "up": 1,
+                "edge_mode_enabled": 1,
+                "snapshot": buffer.snapshot(),
+            }
+        except Exception:
+            return {
+                "up": 0,
+                "edge_mode_enabled": 1,
+                "snapshot": {
+                    "connectivity_status": "unknown",
+                    "buffered_event_count": 0,
+                    "total_buffered_events": 0,
+                    "total_replayed_events": 0,
+                    "total_replay_failures": 0,
+                },
+            }
+
+    def collect(self):
+        payload = self.load_snapshot()
+        snapshot = payload.get("snapshot") or {}
+        connectivity_status = str(snapshot.get("connectivity_status") or "unknown")
+
+        metrics_up = GaugeMetricFamily("edge_buffer_metrics_up", "Whether edge buffer metrics scraped successfully")
+        metrics_up.add_metric([], float(payload.get("up") or 0))
+        yield metrics_up
+
+        mode_enabled = GaugeMetricFamily("edge_mode_enabled", "Whether edge mode is enabled for this process")
+        mode_enabled.add_metric([], float(payload.get("edge_mode_enabled") or 0))
+        yield mode_enabled
+
+        buffer_depth = GaugeMetricFamily("edge_buffer_depth", "Current number of buffered edge events awaiting replay")
+        buffer_depth.add_metric([], float(snapshot.get("buffered_event_count") or 0))
+        yield buffer_depth
+
+        buffered_events_total = CounterMetricFamily("edge_buffered_events", "Total edge events buffered locally while offline")
+        buffered_events_total.add_metric([], float(snapshot.get("total_buffered_events") or 0))
+        yield buffered_events_total
+
+        replayed_events_total = CounterMetricFamily("edge_replayed_events", "Total buffered edge events successfully replayed to central storage")
+        replayed_events_total.add_metric([], float(snapshot.get("total_replayed_events") or 0))
+        yield replayed_events_total
+
+        replay_failures_total = CounterMetricFamily("edge_replay_failures", "Total failed edge replay attempts")
+        replay_failures_total.add_metric([], float(snapshot.get("total_replay_failures") or 0))
+        yield replay_failures_total
+
+        connectivity_metric = GaugeMetricFamily("edge_connectivity_state", "Current edge connectivity state by status label", labels=["status"])
+        for state in self._CONNECTIVITY_STATES:
+            connectivity_metric.add_metric([state], 1.0 if connectivity_status == state else 0.0)
+        yield connectivity_metric
+
+
+class EdgeCommandBufferSnapshotCollector:
+    def load_snapshot(self):
+        settings = Settings()
+        if not settings.edge_mode_enabled:
+            return {
+                "up": 1,
+                "edge_mode_enabled": 0,
+                "snapshot": {
+                    "queued_command_count": 0,
+                    "total_queued_commands": 0,
+                    "total_replayed_commands": 0,
+                    "total_replay_failures": 0,
+                },
+            }
+        try:
+            buffer = EdgeCommandBuffer(settings.edge_command_buffer_path)
+            return {
+                "up": 1,
+                "edge_mode_enabled": 1,
+                "snapshot": buffer.snapshot(),
+            }
+        except Exception:
+            return {
+                "up": 0,
+                "edge_mode_enabled": 1,
+                "snapshot": {
+                    "queued_command_count": 0,
+                    "total_queued_commands": 0,
+                    "total_replayed_commands": 0,
+                    "total_replay_failures": 0,
+                },
+            }
+
+    def collect(self):
+        payload = self.load_snapshot()
+        snapshot = payload.get("snapshot") or {}
+
+        metrics_up = GaugeMetricFamily("edge_command_queue_metrics_up", "Whether edge command queue metrics scraped successfully")
+        metrics_up.add_metric([], float(payload.get("up") or 0))
+        yield metrics_up
+
+        queue_depth = GaugeMetricFamily("edge_command_queue_depth", "Current number of queued CMMS handoffs awaiting replay")
+        queue_depth.add_metric([], float(snapshot.get("queued_command_count") or 0))
+        yield queue_depth
+
+        queued_total = CounterMetricFamily("edge_command_queued_total", "Total CMMS handoffs queued locally while offline")
+        queued_total.add_metric([], float(snapshot.get("total_queued_commands") or 0))
+        yield queued_total
+
+        replayed_total = CounterMetricFamily("edge_command_replayed_total", "Total queued CMMS handoffs drained from the local queue")
+        replayed_total.add_metric([], float(snapshot.get("total_replayed_commands") or 0))
+        yield replayed_total
+
+        replay_failures_total = CounterMetricFamily("edge_command_replay_failures_total", "Total failed CMMS handoff replay attempts from the local queue")
+        replay_failures_total.add_metric([], float(snapshot.get("total_replay_failures") or 0))
+        yield replay_failures_total
+
+
 cmms_handoff_snapshot_collector = CMMSSnapshotCollector()
 REGISTRY.register(cmms_handoff_snapshot_collector)
+edge_buffer_snapshot_collector = EdgeBufferSnapshotCollector()
+REGISTRY.register(edge_buffer_snapshot_collector)
+edge_command_buffer_snapshot_collector = EdgeCommandBufferSnapshotCollector()
+REGISTRY.register(edge_command_buffer_snapshot_collector)
 
 @router.get("/metrics")
 def metrics():

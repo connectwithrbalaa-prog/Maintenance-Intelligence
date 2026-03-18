@@ -2174,16 +2174,26 @@
 			const edgeEnabled = Boolean(payload.edge_mode_enabled);
 			const connectivity = normalizeEdgeConnectivityStatus(edgeEnabled ? payload.connectivity_status : "disabled");
 			const bufferedCount = asNumber(payload.buffered_event_count) ?? 0;
+			const queuedCommandCount = asNumber(payload.queued_command_count) ?? 0;
 			const lastSync = formatDate(payload.last_successful_central_write_at) || "No central sync yet";
 			const lastReplay = formatDate(payload.last_replay_attempt_at) || "No replay yet";
+			const lastCommandQueued = formatDate(payload.last_command_queued_at) || "No queued handoffs";
+			const lastCommandReplay = formatDate(payload.last_command_replay_at) || "No command replay yet";
+			const commandReplayFailures = asNumber(payload.total_command_replay_failures) ?? 0;
+			const lastCommandError = asString(payload.last_command_error);
 			const lastError = asString(payload.last_error);
 			const summary = !edgeEnabled
 				? "Edge buffering is disabled for this deployment. Ingestion writes directly to central storage."
 				: (connectivity.label === "online"
-					? "Central storage is reachable. Buffered events replay before new edge writes are committed."
+					? "Central storage is reachable. Buffered events and queued CMMS handoffs replay before new edge writes are committed."
 					: (bufferedCount > 0
 						? `${bufferedCount} buffered event${bufferedCount === 1 ? " is" : "s are"} waiting for central connectivity to return.`
 						: "Central storage is unavailable. New edge events will queue locally until connectivity returns."));
+			const queueSummary = !edgeEnabled
+				? "CMMS approvals submit directly to the live connector."
+				: (queuedCommandCount > 0
+					? `${queuedCommandCount} queued CMMS handoff${queuedCommandCount === 1 ? " is" : "s are"} waiting for replay through the work-order bridge.`
+					: "No queued CMMS handoffs are waiting for replay.");
 
 			elements.edgeStatusCard.innerHTML = `
 				<div class="identity-row">
@@ -2196,11 +2206,17 @@
 					</div>
 				</div>
 				<div class="edge-status-body">${escapeHtml(summary)}</div>
+				<div class="edge-status-body">${escapeHtml(queueSummary)}</div>
 				<div class="outcomes-chip-row">
 					<span class="chip">Mode ${escapeHtml(edgeEnabled ? "On" : "Off")}</span>
 					<span class="chip">Buffered ${escapeHtml(bufferedCount)}</span>
+					<span class="chip">Queued handoffs ${escapeHtml(queuedCommandCount)}</span>
 					<span class="chip">Last sync ${escapeHtml(lastSync)}</span>
 					<span class="chip">Last replay ${escapeHtml(lastReplay)}</span>
+					<span class="chip">Last queued handoff ${escapeHtml(lastCommandQueued)}</span>
+					<span class="chip">Last command replay ${escapeHtml(lastCommandReplay)}</span>
+					${commandReplayFailures > 0 ? `<span class="chip trend-rising">Replay failures ${escapeHtml(commandReplayFailures)}</span>` : ""}
+					${lastCommandError ? `<span class="chip trend-rising">Command issue ${escapeHtml(lastCommandError)}</span>` : ""}
 					${lastError ? `<span class="chip trend-rising">Last issue ${escapeHtml(lastError)}</span>` : ""}
 				</div>
 			`;

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 import socket, psycopg2
 from kafka import KafkaAdminClient
 import os
@@ -112,5 +113,33 @@ def healthz(deep: bool = Query(False, description="Enable deep checks (Kafka/PG)
     except Exception as e:
         info["kafka_lag"] = f"error: {e}"
         info["status"] = "degraded"
+
+    if bool(getattr(settings, "edge_mode_enabled", False)):
+        try:
+            buffer = EdgeEventBuffer(
+                getattr(settings, "edge_buffer_path", "outputs/edge/edge_buffer.sqlite3"),
+                max_events=int(getattr(settings, "edge_buffer_max_events", 5000)),
+            )
+            snapshot = buffer.snapshot()
+            info["edge"] = {
+                "edge_mode_enabled": True,
+                "connectivity_status": str(snapshot.get("connectivity_status") or "unknown"),
+                "buffered_event_count": int(snapshot.get("buffered_event_count") or 0),
+                "total_buffered_events": int(snapshot.get("total_buffered_events") or 0),
+                "total_replayed_events": int(snapshot.get("total_replayed_events") or 0),
+                "total_replay_failures": int(snapshot.get("total_replay_failures") or 0),
+                "last_successful_central_write_at": snapshot.get("last_successful_central_write_at"),
+                "last_replay_attempt_at": snapshot.get("last_replay_attempt_at"),
+            }
+        except Exception as e:
+            info["edge"] = {
+                "edge_mode_enabled": True,
+                "connectivity_status": "unknown",
+                "buffered_event_count": 0,
+                "total_buffered_events": 0,
+                "total_replayed_events": 0,
+                "total_replay_failures": 0,
+                "error": str(e),
+            }
 
     return info

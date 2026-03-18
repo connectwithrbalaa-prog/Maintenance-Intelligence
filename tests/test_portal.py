@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import portal as portal_mod
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
 
@@ -78,6 +79,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Maintenance Intelligence Portal" in page.text
     assert "Early warning summary" in page.text
     assert "Edge mode status" in page.text
+    assert "Queued handoffs" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
 
@@ -148,9 +150,12 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
 
 def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
     monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
     monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
     buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
+    command_buffer = EdgeCommandBuffer(str(command_buffer_path))
     buffer.buffer_event(
         {
             "event_id": "EV-OFFLINE",
@@ -165,6 +170,15 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
         },
         error="central store unavailable",
     )
+    command_buffer.enqueue_command(
+        "REC-1",
+        {
+            "proposal_id": "REC-1",
+            "recommendation_id": "REC-1",
+            "recommendation": {"id": "REC-1", "asset_id": "PUMP-101"},
+        },
+        error="cmms offline",
+    )
 
     client = TestClient(app)
     response = client.get("/api/v1/portal/edge-status", headers=READ_HEADERS)
@@ -174,7 +188,12 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     assert payload["edge_mode_enabled"] is True
     assert payload["connectivity_status"] == "offline"
     assert payload["buffered_event_count"] == 1
+    assert payload["queued_command_count"] == 1
+    assert payload["total_queued_commands"] == 1
+    assert payload["total_replayed_commands"] == 0
+    assert payload["total_command_replay_failures"] == 0
     assert payload["last_successful_central_write_at"] is None
+    assert payload["last_command_queued_at"] is not None
     assert payload["last_error"] == "central store unavailable"
 
 
