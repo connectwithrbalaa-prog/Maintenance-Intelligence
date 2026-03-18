@@ -24,6 +24,7 @@ from maintenance_intelligence.cmms.adapter import (
 from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
 from maintenance_intelligence.cmms.mock import MockCMMSAdapter
 from maintenance_intelligence.cmms.sap_pm import SAPPMCMMSAdapter
+from maintenance_intelligence.cmms.servicenow import ServiceNowCMMSAdapter
 from maintenance_intelligence.cmms.translators import translate_connector_response
 from maintenance_intelligence.runner.config import Settings
 
@@ -55,12 +56,12 @@ def test_factory_selects_sap_pm_backend_with_alias(monkeypatch):
 def test_factory_rejects_unknown_backend(monkeypatch):
     monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "oracle")
 
-    with pytest.raises(UnsupportedBackendError, match="Supported backends: maximo, mock, sap_pm"):
+    with pytest.raises(UnsupportedBackendError, match="Supported backends: maximo, mock, sap_pm, servicenow"):
         create_cmms_adapter(Settings())
 
 
 def test_supported_backends_exposes_registry():
-    assert supported_cmms_backends() == ["maximo", "mock", "sap_pm"]
+    assert supported_cmms_backends() == ["maximo", "mock", "sap_pm", "servicenow"]
 
 
 def test_discover_cmms_backends_reports_required_config_fields():
@@ -78,6 +79,14 @@ def test_discover_cmms_backends_reports_required_config_fields():
     assert {entry["phase"]: entry["statuses"] for entry in sap_backend["lifecycle_statuses"]}["completed"] == ["CLSD", "TECO"]
     maximo_backend = next(item for item in metadata["supported_backends"] if item["backend"] == "maximo")
     assert maximo_backend["configured"] is False
+
+
+def test_factory_selects_servicenow_backend(monkeypatch):
+    monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "servicenow")
+
+    adapter = create_cmms_adapter(Settings())
+
+    assert adapter.backend_name == ServiceNowCMMSAdapter.backend_name
 
 
 def test_shared_http_helpers_post_and_parse_json():
@@ -325,3 +334,62 @@ def test_sap_pm_adapter_maps_and_parses_odata_response():
     assert result["workorder_completed_at"] == "2026-03-15T11:00:00Z"
     assert result["lifecycle_phase"] == "completed"
     assert result["lifecycle"]["terminal"] is True
+
+
+def test_servicenow_adapter_requires_base_url():
+    adapter = ServiceNowCMMSAdapter(Settings())
+
+    with pytest.raises(CMMSUnavailableError, match="MI_SERVICENOW_BASE_URL"):
+        adapter.create_work_order({"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"})
+
+
+def test_servicenow_adapter_maps_and_parses_response():
+    class FakeResponse:
+        content = b'{"result":{"number":"WO0001234","state_display":"Open","sys_created_on":"2026-03-15T10:30:00Z","message":"Created"}}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "result": {
+                    "number": "WO0001234",
+                    "state_display": "Open",
+                    "sys_created_on": "2026-03-15T10:30:00Z",
+                    "message": "Created",
+                }
+            }
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, json, headers):
+            self.calls.append({"url": url, "json": json, "headers": headers})
+            return FakeResponse()
+
+    client = FakeClient()
+    adapter = ServiceNowCMMSAdapter(
+        Settings(
+            servicenow_base_url="https://instance.service-now.test",
+            servicenow_table="wm_order",
+        ),
+        client=client,
+    )
+
+    result = adapter.create_work_order(
+        {
+            "id": "REC-11",
+            "asset_id": "PUMP-101",
+            "title": "Inspect seal",
+            "rationale": "Elevated vibration",
+            "priority": "HIGH",
+        }
+    )
+
+    assert client.calls[0]["url"] == "https://instance.service-now.test/api/now/table/wm_order"
+    assert client.calls[0]["json"]["cmdb_ci"] == "PUMP-101"
+    assert result["wo_id"] == "WO0001234"
+    assert result["backend"] == "servicenow"
+    assert result["lifecycle_phase"] == "active"
+    assert result["terminal_state"] is False

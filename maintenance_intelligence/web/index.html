@@ -4295,6 +4295,7 @@
 
 		function normalizeFollowThroughProposal(proposal) {
 			const workOrderSnapshot = asObject(proposal?.work_order_snapshot);
+			const provenanceSummary = asObject(proposal?.connector_provenance_summary);
 			const workOrderLifecycle = asObject(workOrderSnapshot.lifecycle);
 			const workOrderMetadata = asObject(workOrderSnapshot.metadata);
 			const handoffMetadata = asObject(workOrderMetadata.handoff);
@@ -4310,7 +4311,7 @@
 				title: asString(proposal?.title) || "Untitled PM proposal",
 				status: asString(proposal?.status || "pending").toLowerCase(),
 				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
-				approvedBy: asString(proposal?.approved_by || handoffMetadata.approved_by || latestAttempt.approved_by),
+				approvedBy: asString(proposal?.approved_by || provenanceSummary.approved_by || handoffMetadata.approved_by || latestAttempt.approved_by),
 				approvedAt: asString(proposal?.approved_at),
 				attemptCount,
 				attemptsRemaining,
@@ -4319,25 +4320,25 @@
 				adminRetryRequired: Boolean(proposal?.admin_retry_required),
 				lastAttemptAt: asString(latestAttempt.attempted_at),
 				lastMessage: asString(latestAttempt.error_message || latestConnectorResult.message),
-				workOrderId: asString(workOrderSnapshot.wo_id || proposal?.work_order_id),
-				workOrderStatus: asString(workOrderSnapshot.status || asObject(workOrderSnapshot.metadata).status || ""),
-				workOrderLifecyclePhase: asString(workOrderSnapshot.lifecycle_phase || workOrderLifecycle.phase || handoffLifecycle.phase),
-				workOrderTerminalState: Boolean(workOrderSnapshot.terminal_state || workOrderLifecycle.terminal),
+				workOrderId: asString(provenanceSummary.work_order_id || workOrderSnapshot.wo_id || proposal?.work_order_id),
+				workOrderStatus: asString(provenanceSummary.work_order_status || workOrderSnapshot.status || asObject(workOrderSnapshot.metadata).status || ""),
+				workOrderLifecyclePhase: asString(provenanceSummary.work_order_lifecycle_phase || workOrderSnapshot.lifecycle_phase || workOrderLifecycle.phase || handoffLifecycle.phase),
+				workOrderTerminalState: Boolean(provenanceSummary.work_order_terminal_state || workOrderSnapshot.terminal_state || workOrderLifecycle.terminal),
 				workOrderCreatedAt: asString(workOrderSnapshot.workorder_created_at),
 				handoffCompletedAt: asString(workOrderSnapshot.handoff_completed_at),
 				workOrderCompletedAt: asString(workOrderSnapshot.workorder_completed_at),
-				handoffOrigin: asString(handoffMetadata.origin || latestAttempt.origin),
-				handoffBackend: asString(handoffMetadata.backend || latestConnectorResult.backend),
-				handoffProposalId: asString(handoffMetadata.proposal_id || proposal?.proposal_id),
-				handoffRecommendationId: asString(handoffMetadata.recommendation_id || proposal?.recommendation_id),
-				handoffLifecyclePhase: asString(handoffMetadata.lifecycle_phase || handoffLifecycle.phase),
-				handoffStatusBefore: asString(handoffMetadata.status_before),
-				handoffStatusAfter: asString(handoffMetadata.status_after),
-				handoffRecordedAt: handoffAttemptTimestamp(handoffMetadata.last_attempt, latestAttempt.attempted_at),
-				handoffAttemptCount: asNumber(handoffMetadata.attempt_count),
-				connectorLifecyclePhase: asString(latestConnectorResult.lifecycle_phase || latestConnectorLifecycle.phase),
-				connectorStatus: asString(latestConnectorResult.status),
-				connectorTerminalState: Boolean(latestConnectorResult.terminal_state || latestConnectorLifecycle.terminal),
+				handoffOrigin: asString(provenanceSummary.origin || handoffMetadata.origin || latestAttempt.origin),
+				handoffBackend: asString(provenanceSummary.backend || handoffMetadata.backend || latestConnectorResult.backend),
+				handoffProposalId: asString(provenanceSummary.proposal_id || handoffMetadata.proposal_id || proposal?.proposal_id),
+				handoffRecommendationId: asString(provenanceSummary.recommendation_id || handoffMetadata.recommendation_id || proposal?.recommendation_id),
+				handoffLifecyclePhase: asString(provenanceSummary.connector_lifecycle_phase || handoffMetadata.lifecycle_phase || handoffLifecycle.phase),
+				handoffStatusBefore: asString(provenanceSummary.transition_from || handoffMetadata.status_before),
+				handoffStatusAfter: asString(provenanceSummary.transition_to || handoffMetadata.status_after),
+				handoffRecordedAt: asString(provenanceSummary.recorded_at || handoffAttemptTimestamp(handoffMetadata.last_attempt, latestAttempt.attempted_at)),
+				handoffAttemptCount: asNumber(provenanceSummary.attempt_count) || asNumber(handoffMetadata.attempt_count),
+				connectorLifecyclePhase: asString(provenanceSummary.connector_lifecycle_phase || latestConnectorResult.lifecycle_phase || latestConnectorLifecycle.phase),
+				connectorStatus: asString(provenanceSummary.connector_status || latestConnectorResult.status),
+				connectorTerminalState: Boolean(provenanceSummary.connector_terminal_state || latestConnectorResult.terminal_state || latestConnectorLifecycle.terminal),
 				connectorMessage: asString(latestConnectorResult.message || latestAttempt.error_message),
 			};
 		}
@@ -6508,12 +6509,13 @@
 			const approvedBy = result.approved_by || result.proposal?.approved_by || "Unknown approver";
 			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
 			const lastAttempt = result.last_attempt_info && typeof result.last_attempt_info === "object" ? result.last_attempt_info : {};
+			const provenanceSummary = result.connector_provenance_summary && typeof result.connector_provenance_summary === "object" ? result.connector_provenance_summary : {};
 			const attemptCount = typeof result.attempt_count === "number" ? result.attempt_count : 0;
 			const attemptNumber = typeof lastAttempt.attempt_number === "number" ? lastAttempt.attempt_number : attemptCount;
 			const connectorMessage = lastAttempt.connector_result?.message || lastAttempt.error_message || result.detail || "Approval update recorded";
-			const connectorStatus = lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
-			const connectorLifecyclePhase = lastAttempt.connector_result?.lifecycle_phase || lastAttempt.connector_result?.lifecycle?.phase || result.work_order?.lifecycle_phase || "unknown";
-			const connectorBackend = lastAttempt.connector_result?.backend || result.work_order?.backend || "unknown";
+			const connectorStatus = provenanceSummary.connector_status || lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
+			const connectorLifecyclePhase = provenanceSummary.connector_lifecycle_phase || lastAttempt.connector_result?.lifecycle_phase || lastAttempt.connector_result?.lifecycle?.phase || result.work_order?.lifecycle_phase || "unknown";
+			const connectorBackend = provenanceSummary.backend || lastAttempt.connector_result?.backend || result.work_order?.backend || "unknown";
 			const reuseLine = result.reused_result ? "Reused existing CMMS handoff result." : "Fresh handoff result.";
 			const attemptSummary = attemptCount > 0 ? `Attempt ${attemptNumber} of ${attemptCount}` : "No attempts recorded";
 			const retryLine = result.retry_allowed

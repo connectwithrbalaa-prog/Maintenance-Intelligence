@@ -375,11 +375,13 @@ def registered_cmms_adapters() -> Dict[str, Type[CMMSAdapter]]:
     from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
     from maintenance_intelligence.cmms.mock import MockCMMSAdapter
     from maintenance_intelligence.cmms.sap_pm import SAPPMCMMSAdapter
+    from maintenance_intelligence.cmms.servicenow import ServiceNowCMMSAdapter
 
     return {
         "mock": MockCMMSAdapter,
         "maximo": MaximoCMMSAdapter,
         "sap_pm": SAPPMCMMSAdapter,
+        "servicenow": ServiceNowCMMSAdapter,
     }
 
 

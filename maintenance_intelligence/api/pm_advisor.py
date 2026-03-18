@@ -184,6 +184,44 @@ def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> 
     }
 
 
+def _connector_provenance_summary(
+    proposal: Dict[str, Any],
+    *,
+    work_order_snapshot: Optional[Dict[str, Any]] = None,
+    result: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    proposal_id = _as_text(proposal.get("proposal_id")) or ""
+    recommendation_id = _as_text(proposal.get("recommendation_id")) or proposal_id
+    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    latest_attempt = attempts[0] if attempts else {}
+    connector_result = result if isinstance(result, dict) and result else latest_attempt.get("connector_result")
+    if not isinstance(connector_result, dict):
+        connector_result = {}
+    snapshot = work_order_snapshot if isinstance(work_order_snapshot, dict) else {}
+    snapshot_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    handoff = snapshot_metadata.get("handoff") if isinstance(snapshot_metadata.get("handoff"), dict) else {}
+    handoff_lifecycle = handoff.get("lifecycle") if isinstance(handoff.get("lifecycle"), dict) else {}
+    connector_lifecycle = connector_result.get("lifecycle") if isinstance(connector_result.get("lifecycle"), dict) else {}
+    return {
+        "proposal_id": proposal_id,
+        "recommendation_id": recommendation_id,
+        "origin": _as_text(handoff.get("origin")) or _as_text(latest_attempt.get("origin")) or "approval",
+        "approved_by": _as_text(proposal.get("approved_by")) or _as_text(handoff.get("approved_by")) or _as_text(latest_attempt.get("approved_by")) or "",
+        "recorded_at": _as_text(handoff.get("attempted_at")) or _as_text(handoff.get("approved_at")) or _as_text(latest_attempt.get("attempted_at")) or "",
+        "attempt_count": len(attempts),
+        "backend": _as_text(handoff.get("backend")) or _as_text(connector_result.get("backend")) or "",
+        "connector_status": _as_text(connector_result.get("status")) or _as_text(proposal.get("handoff_state")) or _as_text(proposal.get("status")) or "pending",
+        "connector_lifecycle_phase": _as_text(connector_result.get("lifecycle_phase")) or _as_text(connector_lifecycle.get("phase")) or _as_text(handoff.get("lifecycle_phase")) or _as_text(handoff_lifecycle.get("phase")) or "",
+        "connector_terminal_state": bool(connector_result.get("terminal_state") or connector_lifecycle.get("terminal")),
+        "work_order_id": _as_text(snapshot.get("wo_id")) or _as_text(proposal.get("work_order_id")) or _as_text(connector_result.get("wo_id")) or "",
+        "work_order_status": _as_text(snapshot.get("status")) or _as_text(connector_result.get("status")) or "",
+        "work_order_lifecycle_phase": _as_text(snapshot.get("lifecycle_phase")) or _as_text(snapshot.get("lifecycle", {}).get("phase") if isinstance(snapshot.get("lifecycle"), dict) else None) or _as_text(connector_result.get("lifecycle_phase")) or "",
+        "work_order_terminal_state": bool(snapshot.get("terminal_state") or (snapshot.get("lifecycle", {}).get("terminal") if isinstance(snapshot.get("lifecycle"), dict) else False)),
+        "transition_from": _as_text(handoff.get("status_before")) or "",
+        "transition_to": _as_text(handoff.get("status_after")) or _as_text(snapshot.get("status")) or _as_text(connector_result.get("status")) or "",
+    }
+
+
 def _work_order_snapshot_from_row(row: Any) -> Dict[str, Any]:
     metadata = row[8] if len(row) > 8 and isinstance(row[8], dict) else {}
     lifecycle = normalize_work_order_lifecycle(
@@ -238,9 +276,11 @@ def _attach_work_order_snapshots(proposals: List[Dict[str, Any]], snapshots: Dic
     enriched: List[Dict[str, Any]] = []
     for proposal in proposals:
         work_order_id = proposal.get("work_order_id")
+        snapshot = snapshots.get(str(work_order_id), {}) if work_order_id else {}
         enriched.append({
             **proposal,
-            "work_order_snapshot": snapshots.get(str(work_order_id), {}) if work_order_id else {},
+            "work_order_snapshot": snapshot,
+            "connector_provenance_summary": _connector_provenance_summary(proposal, work_order_snapshot=snapshot),
         })
     return enriched
 
@@ -364,6 +404,7 @@ def _approval_response(
         "approved_at": approved_at,
         "proposal": normalized_proposal,
         "work_order": result or {},
+        "connector_provenance_summary": _connector_provenance_summary(normalized_proposal, result=result),
     }
     return JSONResponse(status_code=status_code, content=body)
 

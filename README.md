@@ -304,6 +304,7 @@ Signals improve RCA evidence quality by providing measurement trends and anomaly
   - `mock`: default adapter for local development and tests
   - `maximo`: staging-ready IBM Maximo scaffold with request/response mapping
   - `sap_pm`: SAP Plant Maintenance scaffold with OData-style request/response mapping
+  - `servicenow`: ServiceNow REST scaffold with table-based work-order request/response mapping
 - Maximo scaffold configuration:
   - `MI_MAXIMO_BASE_URL`
   - `MI_MAXIMO_SITE` (default: `BEDFORD`)
@@ -316,8 +317,15 @@ Signals improve RCA evidence quality by providing measurement trends and anomaly
   - `MI_SAP_PM_USERNAME`
   - `MI_SAP_PM_PASSWORD`
   - `MI_SAP_PM_TIMEOUT_S` (default: `15`)
+- ServiceNow scaffold configuration:
+  - `MI_SERVICENOW_BASE_URL`
+  - `MI_SERVICENOW_TABLE` (default: `wm_order`)
+  - `MI_SERVICENOW_USERNAME`
+  - `MI_SERVICENOW_PASSWORD`
+  - `MI_SERVICENOW_TIMEOUT_S` (default: `15`)
 - The current `wo_bridge` now delegates work-order creation through the adapter factory, but only the mock backend is intended for local execution. The Maximo adapter is a scaffold for staging integration and still requires real endpoint validation.
 - The SAP PM adapter is also a scaffold intended to prove the connector contract and request/response normalization without changing PM workflow or edge replay semantics.
+- The ServiceNow adapter is a scaffold for table-based work order create flows and uses the same normalized lifecycle semantics surfaced by the PM API and portal.
 - Smoke harness:
   - `pytest -k maximo_smoke`
   - Uses `pytest-httpserver` to stand up a local Maximo-like endpoint and exercises the real HTTP adapter path without external credentials.

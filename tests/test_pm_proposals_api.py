@@ -32,6 +32,7 @@ _load_local_module("maintenance_intelligence.cmms.adapter", Path("maintenance_in
 _load_local_module("maintenance_intelligence.cmms.mock", Path("maintenance_intelligence/cmms/mock.py"))
 _load_local_module("maintenance_intelligence.cmms.maximo", Path("maintenance_intelligence/cmms/maximo.py"))
 sap_pm_mod = _load_local_module("maintenance_intelligence.cmms.sap_pm", Path("maintenance_intelligence/cmms/sap_pm.py"))
+servicenow_mod = _load_local_module("maintenance_intelligence.cmms.servicenow", Path("maintenance_intelligence/cmms/servicenow.py"))
 _load_local_module("maintenance_intelligence.services.wo_bridge", Path("maintenance_intelligence/services/wo_bridge.py"))
 pm_mod = _load_local_module("maintenance_intelligence.api.pm_advisor", Path("maintenance_intelligence/api/pm_advisor.py"))
 app = FastAPI()
@@ -253,6 +254,8 @@ def test_list_proposals_from_run_summaries(monkeypatch, tmp_path):
     assert payload[0]["admin_retry_required"] is False
     assert payload[0]["last_attempt_info"] == {}
     assert payload[0]["work_order_snapshot"] == {}
+    assert payload[0]["connector_provenance_summary"]["proposal_id"] == "REC-1"
+    assert payload[0]["connector_provenance_summary"]["connector_status"] == "pending"
 
 
 def test_list_proposals_includes_retry_metadata_for_exceptions(monkeypatch, tmp_path):
@@ -418,7 +421,7 @@ def test_connectors_endpoint_reports_supported_backends_and_required_fields(monk
     payload = response.json()
     assert payload["current_backend"] == "sap_pm"
     assert payload["selected_backend"] == "sap_pm"
-    assert [item["backend"] for item in payload["supported_backends"]] == ["maximo", "mock", "sap_pm"]
+    assert [item["backend"] for item in payload["supported_backends"]] == ["maximo", "mock", "sap_pm", "servicenow"]
     sap_backend = next(item for item in payload["supported_backends"] if item["backend"] == "sap_pm")
     assert sap_backend["configured"] is True
     assert any(field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"] for field in sap_backend["config_fields"])
@@ -472,6 +475,8 @@ def test_approve_proposal_with_sap_pm_backend_preserves_normalized_connector_met
     assert payload["status"] == "approved"
     assert payload["work_order"]["wo_id"] == "50000123"
     assert payload["work_order"]["lifecycle_phase"] == "completed"
+    assert payload["connector_provenance_summary"]["backend"] == "sap_pm"
+    assert payload["connector_provenance_summary"]["connector_lifecycle_phase"] == "completed"
     assert payload["last_attempt_info"]["connector_result"]["backend"] == "sap_pm"
     assert payload["last_attempt_info"]["connector_result"]["lifecycle_phase"] == "completed"
     assert payload["last_attempt_info"]["connector_result"]["request"]["Plant"] == "1710"
@@ -539,6 +544,8 @@ def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, 
     assert payload[0]["work_order_snapshot"]["workorder_completed_at"] is None
     assert payload[0]["work_order_snapshot"]["lifecycle_phase"] == "handoff-complete"
     assert payload[0]["work_order_snapshot"]["terminal_state"] is False
+    assert payload[0]["connector_provenance_summary"]["work_order_id"] == "WO-REC-1"
+    assert payload[0]["connector_provenance_summary"]["work_order_lifecycle_phase"] == "handoff-complete"
 
 
 def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_path):
@@ -571,6 +578,7 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
     assert payload["retry_allowed"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 1
     assert payload["work_order"]["lifecycle_phase"] == "pending"
+    assert payload["connector_provenance_summary"]["connector_lifecycle_phase"] == "pending"
     assert payload["detail"] == "PM proposal saved, but the CMMS handoff is still pending"
     assert payload["approved"] is False
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
@@ -636,6 +644,55 @@ def test_approve_proposal_queues_offline_when_edge_mode_enabled(monkeypatch, tmp
     assert queued["proposal_id"] == "REC-1"
     assert queued["payload"]["handoff_context"]["approved_by"] == "planner-1"
     assert queued["payload"]["recommendation"]["asset_id"] == "PUMP-101"
+
+
+def test_approve_proposal_with_servicenow_backend_returns_provenance_summary(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "servicenow")
+    monkeypatch.setenv("MI_SERVICENOW_BASE_URL", "https://instance.service-now.test")
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+
+    class FakeResponse:
+        content = b'{"result":{"number":"WO0001234","state_display":"Open","sys_created_on":"2026-03-15T10:30:00Z","message":"Created"}}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "result": {
+                    "number": "WO0001234",
+                    "state_display": "Open",
+                    "sys_created_on": "2026-03-15T10:30:00Z",
+                    "message": "Created",
+                }
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.calls = []
+
+        def post(self, url, json, headers):
+            self.calls.append({"url": url, "json": json, "headers": headers})
+            return FakeResponse()
+
+    monkeypatch.setattr(servicenow_mod.httpx, "Client", FakeClient)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["work_order"]["backend"] == "servicenow"
+    assert payload["connector_provenance_summary"]["backend"] == "servicenow"
+    assert payload["connector_provenance_summary"]["connector_lifecycle_phase"] == "active"
+    assert payload["connector_provenance_summary"]["work_order_id"] == "WO0001234"
+    assert fake_connection.proposals["REC-1"]["status"] == "approved"
+    assert fake_connection.proposals["REC-1"]["work_order_id"] == "WO0001234"
 
 
 def test_approve_proposal_reuses_existing_offline_queue_result(monkeypatch, tmp_path):
