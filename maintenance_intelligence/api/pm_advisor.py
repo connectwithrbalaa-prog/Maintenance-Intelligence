@@ -16,6 +16,7 @@ from maintenance_intelligence.cmms.adapter import (
     CMMSUnavailableError,
     UnsupportedBackendError,
     create_cmms_adapter,
+    discover_cmms_backends,
 )
 from maintenance_intelligence.api.middleware.identity import (
     ADMIN_ROLES,
@@ -737,6 +738,16 @@ def analyze_run(payload: AnalyzePayload, request: Request):
         "status": "ok",
         "proposal": persisted,
         "requested_by": proposed_by,
+    }
+
+
+@router.get("/connectors")
+def list_connectors(request: Request) -> Dict[str, Any]:
+    _require_read_access(request)
+    settings = Settings()
+    return {
+        **discover_cmms_backends(settings),
+        "selected_backend": settings.pm_connector_backend,
     }
 
 

@@ -80,8 +80,10 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Early warning summary" in page.text
     assert "Edge mode status" in page.text
     assert "Queued handoffs" in page.text
+    assert "Connector catalog" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
+    assert "/api/v1/agents/pm/connectors" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
     assert runs.status_code == 200

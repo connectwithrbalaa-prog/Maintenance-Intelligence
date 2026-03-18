@@ -5,6 +5,7 @@ import datetime as dt
 import time
 from typing import Any, Dict, Optional, Type
 
+import httpx
 from loguru import logger
 
 from maintenance_intelligence.runner.config import Settings
@@ -151,6 +152,9 @@ def normalize_work_order_result(
 
 class CMMSAdapter(ABC):
     backend_name = "base"
+    backend_label = "Base"
+    backend_description = "Base CMMS connector"
+    config_fields: list[dict[str, Any]] = []
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -158,6 +162,111 @@ class CMMSAdapter(ABC):
     @abstractmethod
     def create_work_order(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
         """Create or stage a work order and return a normalized result payload."""
+
+    @classmethod
+    def describe_backend(cls, settings: Optional[Settings] = None) -> Dict[str, Any]:
+        configured = True
+        fields: list[dict[str, Any]] = []
+        active_settings = settings or Settings()
+        for field in cls.config_fields:
+            field_name = _as_text(field.get("setting_name")) or ""
+            env_var = _as_text(field.get("env_var")) or ""
+            required = bool(field.get("required", False))
+            value = getattr(active_settings, field_name, None) if field_name else None
+            configured_value = bool(_as_text(value)) if value is not None else False
+            if required and not configured_value:
+                configured = False
+            fields.append(
+                {
+                    "setting_name": field_name,
+                    "env_var": env_var,
+                    "required": required,
+                    "secret": bool(field.get("secret", False)),
+                    "default": field.get("default"),
+                    "description": _as_text(field.get("description")) or "",
+                    "configured": configured_value,
+                }
+            )
+        return {
+            "backend": cls.backend_name,
+            "label": cls.backend_label,
+            "description": cls.backend_description,
+            "configured": configured,
+            "config_fields": fields,
+        }
+
+
+def post_json_request(
+    client: httpx.Client,
+    *,
+    endpoint: str,
+    payload: Dict[str, Any],
+    headers: Dict[str, str],
+    unavailable_detail: str,
+):
+    try:
+        response = client.post(endpoint, json=payload, headers=headers)
+        response.raise_for_status()
+        return response
+    except httpx.HTTPError as exc:
+        raise CMMSUnavailableError(unavailable_detail) from exc
+
+
+def parse_json_response_body(
+    response: Any,
+    *,
+    invalid_json_detail: str,
+    malformed_payload_detail: str,
+    unwrap=None,
+) -> Dict[str, Any]:
+    try:
+        body = response.json() if getattr(response, "content", None) else {}
+    except ValueError as exc:
+        raise CMMSPayloadError(invalid_json_detail) from exc
+    if body is None:
+        body = {}
+    if unwrap is not None:
+        body = unwrap(body)
+    if not isinstance(body, dict):
+        raise CMMSPayloadError(malformed_payload_detail)
+    return body
+
+
+def registered_cmms_adapters() -> Dict[str, Type[CMMSAdapter]]:
+    from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
+    from maintenance_intelligence.cmms.mock import MockCMMSAdapter
+    from maintenance_intelligence.cmms.sap_pm import SAPPMCMMSAdapter
+
+    return {
+        "mock": MockCMMSAdapter,
+        "maximo": MaximoCMMSAdapter,
+        "sap_pm": SAPPMCMMSAdapter,
+    }
+
+
+def supported_cmms_backends() -> list[str]:
+    return sorted(registered_cmms_adapters())
+
+
+def discover_cmms_backends(settings: Optional[Settings] = None) -> Dict[str, Any]:
+    active_settings = settings or Settings()
+    current_backend = _resolve_backend_name(getattr(active_settings, "pm_connector_backend", "mock"))
+    adapters = registered_cmms_adapters()
+    return {
+        "current_backend": current_backend,
+        "supported_backends": [
+            adapter_cls.describe_backend(active_settings)
+            for _backend, adapter_cls in sorted(adapters.items())
+        ],
+    }
+
+
+def _resolve_backend_name(value: Any) -> str:
+    normalized = (_as_text(value) or "mock").lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "sappm": "sap_pm",
+    }
+    return aliases.get(normalized, normalized)
 
 
 def _attempt_entry(
@@ -232,15 +341,11 @@ def submit_work_order_with_retry(
 
 
 def create_cmms_adapter(settings: Settings) -> CMMSAdapter:
-    from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
-    from maintenance_intelligence.cmms.mock import MockCMMSAdapter
-
-    backend = getattr(settings, "pm_connector_backend", "mock").lower().strip()
-    adapters: Dict[str, Type[CMMSAdapter]] = {
-        "mock": MockCMMSAdapter,
-        "maximo": MaximoCMMSAdapter,
-    }
+    backend = _resolve_backend_name(getattr(settings, "pm_connector_backend", "mock"))
+    adapters = registered_cmms_adapters()
     adapter_cls = adapters.get(backend)
     if adapter_cls is None:
-        raise UnsupportedBackendError(f"Unsupported CMMS backend: {backend}")
+        raise UnsupportedBackendError(
+            f"Unsupported CMMS backend: {backend}. Supported backends: {', '.join(sorted(adapters))}"
+        )
     return adapter_cls(settings)

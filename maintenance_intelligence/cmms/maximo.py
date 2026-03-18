@@ -4,11 +4,48 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from maintenance_intelligence.cmms.adapter import CMMSAdapter, CMMSPayloadError, CMMSUnavailableError, normalize_work_order_result
+from maintenance_intelligence.cmms.adapter import (
+    CMMSAdapter,
+    normalize_work_order_result,
+    parse_json_response_body,
+    post_json_request,
+)
+from maintenance_intelligence.cmms.translators import translate_connector_response
 
 
 class MaximoCMMSAdapter(CMMSAdapter):
     backend_name = "maximo"
+    backend_label = "IBM Maximo"
+    backend_description = "Maximo OSLC work order connector scaffold"
+    config_fields = [
+        {
+            "setting_name": "maximo_base_url",
+            "env_var": "MI_MAXIMO_BASE_URL",
+            "required": True,
+            "description": "Base URL for the Maximo environment.",
+        },
+        {
+            "setting_name": "maximo_site",
+            "env_var": "MI_MAXIMO_SITE",
+            "required": False,
+            "default": "BEDFORD",
+            "description": "Default Maximo site id for created work orders.",
+        },
+        {
+            "setting_name": "maximo_api_key",
+            "env_var": "MI_MAXIMO_API_KEY",
+            "required": False,
+            "secret": True,
+            "description": "Optional API key sent in the x-api-key header.",
+        },
+        {
+            "setting_name": "maximo_timeout_s",
+            "env_var": "MI_MAXIMO_TIMEOUT_S",
+            "required": False,
+            "default": 15,
+            "description": "HTTP timeout in seconds for Maximo requests.",
+        },
+    ]
 
     def __init__(self, settings, client: Optional[httpx.Client] = None):
         super().__init__(settings)
@@ -41,28 +78,33 @@ class MaximoCMMSAdapter(CMMSAdapter):
 
     def create_work_order(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
         payload = self._map_recommendation(recommendation)
-        try:
-            response = self.client.post(self._endpoint(), json=payload, headers=self._headers())
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise CMMSUnavailableError("Maximo request failed") from exc
-
-        try:
-            body = response.json() if response.content else {}
-        except ValueError as exc:
-            raise CMMSPayloadError("Maximo returned invalid JSON") from exc
-        if body is None:
-            body = {}
-        if not isinstance(body, dict):
-            raise CMMSPayloadError("Maximo returned malformed payload")
+        response = post_json_request(
+            self.client,
+            endpoint=self._endpoint(),
+            payload=payload,
+            headers=self._headers(),
+            unavailable_detail="Maximo request failed",
+        )
+        body = parse_json_response_body(
+            response,
+            invalid_json_detail="Maximo returned invalid JSON",
+            malformed_payload_detail="Maximo returned malformed payload",
+        )
 
         return normalize_work_order_result(
             {
-                "wo_id": body.get("wonum") or body.get("workorder") or recommendation.get("id"),
-                "status": body.get("status", "WAPPR"),
-                "backend": self.backend_name,
+                **translate_connector_response(
+                    body,
+                    backend_name=self.backend_name,
+                    recommendation=recommendation,
+                    wo_id_fields=("wonum", "workorder"),
+                    status_fields=("status",),
+                    workorder_created_fields=("workorder_created_at", "created_at"),
+                    handoff_completed_fields=("handoff_completed_at", "statusdate", "changedate"),
+                    workorder_completed_fields=("workorder_completed_at", "actfinish", "completed_at", "closed_at", "finishdate"),
+                    default_status="WAPPR",
+                ),
                 "request": payload,
-                "response": body,
             },
             recommendation=recommendation,
             backend_name=self.backend_name,

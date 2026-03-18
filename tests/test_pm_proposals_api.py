@@ -31,6 +31,7 @@ identity_mod = _load_local_module("maintenance_intelligence.api.middleware.ident
 _load_local_module("maintenance_intelligence.cmms.adapter", Path("maintenance_intelligence/cmms/adapter.py"))
 _load_local_module("maintenance_intelligence.cmms.mock", Path("maintenance_intelligence/cmms/mock.py"))
 _load_local_module("maintenance_intelligence.cmms.maximo", Path("maintenance_intelligence/cmms/maximo.py"))
+sap_pm_mod = _load_local_module("maintenance_intelligence.cmms.sap_pm", Path("maintenance_intelligence/cmms/sap_pm.py"))
 _load_local_module("maintenance_intelligence.services.wo_bridge", Path("maintenance_intelligence/services/wo_bridge.py"))
 pm_mod = _load_local_module("maintenance_intelligence.api.pm_advisor", Path("maintenance_intelligence/api/pm_advisor.py"))
 app = FastAPI()
@@ -403,6 +404,80 @@ def test_approve_proposal_with_mock_backend_persists_workorder(monkeypatch, tmp_
     assert fake_connection.proposals["REC-1"]["work_order_id"] == "WO-REC-1"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["approved_at"] == payload["approved_at"]
     assert fake_connection.closed is True
+
+
+def test_connectors_endpoint_reports_supported_backends_and_required_fields(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "sap_pm")
+    monkeypatch.setenv("MI_SAP_PM_BASE_URL", "https://sap.example.test")
+
+    client = TestClient(app)
+    response = client.get("/api/v1/agents/pm/connectors", headers=READ_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current_backend"] == "sap_pm"
+    assert payload["selected_backend"] == "sap_pm"
+    assert [item["backend"] for item in payload["supported_backends"]] == ["maximo", "mock", "sap_pm"]
+    sap_backend = next(item for item in payload["supported_backends"] if item["backend"] == "sap_pm")
+    assert sap_backend["configured"] is True
+    assert any(field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"] for field in sap_backend["config_fields"])
+
+
+def test_approve_proposal_with_sap_pm_backend_preserves_normalized_connector_metadata(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "sap_pm")
+    monkeypatch.setenv("MI_SAP_PM_BASE_URL", "https://sap.example.test")
+    monkeypatch.setenv("MI_SAP_PM_PLANT", "1710")
+    monkeypatch.setenv("MI_SAP_PM_ORDER_TYPE", "PM02")
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+
+    class FakeResponse:
+        content = b'{"d":{"OrderNumber":"50000123","OrderStatus":"TECO","CreatedAt":"2026-03-15T10:30:00Z","TechnicalCompletionDate":"2026-03-15T11:00:00Z","Message":"Created"}}'
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "d": {
+                    "OrderNumber": "50000123",
+                    "OrderStatus": "TECO",
+                    "CreatedAt": "2026-03-15T10:30:00Z",
+                    "TechnicalCompletionDate": "2026-03-15T11:00:00Z",
+                    "Message": "Created",
+                }
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            self.calls = []
+
+        def post(self, url, json, headers):
+            self.calls.append({"url": url, "json": json, "headers": headers})
+            return FakeResponse()
+
+    monkeypatch.setattr(sap_pm_mod.httpx, "Client", FakeClient)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "dev-user"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "approved"
+    assert payload["work_order"]["wo_id"] == "50000123"
+    assert payload["last_attempt_info"]["connector_result"]["backend"] == "sap_pm"
+    assert payload["last_attempt_info"]["connector_result"]["request"]["Plant"] == "1710"
+    assert payload["last_attempt_info"]["connector_result"]["request"]["OrderType"] == "PM02"
+    workorder_metadata = fake_connection.workorders["50000123"]["metadata"]
+    assert workorder_metadata["source"] == "agent-wo-bridge-sap_pm"
+    assert workorder_metadata["handoff"]["backend"] == "sap_pm"
+    assert workorder_metadata["request"]["Plant"] == "1710"
+    assert workorder_metadata["response"]["OrderNumber"] == "50000123"
 
 
 def test_approve_proposal_requires_allowed_role(monkeypatch, tmp_path):

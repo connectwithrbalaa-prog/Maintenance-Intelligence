@@ -1908,6 +1908,11 @@
 			approvalInFlightById: new Set(),
 			approvalHistoryById: new Map(),
 			auditLoadingById: new Set(),
+			connectorCatalog: {
+				report: null,
+				loading: false,
+				error: "",
+			},
 			evidenceReferenceFocusByRunId: new Map(),
 			selectedOutcomeScopeByRunId: new Map(),
 			selectedOutcomeAssetByRunId: new Map(),
@@ -2304,6 +2309,43 @@
 			return value
 				.map((item) => asString(item).trim())
 				.filter(Boolean);
+		}
+
+		function normalizeConnectorConfigField(field) {
+			const source = asObject(field);
+			return {
+				settingName: asString(source.setting_name),
+				envVar: asString(source.env_var),
+				required: Boolean(source.required),
+				secret: Boolean(source.secret),
+				defaultValue: source.default === undefined || source.default === null ? "" : asString(source.default, String(source.default)),
+				description: asString(source.description),
+				configured: Boolean(source.configured),
+			};
+		}
+
+		function normalizeConnectorBackend(backend) {
+			const source = asObject(backend);
+			return {
+				backend: asString(source.backend),
+				label: asString(source.label),
+				description: asString(source.description),
+				configured: Boolean(source.configured),
+				configFields: Array.isArray(source.config_fields)
+					? source.config_fields.map((item) => normalizeConnectorConfigField(item))
+					: [],
+			};
+		}
+
+		function normalizeConnectorCatalogReport(report) {
+			const source = asObject(report);
+			return {
+				currentBackend: asString(source.current_backend || source.selected_backend),
+				selectedBackend: asString(source.selected_backend || source.current_backend),
+				supportedBackends: Array.isArray(source.supported_backends)
+					? source.supported_backends.map((item) => normalizeConnectorBackend(item))
+					: [],
+			};
 		}
 
 		function triageReportUrl() {
@@ -4472,6 +4514,62 @@
 			`;
 		}
 
+		function renderConnectorCatalogPanel() {
+			if (state.connectorCatalog.loading) {
+				return renderOutcomesNote("Loading", "Loading connector catalog", "Checking supported PM connectors and their required configuration.");
+			}
+			if (state.connectorCatalog.error) {
+				return renderOutcomesNote("Heads up", "Connector catalog unavailable", `We could not load the PM connector catalog right now: ${state.connectorCatalog.error}`, "warn");
+			}
+			if (!state.connectorCatalog.report) {
+				return renderOutcomesNote("Waiting", "Connector catalog not loaded yet", "Select a run to inspect supported PM connectors and required configuration.");
+			}
+			const report = state.connectorCatalog.report;
+			const backends = Array.isArray(report.supportedBackends) ? report.supportedBackends : [];
+			return `
+				<div class="follow-panel">
+					<div class="outcomes-chip-row">
+						<span class="chip">Selected ${escapeHtml(report.selectedBackend || "unknown")}</span>
+						<span class="chip">Current ${escapeHtml(report.currentBackend || "unknown")}</span>
+						<span class="chip">Supported ${escapeHtml(backends.length)}</span>
+						<span class="chip">Source /api/v1/agents/pm/connectors</span>
+					</div>
+					<div class="follow-stage-list connector-catalog-list">
+						${backends.map((backend) => {
+							const requiredFields = backend.configFields.filter((field) => field.required);
+							const missingRequired = requiredFields.filter((field) => !field.configured);
+							return `
+								<div class="follow-stage">
+									<div class="follow-stage-head">
+										<strong>${escapeHtml(backend.label || backend.backend || "Connector")}</strong>
+										<span class="chip ${backend.configured ? "trend-falling" : "trend-rising"}">${escapeHtml(backend.configured ? "Configured" : "Needs config")}</span>
+									</div>
+									<div class="muted">${escapeHtml(backend.description || "")}</div>
+									<div class="outcomes-chip-row">
+										<span class="chip">Backend ${escapeHtml(backend.backend || "unknown")}</span>
+										<span class="chip">Required fields ${escapeHtml(requiredFields.length)}</span>
+										${missingRequired.length ? `<span class="chip trend-rising">Missing required ${escapeHtml(missingRequired.length)}</span>` : `<span class="chip">Required config complete</span>`}
+									</div>
+									${backend.configFields.length ? `
+										<ol class="list">
+											${backend.configFields.map((field) => `
+												<li>
+													<strong>${escapeHtml(field.envVar || field.settingName || "Setting")}</strong>
+													<span class="chip ${field.configured ? "trend-falling" : (field.required ? "trend-rising" : "trend-steady")}">${escapeHtml(field.configured ? "Configured" : (field.required ? "Required" : "Optional"))}</span>
+													${field.defaultValue ? `<div class="footer-note">Default ${escapeHtml(field.defaultValue)}</div>` : ""}
+													${field.description ? `<div class="footer-note">${escapeHtml(field.description)}</div>` : ""}
+												</li>
+											`).join("")}
+										</ol>
+									` : `<p class="muted tiny">No config fields declared for this backend.</p>`}
+								</div>
+							`;
+						}).join("")}
+					</div>
+				</div>
+			`;
+		}
+
 		function renderHandoffExceptionsPanel(run) {
 			const allExceptionRows = handoffExceptionRows(state.handoffExceptions.report);
 			const exceptionRows = handoffRowsForDisplay(allExceptionRows);
@@ -5846,6 +5944,14 @@
 						${renderApprovalBanner(approvalResult)}
 					</div>
 
+					<div id="connectorCatalogSection" class="section workflow-target" tabindex="-1">
+						<div class="section-head">
+							<h3>Connector catalog</h3>
+							<span class="muted tiny">Inspect supported PM backends and whether required configuration is present without hardcoding connector details in the portal.</span>
+						</div>
+						${renderConnectorCatalogPanel()}
+					</div>
+
 					<div class="section">
 						<div class="section-head">
 							<h3>Run comparison</h3>
@@ -6170,6 +6276,9 @@
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
 			}
+			if (!state.connectorCatalog.report && !state.connectorCatalog.loading && !state.connectorCatalog.error) {
+				void ensureConnectorCatalog();
+			}
 			if (!state.handoffExceptions.report && !state.handoffExceptions.loading && !state.handoffExceptions.error) {
 				void ensureHandoffExceptionsReport();
 			}
@@ -6208,6 +6317,37 @@
 			state.handoffExceptions.error = "";
 			state.handoffExceptions.loading = false;
 			state.handoffExceptions.actionInFlightByProposalId.clear();
+		}
+
+		async function ensureConnectorCatalog() {
+			if (state.connectorCatalog.loading || state.connectorCatalog.report) {
+				return;
+			}
+			state.connectorCatalog.loading = true;
+			state.connectorCatalog.error = "";
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				state.connectorCatalog.report = normalizeConnectorCatalogReport(await fetchJson("/api/v1/agents/pm/connectors", {
+					headers: portalIdentityHeaders(),
+				}));
+			} catch (error) {
+				state.connectorCatalog.error = error instanceof Error ? error.message : "Unknown connector catalog error";
+			} finally {
+				state.connectorCatalog.loading = false;
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		function resetConnectorCatalog() {
+			state.connectorCatalog.report = null;
+			state.connectorCatalog.error = "";
+			state.connectorCatalog.loading = false;
 		}
 
 		async function ensureOutcomesReport() {

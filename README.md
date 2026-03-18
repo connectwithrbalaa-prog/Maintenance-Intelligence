@@ -303,12 +303,21 @@ Signals improve RCA evidence quality by providing measurement trends and anomaly
 - `MI_PM_CONNECTOR_BACKEND` selects the work-order connector backend.
   - `mock`: default adapter for local development and tests
   - `maximo`: staging-ready IBM Maximo scaffold with request/response mapping
+  - `sap_pm`: SAP Plant Maintenance scaffold with OData-style request/response mapping
 - Maximo scaffold configuration:
   - `MI_MAXIMO_BASE_URL`
   - `MI_MAXIMO_SITE` (default: `BEDFORD`)
   - `MI_MAXIMO_API_KEY`
   - `MI_MAXIMO_TIMEOUT_S` (default: `15`)
+- SAP PM scaffold configuration:
+  - `MI_SAP_PM_BASE_URL`
+  - `MI_SAP_PM_PLANT` (default: `1000`)
+  - `MI_SAP_PM_ORDER_TYPE` (default: `PM01`)
+  - `MI_SAP_PM_USERNAME`
+  - `MI_SAP_PM_PASSWORD`
+  - `MI_SAP_PM_TIMEOUT_S` (default: `15`)
 - The current `wo_bridge` now delegates work-order creation through the adapter factory, but only the mock backend is intended for local execution. The Maximo adapter is a scaffold for staging integration and still requires real endpoint validation.
+- The SAP PM adapter is also a scaffold intended to prove the connector contract and request/response normalization without changing PM workflow or edge replay semantics.
 - Smoke harness:
   - `pytest -k maximo_smoke`
   - Uses `pytest-httpserver` to stand up a local Maximo-like endpoint and exercises the real HTTP adapter path without external credentials.
