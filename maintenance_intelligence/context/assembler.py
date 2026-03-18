@@ -15,6 +15,8 @@ _CONTEXT_CACHE_STATS: Dict[str, int] = {
     "refreshes": 0,
     "evictions": 0,
     "prefetches": 0,
+    "freshness_checks": 0,
+    "invalidations": 0,
 }
 
 def with_pg(dsn: str):
@@ -37,6 +39,63 @@ def reset_context_cache() -> None:
 
 def get_context_cache_snapshot() -> Dict[str, int]:
     return {**_CONTEXT_CACHE_STATS, "entries": len(_CONTEXT_CACHE)}
+
+
+def _isoformat_timestamp(value: Any) -> Optional[str]:
+    if isinstance(value, dt.datetime):
+        return value.isoformat()
+    return None
+
+
+def _empty_context_source_state(asset_id: Optional[str], *, available: bool = False) -> Dict[str, Any]:
+    return {
+        "asset_id": asset_id,
+        "available": available,
+        "latest_signal_at": None,
+        "latest_rollup_at": None,
+        "latest_workorder_at": None,
+    }
+
+
+def _serialize_context_source_state(source_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    state = source_state or _empty_context_source_state(None)
+    return {
+        "asset_id": state.get("asset_id"),
+        "available": bool(state.get("available", False)),
+        "latest_signal_at": _isoformat_timestamp(state.get("latest_signal_at")),
+        "latest_rollup_at": _isoformat_timestamp(state.get("latest_rollup_at")),
+        "latest_workorder_at": _isoformat_timestamp(state.get("latest_workorder_at")),
+    }
+
+
+def get_context_cache_diagnostics(limit: int = 10) -> Dict[str, Any]:
+    entries: List[Dict[str, Any]] = []
+    ttl_s = int(getattr(Settings(), "context_cache_ttl_s", 60))
+    for cache_key, cache_entry in reversed(_CONTEXT_CACHE.items()):
+        cached_at = cache_entry.get("cached_at")
+        payload = cache_entry.get("payload") or {}
+        entries.append(
+            {
+                "org_id": cache_key[0],
+                "site_id": cache_key[1],
+                "asset_id": cache_key[2],
+                "fleet_wide": bool(cache_key[3]),
+                "query": cache_key[4],
+                "cached_at": _isoformat_timestamp(cached_at),
+                "expires_at": _isoformat_timestamp(
+                    cached_at + dt.timedelta(seconds=max(0, ttl_s)) if isinstance(cached_at, dt.datetime) else None
+                ),
+                "context_scope": payload.get("context_scope"),
+                "context_cache": payload.get("context_cache") or {},
+                "source_state": _serialize_context_source_state(cache_entry.get("source_state")),
+            }
+        )
+        if len(entries) >= max(1, limit):
+            break
+    return {
+        **get_context_cache_snapshot(),
+        "recent_entries": entries,
+    }
 
 
 def _normalize_wo_titles(rows: List[Any]) -> List[str]:
@@ -180,29 +239,140 @@ def _context_cache_key(event: Dict[str, Any], fleet_wide: bool) -> tuple[Any, ..
     )
 
 
-def _context_cache_metadata(status: str, cached_at: Optional[dt.datetime], ttl_s: int) -> Dict[str, Any]:
+def _fetch_context_source_state(conn, asset_id: Optional[str]) -> Dict[str, Any]:
+    if not asset_id:
+        return _empty_context_source_state(asset_id)
+    with conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                (SELECT MAX(timestamp) FROM signals WHERE asset_id = %s) AS latest_signal_at,
+                (SELECT MAX(end_time) FROM signal_rollups WHERE asset_id = %s) AS latest_rollup_at,
+                (
+                    SELECT MAX(COALESCE(workorder_created_at, handoff_completed_at, workorder_completed_at, (metadata->>'created_at')::timestamptz))
+                    FROM workorders
+                    WHERE asset_id = %s
+                ) AS latest_workorder_at
+            """,
+            (asset_id, asset_id, asset_id),
+        )
+        rows = cur.fetchall()
+    row = rows[0] if rows else (None, None, None)
+    return {
+        "asset_id": asset_id,
+        "available": True,
+        "latest_signal_at": row[0] if len(row) > 0 else None,
+        "latest_rollup_at": row[1] if len(row) > 1 else None,
+        "latest_workorder_at": row[2] if len(row) > 2 else None,
+    }
+
+
+def _load_context_source_state(asset_id: Optional[str], settings: Settings, connection_factory=with_pg) -> Dict[str, Any]:
+    if not asset_id:
+        return _empty_context_source_state(asset_id)
+    conn = None
+    try:
+        conn = connection_factory(settings.pg_dsn)
+        return _fetch_context_source_state(conn, asset_id)
+    except Exception as exc:
+        logger.debug({"event": "ctx.cache.freshness.skip", "err": str(exc), "asset_id": asset_id})
+        return _empty_context_source_state(asset_id)
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+def _context_source_refresh_reason(previous: Optional[Dict[str, Any]], current: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not previous or not current:
+        return None
+    if not previous.get("available") or not current.get("available"):
+        return None
+
+    signal_changed = (
+        previous.get("latest_signal_at") != current.get("latest_signal_at")
+        or previous.get("latest_rollup_at") != current.get("latest_rollup_at")
+    )
+    workorder_changed = previous.get("latest_workorder_at") != current.get("latest_workorder_at")
+
+    if signal_changed and workorder_changed:
+        return "signals-and-workorders-updated"
+    if signal_changed:
+        return "signals-updated"
+    if workorder_changed:
+        return "workorders-updated"
+    return None
+
+
+def _context_cache_metadata(
+    status: str,
+    cached_at: Optional[dt.datetime],
+    ttl_s: int,
+    *,
+    refresh_reason: Optional[str] = None,
+    source_state: Optional[Dict[str, Any]] = None,
+    freshness_status: str = "unchecked",
+) -> Dict[str, Any]:
     expires_at = cached_at + dt.timedelta(seconds=max(0, ttl_s)) if cached_at else None
     return {
         "status": status,
         "cached_at": cached_at.isoformat() if cached_at else None,
         "expires_at": expires_at.isoformat() if expires_at else None,
         "ttl_s": ttl_s,
+        "refresh_reason": refresh_reason,
+        "freshness": {
+            "status": freshness_status,
+            **_serialize_context_source_state(source_state),
+        },
     }
 
 
-def _cache_hit_payload(payload: Dict[str, Any], cached_at: dt.datetime, ttl_s: int) -> Dict[str, Any]:
+def _cache_hit_payload(
+    payload: Dict[str, Any],
+    cached_at: dt.datetime,
+    ttl_s: int,
+    *,
+    source_state: Optional[Dict[str, Any]] = None,
+    freshness_status: str = "unchecked",
+) -> Dict[str, Any]:
     cached_payload = deepcopy(payload)
-    cached_payload["context_cache"] = _context_cache_metadata("hit", cached_at, ttl_s)
+    cached_payload["context_cache"] = _context_cache_metadata(
+        "hit",
+        cached_at,
+        ttl_s,
+        source_state=source_state,
+        freshness_status=freshness_status,
+    )
     return cached_payload
 
 
-def _remember_context_payload(cache_key: tuple[Any, ...], payload: Dict[str, Any], ttl_s: int, max_entries: int, status: str) -> Dict[str, Any]:
+def _remember_context_payload(
+    cache_key: tuple[Any, ...],
+    payload: Dict[str, Any],
+    ttl_s: int,
+    max_entries: int,
+    status: str,
+    *,
+    refresh_reason: Optional[str] = None,
+    source_state: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     cached_at = dt.datetime.utcnow()
     stored_payload = deepcopy(payload)
-    stored_payload["context_cache"] = _context_cache_metadata(status, cached_at, ttl_s)
+    freshness_status = "current" if source_state and source_state.get("available") else "unchecked"
+    stored_payload["context_cache"] = _context_cache_metadata(
+        status,
+        cached_at,
+        ttl_s,
+        refresh_reason=refresh_reason,
+        source_state=source_state,
+        freshness_status=freshness_status,
+    )
     _CONTEXT_CACHE[cache_key] = {
         "cached_at": cached_at,
         "payload": deepcopy(stored_payload),
+        "source_state": deepcopy(source_state or _empty_context_source_state(cache_key[2])),
     }
     _CONTEXT_CACHE.move_to_end(cache_key)
     while len(_CONTEXT_CACHE) > max(1, max_entries):
@@ -211,19 +381,46 @@ def _remember_context_payload(cache_key: tuple[Any, ...], payload: Dict[str, Any
     return stored_payload
 
 
-def _get_cached_context(cache_key: tuple[Any, ...], ttl_s: int) -> Optional[Dict[str, Any]]:
+def _get_cached_context(
+    cache_key: tuple[Any, ...],
+    ttl_s: int,
+    settings: Settings,
+    connection_factory=with_pg,
+) -> tuple[Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
     cached_entry = _CONTEXT_CACHE.get(cache_key)
     if not cached_entry:
-        return None
+        return None, None, None
     cached_at = cached_entry["cached_at"]
     age_s = (dt.datetime.utcnow() - cached_at).total_seconds()
     if age_s > max(0, ttl_s):
         _CONTEXT_CACHE.pop(cache_key, None)
         _CONTEXT_CACHE_STATS["refreshes"] += 1
-        return None
+        _CONTEXT_CACHE_STATS["invalidations"] += 1
+        return None, "ttl-expired", None
+
+    current_source_state = _load_context_source_state(cache_key[2], settings, connection_factory=connection_factory)
+    _CONTEXT_CACHE_STATS["freshness_checks"] += 1
+    refresh_reason = _context_source_refresh_reason(cached_entry.get("source_state"), current_source_state)
+    if refresh_reason is not None:
+        _CONTEXT_CACHE.pop(cache_key, None)
+        _CONTEXT_CACHE_STATS["refreshes"] += 1
+        _CONTEXT_CACHE_STATS["invalidations"] += 1
+        return None, refresh_reason, current_source_state
+
     _CONTEXT_CACHE.move_to_end(cache_key)
     _CONTEXT_CACHE_STATS["hits"] += 1
-    return _cache_hit_payload(cached_entry["payload"], cached_at, ttl_s)
+    freshness_status = "current" if current_source_state.get("available") else "check-failed"
+    return (
+        _cache_hit_payload(
+            cached_entry["payload"],
+            cached_at,
+            ttl_s,
+            source_state=current_source_state,
+            freshness_status=freshness_status,
+        ),
+        None,
+        current_source_state,
+    )
 
 
 def _fetch_last_wo_titles(conn, asset_id: Optional[str]) -> List[str]:
@@ -383,22 +580,40 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
 
     if not settings.context_cache_enabled:
         payload = _assemble_event_context(event, settings, connection_factory=connection_factory, retriever_cls=retriever_cls, fleet_wide=fleet_wide)
-        payload["context_cache"] = _context_cache_metadata("disabled", None, settings.context_cache_ttl_s)
+        payload["context_cache"] = _context_cache_metadata(
+            "disabled",
+            None,
+            settings.context_cache_ttl_s,
+            freshness_status="disabled",
+        )
         return payload
 
     cache_key = _context_cache_key(event, fleet_wide)
-    cached_payload = _get_cached_context(cache_key, settings.context_cache_ttl_s)
+    cached_payload, refresh_reason, refreshed_source_state = _get_cached_context(
+        cache_key,
+        settings.context_cache_ttl_s,
+        settings,
+        connection_factory=connection_factory,
+    )
     if cached_payload is not None:
         return cached_payload
 
-    _CONTEXT_CACHE_STATS["misses"] += 1
+    if refresh_reason is None:
+        _CONTEXT_CACHE_STATS["misses"] += 1
     payload = _assemble_event_context(event, settings, connection_factory=connection_factory, retriever_cls=retriever_cls, fleet_wide=fleet_wide)
+    source_state = refreshed_source_state or _load_context_source_state(
+        event.get("asset_id"),
+        settings,
+        connection_factory=connection_factory,
+    )
     return _remember_context_payload(
         cache_key,
         payload,
         ttl_s=settings.context_cache_ttl_s,
         max_entries=settings.context_cache_max_entries,
-        status="miss",
+        status="refresh" if refresh_reason is not None else "miss",
+        refresh_reason=refresh_reason,
+        source_state=source_state,
     )
 
 

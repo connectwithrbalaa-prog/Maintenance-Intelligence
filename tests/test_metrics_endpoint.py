@@ -42,7 +42,15 @@ def test_metrics_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("MI_CONTEXT_CACHE_MAX_ENTRIES", "12")
     metrics_module.get_context_cache_snapshot().update if False else None
     from maintenance_intelligence.context import assembler as assembler_mod
-    assembler_mod._CONTEXT_CACHE_STATS.update({"hits": 3, "misses": 2, "refreshes": 1, "evictions": 0, "prefetches": 4})
+    assembler_mod._CONTEXT_CACHE_STATS.update({
+        "hits": 3,
+        "misses": 2,
+        "refreshes": 1,
+        "evictions": 0,
+        "prefetches": 4,
+        "freshness_checks": 5,
+        "invalidations": 2,
+    })
     assembler_mod._CONTEXT_CACHE.clear()
     assembler_mod._CONTEXT_CACHE[("demo-org", None, "PUMP-101", True, "alarm")] = {
         "cached_at": __import__("datetime").datetime.utcnow(),
@@ -90,3 +98,5 @@ def test_metrics_endpoint(tmp_path, monkeypatch):
     assert "context_cache_entries 1.0" in body
     assert "context_cache_hits_total 3.0" in body
     assert "context_cache_prefetches_total 4.0" in body
+    assert "context_cache_freshness_checks_total 5.0" in body
+    assert "context_cache_invalidations_total 2.0" in body

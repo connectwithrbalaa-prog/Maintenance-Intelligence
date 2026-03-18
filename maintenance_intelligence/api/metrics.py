@@ -309,6 +309,8 @@ class ContextCacheSnapshotCollector:
             "context_cache_refreshes_total": ("Total stale context cache refreshes", "refreshes"),
             "context_cache_evictions_total": ("Total context cache evictions", "evictions"),
             "context_cache_prefetches_total": ("Total context cache prefetch operations", "prefetches"),
+            "context_cache_freshness_checks_total": ("Total source freshness checks performed for cached context entries", "freshness_checks"),
+            "context_cache_invalidations_total": ("Total cached context entries invalidated before TTL expiry or on TTL expiry", "invalidations"),
         }
         for metric_name, (description, key) in counter_specs.items():
             metric = CounterMetricFamily(metric_name, description)

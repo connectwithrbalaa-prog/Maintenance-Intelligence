@@ -184,7 +184,7 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
 def test_get_event_context_reuses_fresh_cached_payload():
     reset_context_cache()
 
-    fake_conn = FakeConnection(
+    assemble_conn = FakeConnection(
         [
             [("WO newest",)],
             [],
@@ -192,26 +192,36 @@ def test_get_event_context_reuses_fresh_cached_payload():
             [("DOC-1", "Playbook", "pump vibration guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10))],
         ]
     )
+    initial_source_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 5), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 11, 55))]]
+    )
+    freshness_check_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 5), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 11, 55))]]
+    )
+    connections = iter([assemble_conn, initial_source_conn, freshness_check_conn])
     settings = Settings(context_cache_enabled=True, context_cache_ttl_s=60, context_cache_max_entries=8)
     event = {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration"}
 
-    first = get_event_context(event, settings=settings, connection_factory=lambda _dsn: fake_conn)
-    second = get_event_context(event, settings=settings, connection_factory=lambda _dsn: (_ for _ in ()).throw(AssertionError("should hit cache")))
+    first = get_event_context(event, settings=settings, connection_factory=lambda _dsn: next(connections))
+    second = get_event_context(event, settings=settings, connection_factory=lambda _dsn: next(connections))
 
     assert first["context_cache"]["status"] == "miss"
+    assert first["context_cache"]["freshness"]["status"] == "current"
     assert second["context_cache"]["status"] == "hit"
+    assert second["context_cache"]["freshness"]["status"] == "current"
     assert second["last_wo_titles"] == ["WO newest"]
 
     snapshot = get_context_cache_snapshot()
     assert snapshot["entries"] == 1
     assert snapshot["hits"] == 1
     assert snapshot["misses"] == 1
+    assert snapshot["freshness_checks"] == 1
 
 
 def test_prefetch_event_contexts_warms_cache_for_followup_lookup():
     reset_context_cache()
 
-    fake_conn = FakeConnection(
+    assemble_conn = FakeConnection(
         [
             [("WO newest",)],
             [],
@@ -219,11 +229,18 @@ def test_prefetch_event_contexts_warms_cache_for_followup_lookup():
             [("DOC-1", "Playbook", "pump vibration guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10))],
         ]
     )
+    initial_source_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 5), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 11, 55))]]
+    )
+    freshness_check_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 5), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 11, 55))]]
+    )
+    connections = iter([assemble_conn, initial_source_conn, freshness_check_conn])
     settings = Settings(context_cache_enabled=True, context_cache_ttl_s=60, context_cache_max_entries=8)
     event = {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration"}
 
-    prefetched = prefetch_event_contexts([event], settings=settings, connection_factory=lambda _dsn: fake_conn)
-    cached = get_event_context(event, settings=settings, connection_factory=lambda _dsn: (_ for _ in ()).throw(AssertionError("should hit cache")))
+    prefetched = prefetch_event_contexts([event], settings=settings, connection_factory=lambda _dsn: next(connections))
+    cached = get_event_context(event, settings=settings, connection_factory=lambda _dsn: next(connections))
 
     assert prefetched[0]["context_cache"]["status"] == "miss"
     assert cached["context_cache"]["status"] == "hit"
@@ -231,3 +248,50 @@ def test_prefetch_event_contexts_warms_cache_for_followup_lookup():
     snapshot = get_context_cache_snapshot()
     assert snapshot["prefetches"] == 1
     assert snapshot["entries"] == 1
+    assert snapshot["freshness_checks"] == 1
+
+
+def test_get_event_context_refreshes_when_signal_or_workorder_state_changes():
+    reset_context_cache()
+
+    first_assemble_conn = FakeConnection(
+        [
+            [("WO newest",)],
+            [],
+            [],
+            [("DOC-1", "Playbook", "pump vibration guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10))],
+        ]
+    )
+    initial_source_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 5), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 11, 55))]]
+    )
+    freshness_check_conn = FakeConnection(
+        [[(dt.datetime(2026, 3, 15, 12, 20), dt.datetime(2026, 3, 15, 12, 0), dt.datetime(2026, 3, 15, 12, 15))]]
+    )
+    refreshed_assemble_conn = FakeConnection(
+        [
+            [("WO newest",), ("WO follow-up",)],
+            [],
+            [],
+            [("DOC-2", "Updated playbook", "pump vibration follow-up guide", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 25))],
+        ]
+    )
+    connections = iter(
+        [first_assemble_conn, initial_source_conn, freshness_check_conn, refreshed_assemble_conn]
+    )
+    settings = Settings(context_cache_enabled=True, context_cache_ttl_s=60, context_cache_max_entries=8)
+    event = {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration"}
+
+    first = get_event_context(event, settings=settings, connection_factory=lambda _dsn: next(connections))
+    refreshed = get_event_context(event, settings=settings, connection_factory=lambda _dsn: next(connections))
+
+    assert first["context_cache"]["status"] == "miss"
+    assert refreshed["context_cache"]["status"] == "refresh"
+    assert refreshed["context_cache"]["refresh_reason"] == "signals-and-workorders-updated"
+    assert refreshed["last_wo_titles"] == ["WO newest", "WO follow-up"]
+
+    snapshot = get_context_cache_snapshot()
+    assert snapshot["misses"] == 1
+    assert snapshot["refreshes"] == 1
+    assert snapshot["invalidations"] == 1
+    assert snapshot["freshness_checks"] == 1

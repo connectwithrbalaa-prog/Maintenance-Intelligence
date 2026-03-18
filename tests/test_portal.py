@@ -168,7 +168,15 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     portal_mod.get_context_cache_snapshot().update if False else None
     from maintenance_intelligence.context import assembler as assembler_mod
     assembler_mod._CONTEXT_CACHE.clear()
-    assembler_mod._CONTEXT_CACHE_STATS.update({"hits": 4, "misses": 2, "refreshes": 1, "evictions": 0, "prefetches": 3})
+    assembler_mod._CONTEXT_CACHE_STATS.update({
+        "hits": 4,
+        "misses": 2,
+        "refreshes": 1,
+        "evictions": 0,
+        "prefetches": 3,
+        "freshness_checks": 6,
+        "invalidations": 2,
+    })
     assembler_mod._CONTEXT_CACHE[("demo-org", None, "PUMP-101", True, "alarm")] = {
         "cached_at": dt.datetime.utcnow(),
         "payload": {"asset_id": "PUMP-101", "context_cache": {"status": "miss"}},
@@ -222,6 +230,8 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
         "refreshes": 1,
         "evictions": 0,
         "prefetches": 3,
+        "freshness_checks": 6,
+        "invalidations": 2,
     }
 
 

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Query, Request
 from typing import List, Dict, Any, Optional
 import psycopg2
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.context.assembler import get_context_cache_diagnostics
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.services.pdm_scorer import build_early_warning_report
 
@@ -393,3 +394,21 @@ def prioritized_assets(
             conn.close()
         except Exception:
             pass
+
+
+@router.get("/context-cache")
+def context_cache_diagnostics(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+) -> Dict[str, Any]:
+    require_authenticated_identity(
+        request,
+        detail="Context cache diagnostics require an authenticated identity",
+    )
+    settings = Settings()
+    return {
+        "enabled": bool(getattr(settings, "context_cache_enabled", False)),
+        "ttl_s": int(getattr(settings, "context_cache_ttl_s", 60)),
+        "max_entries": int(getattr(settings, "context_cache_max_entries", 256)),
+        **get_context_cache_diagnostics(limit=limit),
+    }

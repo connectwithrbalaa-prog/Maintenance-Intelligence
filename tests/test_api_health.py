@@ -57,6 +57,8 @@ def test_health_deep_reports_ok_when_pg_kafka_and_lag_are_healthy(monkeypatch):
     assert payload["kafka"] == "ok"
     assert payload["kafka_lag"] == {"_summary": {"total_lag": 12}}
     assert payload["context_cache"]["enabled"] is False
+    assert payload["context_cache"]["freshness_checks"] == 0
+    assert payload["context_cache"]["invalidations"] == 0
     assert fake_conn.closed is True
 
 
@@ -129,3 +131,5 @@ def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monk
     assert payload["context_cache"]["ttl_s"] == 45
     assert payload["context_cache"]["max_entries"] == 32
     assert payload["context_cache"]["entries"] == 0
+    assert payload["context_cache"]["freshness_checks"] == 0
+    assert payload["context_cache"]["invalidations"] == 0

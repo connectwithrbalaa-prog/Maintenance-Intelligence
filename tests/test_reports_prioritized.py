@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import reports as reports_mod
+from maintenance_intelligence.context.assembler import reset_context_cache
 
 
 READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
@@ -172,3 +173,72 @@ def test_prioritized_assets_filters_to_warning_status_assets(monkeypatch):
     payload = response.json()
     assert [row["asset_id"] for row in payload] == ["PUMP-202", "PUMP-101"]
     assert all(row["early_warning_status"] in {"critical", "elevated", "watch"} for row in payload)
+
+
+def test_context_cache_diagnostics_requires_authenticated_identity(monkeypatch):
+    reset_context_cache()
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
+    client = TestClient(app)
+
+    response = client.get("/api/v1/reports/context-cache?limit=5")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Context cache diagnostics require an authenticated identity"
+
+
+def test_context_cache_diagnostics_returns_recent_entries(monkeypatch):
+    reset_context_cache()
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_CONTEXT_CACHE_ENABLED", "true")
+    monkeypatch.setenv("MI_CONTEXT_CACHE_TTL_S", "120")
+    monkeypatch.setenv("MI_CONTEXT_CACHE_MAX_ENTRIES", "16")
+
+    from maintenance_intelligence.context import assembler as assembler_mod
+
+    assembler_mod._CONTEXT_CACHE_STATS.update(
+        {
+            "hits": 4,
+            "misses": 2,
+            "refreshes": 1,
+            "evictions": 0,
+            "prefetches": 3,
+            "freshness_checks": 5,
+            "invalidations": 2,
+        }
+    )
+    cached_at = datetime(2026, 3, 15, 12, 30, tzinfo=timezone.utc)
+    assembler_mod._CONTEXT_CACHE[("demo-org", "site-a", "PUMP-101", True, "alarm pump vibration high")] = {
+        "cached_at": cached_at,
+        "payload": {
+            "asset_id": "PUMP-101",
+            "context_scope": "local+fleet",
+            "context_cache": {
+                "status": "refresh",
+                "refresh_reason": "signals-updated",
+            },
+        },
+        "source_state": {
+            "asset_id": "PUMP-101",
+            "available": True,
+            "latest_signal_at": datetime(2026, 3, 15, 12, 29, tzinfo=timezone.utc),
+            "latest_rollup_at": datetime(2026, 3, 15, 12, 28, tzinfo=timezone.utc),
+            "latest_workorder_at": datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc),
+        },
+    }
+
+    client = TestClient(app)
+    response = client.get("/api/v1/reports/context-cache?limit=5", headers=READ_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled"] is True
+    assert payload["ttl_s"] == 120
+    assert payload["max_entries"] == 16
+    assert payload["entries"] == 1
+    assert payload["freshness_checks"] == 5
+    assert payload["invalidations"] == 2
+    assert len(payload["recent_entries"]) == 1
+    assert payload["recent_entries"][0]["asset_id"] == "PUMP-101"
+    assert payload["recent_entries"][0]["fleet_wide"] is True
+    assert payload["recent_entries"][0]["context_cache"]["refresh_reason"] == "signals-updated"
+    assert payload["recent_entries"][0]["source_state"]["latest_signal_at"] == "2026-03-15T12:29:00+00:00"
