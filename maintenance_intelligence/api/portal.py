@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.context.assembler import get_context_cache_snapshot
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
@@ -302,6 +303,12 @@ def _run_summary_root() -> Path:
 
 def _edge_status_payload() -> Dict[str, Any]:
     settings = Settings()
+    context_cache = {
+        "enabled": bool(getattr(settings, "context_cache_enabled", False)),
+        "ttl_s": int(getattr(settings, "context_cache_ttl_s", 60)),
+        "max_entries": int(getattr(settings, "context_cache_max_entries", 256)),
+        **get_context_cache_snapshot(),
+    }
     if not settings.edge_mode_enabled:
         return {
             "edge_mode_enabled": False,
@@ -315,6 +322,7 @@ def _edge_status_payload() -> Dict[str, Any]:
             "last_command_queued_at": None,
             "last_command_error": None,
             "last_error": None,
+            "context_cache": context_cache,
         }
     buffer = EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events)
     command_queue = EdgeCommandBuffer(settings.edge_command_buffer_path)
@@ -335,6 +343,7 @@ def _edge_status_payload() -> Dict[str, Any]:
         "last_command_queued_at": _as_text(queue_snapshot.get("last_queued_command_at")),
         "last_command_error": _as_text(queue_snapshot.get("last_error")),
         "last_error": _as_text(snapshot.get("last_error")),
+        "context_cache": context_cache,
     }
 
 

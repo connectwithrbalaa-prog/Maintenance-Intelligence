@@ -1828,7 +1828,7 @@
 								</div>
 							</div>
 						</div>
-						<div class="edge-status-body">Edge diagnostics load when the portal connects.</div>
+						<div class="edge-status-body">Edge diagnostics and context cache health load when the portal connects.</div>
 					</div>
 				</div>
 			</article>
@@ -2149,7 +2149,7 @@
 							</div>
 						</div>
 					</div>
-					<div class="edge-status-body">Checking whether edge buffering is enabled and whether central storage is reachable.</div>
+					<div class="edge-status-body">Checking whether edge buffering, command replay, and context cache health are available.</div>
 				`;
 				return;
 			}
@@ -2182,6 +2182,19 @@
 			const commandReplayFailures = asNumber(payload.total_command_replay_failures) ?? 0;
 			const lastCommandError = asString(payload.last_command_error);
 			const lastError = asString(payload.last_error);
+			const contextCache = asObject(payload.context_cache);
+			const cacheEnabled = Boolean(contextCache.enabled);
+			const cacheEntries = asNumber(contextCache.entries) ?? 0;
+			const cacheHits = asNumber(contextCache.hits) ?? 0;
+			const cacheMisses = asNumber(contextCache.misses) ?? 0;
+			const cacheRefreshes = asNumber(contextCache.refreshes) ?? 0;
+			const cachePrefetches = asNumber(contextCache.prefetches) ?? 0;
+			const cacheTtl = asNumber(contextCache.ttl_s);
+			const cacheSummary = !cacheEnabled
+				? "Context cache is disabled; RCA and triage context are assembled live on demand."
+				: (cacheEntries > 0
+					? `Context cache is enabled with ${cacheEntries} warm entr${cacheEntries === 1 ? "y" : "ies"}.`
+					: "Context cache is enabled but no warm entries are available yet.");
 			const summary = !edgeEnabled
 				? "Edge buffering is disabled for this deployment. Ingestion writes directly to central storage."
 				: (connectivity.label === "online"
@@ -2207,10 +2220,18 @@
 				</div>
 				<div class="edge-status-body">${escapeHtml(summary)}</div>
 				<div class="edge-status-body">${escapeHtml(queueSummary)}</div>
+				<div class="edge-status-body">${escapeHtml(cacheSummary)}</div>
 				<div class="outcomes-chip-row">
 					<span class="chip">Mode ${escapeHtml(edgeEnabled ? "On" : "Off")}</span>
 					<span class="chip">Buffered ${escapeHtml(bufferedCount)}</span>
 					<span class="chip">Queued handoffs ${escapeHtml(queuedCommandCount)}</span>
+					<span class="chip">Context cache ${escapeHtml(cacheEnabled ? "On" : "Off")}</span>
+					<span class="chip">Warm entries ${escapeHtml(cacheEntries)}</span>
+					${cacheTtl !== null ? `<span class="chip">Cache TTL ${escapeHtml(cacheTtl)}</span>` : ""}
+					${cacheHits > 0 ? `<span class="chip">Cache hits ${escapeHtml(cacheHits)}</span>` : ""}
+					${cacheMisses > 0 ? `<span class="chip trend-rising">Cache misses ${escapeHtml(cacheMisses)}</span>` : ""}
+					${cacheRefreshes > 0 ? `<span class="chip trend-rising">Cache refreshes ${escapeHtml(cacheRefreshes)}</span>` : ""}
+					${cachePrefetches > 0 ? `<span class="chip">Prefetches ${escapeHtml(cachePrefetches)}</span>` : ""}
 					<span class="chip">Last sync ${escapeHtml(lastSync)}</span>
 					<span class="chip">Last replay ${escapeHtml(lastReplay)}</span>
 					<span class="chip">Last queued handoff ${escapeHtml(lastCommandQueued)}</span>
