@@ -3558,6 +3558,74 @@
 			`;
 		}
 
+		function formatEarlyWarningLabel(status) {
+			switch (asString(status, "normal")) {
+				case "critical":
+					return "Critical";
+				case "elevated":
+					return "Elevated";
+				case "watch":
+					return "Watch";
+				default:
+					return "Normal";
+			}
+		}
+
+		function renderEarlyWarningSummary(report, selectedScope, selectedEntityId, selectedMetrics) {
+			const summary = asObject(report.early_warning_summary);
+			const statusCounts = asObject(summary.status_counts);
+			const topAssets = Array.isArray(summary.top_assets)
+				? summary.top_assets.map((item) => asObject(item)).filter((item) => asString(item.asset_id)).slice(0, 3)
+				: [];
+			const selectedStatus = asString(selectedMetrics.early_warning_status, "normal") || "normal";
+			const selectedScore = asNumber(selectedMetrics.early_warning_score);
+			const selectedReasons = asStringList(selectedMetrics.early_warning_reasons).slice(0, 3);
+			const activeTotal = ["critical", "elevated", "watch"].reduce((sum, status) => sum + (asNumber(statusCounts[status]) || 0), 0);
+
+			if (!topAssets.length && !summary.total_assets && selectedScope !== "asset") {
+				return "";
+			}
+
+			const selectedAssetMarkup = selectedScope === "asset" && selectedEntityId
+				? renderOutcomesNote(
+					selectedStatus === "critical" || selectedStatus === "elevated" ? "Heads up" : "Early warning",
+					`${selectedEntityId} is ${formatEarlyWarningLabel(selectedStatus)}`,
+					typeof selectedScore === "number"
+						? `The current PdM early-warning score is ${selectedScore.toFixed(1)}. Switch assets from this panel to compare where warning pressure is building first.`
+						: "This asset does not have enough live signal or event data for an early-warning score yet.",
+					selectedStatus === "critical" || selectedStatus === "elevated" ? "warn" : ""
+				)
+				: "";
+
+			const selectedReasonMarkup = selectedScope === "asset" && selectedReasons.length
+				? `<div class="chips">${selectedReasons.map((reason) => `<span class="chip">${escapeHtml(reason)}</span>`).join("")}</div>`
+				: "";
+
+			const summaryMarkup = summary.total_assets || topAssets.length
+				? renderOutcomesNote(
+					"Fleet",
+					"Early warning summary",
+					activeTotal > 0
+						? `${activeTotal} assets are currently above normal warning levels in the last ${asNumber(report.window_days) || 0} days. The highest current score belongs to ${escapeHtml(asString(topAssets[0] && topAssets[0].asset_id) || "the lead asset")}.`
+						: "No assets are currently above normal warning levels in this reporting window.",
+					activeTotal > 0 ? "warn" : ""
+				)
+				: "";
+
+			const summaryChips = summary.total_assets || topAssets.length
+				? `
+					<div class="chips">
+						<span class="chip">Critical ${escapeHtml(asNumber(statusCounts.critical) || 0)}</span>
+						<span class="chip">Elevated ${escapeHtml(asNumber(statusCounts.elevated) || 0)}</span>
+						<span class="chip">Watch ${escapeHtml(asNumber(statusCounts.watch) || 0)}</span>
+						${topAssets.map((asset) => `<span class="chip">${escapeHtml(asset.asset_id)} ${escapeHtml(formatEarlyWarningLabel(asset.status))} ${escapeHtml(asNumber(asset.score) || 0)}</span>`).join("")}
+					</div>
+				`
+				: "";
+
+			return `${selectedAssetMarkup}${selectedReasonMarkup}${summaryMarkup}${summaryChips}`;
+		}
+
 		function parseTimestamp(timestamp) {
 			if (!timestamp) {
 				return null;
@@ -5037,6 +5105,7 @@
 			const topRows = Array.isArray(report[config.topKey]) ? report[config.topKey] : [];
 			const topContributor = topRows[0] && topRows[0][config.topIdKey] ? topRows[0] : null;
 			const warnings = asStringList(report.warnings).slice(0, 2);
+			const earlyWarningMarkup = renderEarlyWarningSummary(report, selectedScope, selectedEntityId, selectedMetrics);
 			const primaryKpiValue = typeof selectedPrimaryMetric === "number"
 				? formatTrendValue(selectedPrimaryMetric, primaryMetricName, { metricKind: primaryMetricKind })
 				: "Waiting";
@@ -5091,6 +5160,7 @@
 						</div>
 					</div>
 					${warningMarkup}
+					${earlyWarningMarkup}
 					${cmmsSummaryMarkup}
 					${cmmsBreakdownsMarkup}
 					<div class="outcomes-chart-grid">

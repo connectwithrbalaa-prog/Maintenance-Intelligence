@@ -53,6 +53,30 @@ class FakeConnection:
 
 def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(monkeypatch):
     monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(
+        outcomes_mod,
+        "build_early_warning_report",
+        lambda event_rows, rollup_rows: {
+            "summary": {
+                "total_assets": 2,
+                "status_counts": {"critical": 1, "elevated": 1, "watch": 0, "normal": 0},
+                "top_assets": [{"asset_id": "PUMP-202", "score": 78.0, "status": "critical", "reasons": ["Temperature remains high"]}],
+                "last_evaluated_at": "2026-03-15T12:00:00Z",
+            },
+            "asset_metrics": {
+                "PUMP-101": {
+                    "early_warning_score": 52.0,
+                    "early_warning_status": "elevated",
+                    "early_warning_reasons": ["Signal rollups still carry anomaly flags"],
+                },
+                "PUMP-202": {
+                    "early_warning_score": 78.0,
+                    "early_warning_status": "critical",
+                    "early_warning_reasons": ["Temperature remains at 91.0 C"],
+                },
+            },
+        },
+    )
     fake_conn = FakeConnection(
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 2), ("reject", 1)],
@@ -68,6 +92,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
             ],
             "GROUP BY w.asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2)],
             "GROUP BY asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1, 1)],
+            "SELECT asset_id, severity, occurred_at, details": lambda: [],
+            "SELECT asset_id,\n                           signal_type,": lambda: [],
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 4)],
             "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: [
                 ("REC-44", "approved", "WO-1", {"approval": {"handoff_state": "success", "approved_at": "2026-03-14T09:55:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-14T09:55:00Z", "handoff_state": "success"}]}, datetime(2026, 3, 14, 10, 5, tzinfo=timezone.utc), "PUMP-101", "PUMP-101", {"handoff": {"backend": "maximo"}}, datetime(2026, 3, 14, 9, 55, tzinfo=timezone.utc)),
@@ -111,10 +137,14 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert payload["feedback_counts"] == {"accept": 2, "reject": 1, "edited": 0}
     assert payload["feedback_total"] == 3
     assert payload["acceptance_rate"] == 2 / 3
+    assert payload["early_warning_summary"]["status_counts"] == {"critical": 1, "elevated": 1, "watch": 0, "normal": 0}
+    assert payload["early_warning_summary"]["top_assets"][0]["asset_id"] == "PUMP-202"
     assert payload["ttr_seconds_avg"] is None
     assert payload["mtbf_seconds_avg"] == 50400.0
     assert payload["mttr_seconds_avg"] == 16200.0
     assert payload["top_assets_by_wo_volume"] == [{"asset_id": "PUMP-101", "count": 4}]
+    assert payload["asset_metrics"]["PUMP-101"]["early_warning_status"] == "elevated"
+    assert payload["asset_metrics"]["PUMP-202"]["early_warning_score"] == 78.0
     assert payload["cmms_summary"] == {
         "success_total": 1,
         "pending_total": 1,
@@ -210,6 +240,30 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
 
 def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(monkeypatch):
     monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(
+        outcomes_mod,
+        "build_early_warning_report",
+        lambda event_rows, rollup_rows: {
+            "summary": {
+                "total_assets": 2,
+                "status_counts": {"critical": 0, "elevated": 1, "watch": 1, "normal": 0},
+                "top_assets": [{"asset_id": "PUMP-102", "score": 61.0, "status": "elevated", "reasons": ["A fresh event landed within the last 24 hours"]}],
+                "last_evaluated_at": "2026-03-15T10:00:00Z",
+            },
+            "asset_metrics": {
+                "PUMP-101": {
+                    "early_warning_score": 28.0,
+                    "early_warning_status": "watch",
+                    "early_warning_reasons": ["Low-volume warning signals are present but not yet persistent"],
+                },
+                "PUMP-102": {
+                    "early_warning_score": 61.0,
+                    "early_warning_status": "elevated",
+                    "early_warning_reasons": ["A fresh event landed within the last 24 hours"],
+                },
+            },
+        },
+    )
     fake_conn = FakeConnection(
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 3), ("reject", 1)],
@@ -232,6 +286,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 ("PUMP-101", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 2, 1),
                 ("PUMP-102", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 0, 1),
             ],
+            "SELECT asset_id, severity, occurred_at, details": lambda: [],
+            "SELECT asset_id,\n                           signal_type,": lambda: [],
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 3), ("PUMP-102", 1)],
             "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: [
                 ("REC-44", "approved", "WO-1", {"approval": {"handoff_state": "success", "approved_at": "2026-03-13T05:50:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-13T05:50:00Z", "handoff_state": "success"}]}, datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc), "PUMP-101", "PUMP-101", {"handoff": {"backend": "maximo"}}),
@@ -270,6 +326,9 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
+    assert payload["early_warning_summary"]["status_counts"] == {"critical": 0, "elevated": 1, "watch": 1, "normal": 0}
+    assert payload["asset_metrics"]["PUMP-101"]["early_warning_status"] == "watch"
+    assert payload["asset_metrics"]["PUMP-102"]["early_warning_score"] == 61.0
     assert payload["mtbf_seconds_avg"] == 64800.0
     assert payload["mttr_seconds_avg"] == 11700.0
     assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101", "PUMP-102"]
@@ -358,6 +417,8 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
             "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: (_ for _ in ()).throw(RuntimeError("terminal wo timestamps unavailable")),
             "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("wo trend unavailable")),
             "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("feedback trend unavailable")),
+            "SELECT asset_id, severity, occurred_at, details": lambda: (_ for _ in ()).throw(RuntimeError("event warning input unavailable")),
+            "SELECT asset_id,\n                           signal_type,": lambda: (_ for _ in ()).throw(RuntimeError("signal warning input unavailable")),
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [],
             "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: (_ for _ in ()).throw(RuntimeError("proposal summary unavailable")),
             "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [],
@@ -382,6 +443,7 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
     assert payload["backend_metrics"] == {}
     assert payload["user_metrics"] == {}
     assert payload["org_metrics"] == {}
+    assert payload["early_warning_summary"]["top_assets"] == []
     assert payload["cmms_summary"] == {
         "success_total": 0,
         "pending_total": 0,
@@ -399,8 +461,9 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
     assert "mttr aggregation unavailable: terminal wo timestamps unavailable" in payload["warnings"]
     assert "asset workorder trend unavailable: wo trend unavailable" in payload["warnings"]
     assert "asset acceptance trend unavailable: feedback trend unavailable" in payload["warnings"]
+    assert "early warning summary unavailable: event warning input unavailable" in payload["warnings"]
     assert "cmms handoff summary unavailable: proposal summary unavailable" in payload["warnings"]
-    assert fake_conn.rollback_calls == 5
+    assert fake_conn.rollback_calls == 6
 
 
 def test_outcomes_endpoints_require_authenticated_identity(monkeypatch):
@@ -425,6 +488,12 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
             "window_days": window,
             "status": "partial",
             "warnings": ["missing lifecycle timestamps"],
+            "early_warning_summary": {
+                "total_assets": 1,
+                "status_counts": {"critical": 0, "elevated": 1, "watch": 0, "normal": 0},
+                "top_assets": [{"asset_id": "PUMP-7", "score": 63.0, "status": "elevated"}],
+                "last_evaluated_at": "2026-03-15T12:00:00Z",
+            },
             "feedback_counts": {"accept": 1, "reject": 0, "edited": 2},
             "feedback_total": 3,
             "acceptance_rate": 1 / 3,
@@ -475,6 +544,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
             "top_orgs_by_feedback": [{"org_id": "demo-org", "count": 3}],
             "asset_metrics": {
                 "PUMP-7": {
+                    "early_warning_score": 63.0,
+                    "early_warning_status": "elevated",
                     "workorder_volume": [
                         {"date": "2026-03-14", "value": 2},
                         {"date": "2026-03-15", "value": 0},
@@ -549,6 +620,11 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     assert metrics["ttr_seconds_avg"] == ""
     assert metrics["mtbf_seconds_avg"] == ""
     assert metrics["mttr_seconds_avg"] == ""
+    assert metrics["early_warning_total_assets"] == "1"
+    assert metrics["early_warning_elevated_total"] == "1"
+    assert metrics["early_warning_top_asset_PUMP-7_score"] == "63.0"
+    assert metrics["asset_PUMP-7_early_warning_score"] == "63.0"
+    assert metrics["asset_PUMP-7_early_warning_status"] == "elevated"
     assert metrics["cmms_success_total"] == "2"
     assert metrics["cmms_pending_total"] == "1"
     assert metrics["cmms_failure_total"] == "1"

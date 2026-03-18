@@ -75,6 +75,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     page = client.get("/portal")
     assert page.status_code == 200
     assert "Maintenance Intelligence Portal" in page.text
+    assert "Early warning summary" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
     assert runs.status_code == 200

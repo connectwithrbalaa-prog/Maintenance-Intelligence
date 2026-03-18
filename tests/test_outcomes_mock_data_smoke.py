@@ -144,6 +144,23 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                             "FB-3", "RUN-3", "REC-3", "demo-org", "PUMP-101", "accept", json.dumps({}), "completed", "operator-3", "2026-03-15T13:00:00Z",
                         ),
                     )
+                    cur.execute(
+                        """
+                        INSERT INTO signal_rollups (
+                            rollup_id, asset_id, signal_type, period, start_time, end_time,
+                            mean_value, min_value, max_value, count, anomaly_flags
+                        )
+                        VALUES
+                            (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb),
+                            (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb),
+                            (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        """,
+                        (
+                            "ROLLUP-1", "PUMP-101", "vibration", "1h", "2026-03-15T09:00:00Z", "2026-03-15T10:00:00Z", 9.1, 8.5, 10.3, 12, json.dumps({"high_vibration": True}),
+                            "ROLLUP-2", "PUMP-202", "temperature", "6h", "2026-03-15T05:00:00Z", "2026-03-15T11:00:00Z", 87.0, 83.0, 91.0, 8, json.dumps({"high_temperature": True}),
+                            "ROLLUP-3", "PUMP-202", "temperature", "24h", "2026-03-14T11:00:00Z", "2026-03-15T11:00:00Z", 84.0, 79.0, 86.0, 24, json.dumps({"high_temperature": True}),
+                        ),
+                    )
 
             monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
             headers = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
@@ -219,6 +236,9 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                 {"backend": "maximo", "count": 1},
                 {"backend": "mock", "count": 1},
             ]
+            assert payload["early_warning_summary"]["total_assets"] == 2
+            assert payload["early_warning_summary"]["status_counts"]["elevated"] >= 1
+            assert payload["early_warning_summary"]["top_assets"][0]["asset_id"] in {"PUMP-101", "PUMP-202"}
             assert payload["top_users_by_feedback"] == [
                 {"user_id": "operator-1", "count": 1},
                 {"user_id": "operator-2", "count": 1},
@@ -226,10 +246,12 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
             ]
             assert payload["top_orgs_by_feedback"] == [{"org_id": "demo-org", "count": 3}]
             assert payload["placeholders"] == {}
-            assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101"]
+            assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101", "PUMP-202"]
             assert sorted(payload["backend_metrics"].keys()) == ["maximo", "mock", "unknown"]
             assert sorted(payload["user_metrics"].keys()) == ["operator-1", "operator-2", "operator-3"]
             assert sorted(payload["org_metrics"].keys()) == ["demo-org"]
+            assert payload["asset_metrics"]["PUMP-101"]["early_warning_status"] in {"watch", "elevated", "critical"}
+            assert payload["asset_metrics"]["PUMP-202"]["early_warning_score"] >= 0
             assert payload["backend_metrics"]["maximo"]["handoff_total"] == 1
             assert payload["backend_metrics"]["maximo"]["handoff_success_rate"] == pytest.approx(1.0)
             assert payload["backend_metrics"]["mock"]["handoff_total"] == 1

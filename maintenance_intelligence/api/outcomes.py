@@ -5,6 +5,7 @@ import io, csv
 import psycopg2
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.pdm_scorer import build_early_warning_report, empty_early_warning_summary
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 FEEDBACK_ACTIONS = ("accept", "reject", "edited")
@@ -52,6 +53,7 @@ def _base_outcomes(window: int) -> Dict[str, Any]:
         "window_days": int(window),
         "status": "ok",
         "warnings": [],
+        "early_warning_summary": empty_early_warning_summary(),
         "feedback_counts": {action: 0 for action in FEEDBACK_ACTIONS},
         "feedback_total": 0,
         "acceptance_rate": None,
@@ -564,6 +566,40 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                 _mark_partial(out, f"asset acceptance trend unavailable: {exc}")
 
             try:
+                cur.execute(f"""
+                    SELECT asset_id, severity, occurred_at, details
+                    FROM events
+                    WHERE occurred_at > {_window_clause(window)}
+                      AND asset_id IS NOT NULL
+                      AND kind IN ('alarm', 'anomaly', 'measurement')
+                    ORDER BY asset_id, occurred_at DESC
+                """)
+                early_warning_event_rows = cur.fetchall()
+
+                cur.execute(f"""
+                    SELECT asset_id,
+                           signal_type,
+                           period,
+                           end_time,
+                           mean_value,
+                           max_value,
+                           anomaly_flags
+                    FROM signal_rollups
+                    WHERE end_time > {_window_clause(window)}
+                      AND asset_id IS NOT NULL
+                      AND period IN ('1h', '6h', '24h')
+                    ORDER BY asset_id, end_time DESC
+                """)
+                early_warning_rollup_rows = cur.fetchall()
+                early_warning = build_early_warning_report(early_warning_event_rows, early_warning_rollup_rows)
+                out["early_warning_summary"] = early_warning["summary"]
+                for asset_id, asset_warning in (early_warning.get("asset_metrics") or {}).items():
+                    out.setdefault("asset_metrics", {}).setdefault(asset_id, {}).update(asset_warning)
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"early warning summary unavailable: {exc}")
+
+            try:
                 max_attempts = max(1, int(s.pm_handoff_max_attempts_per_proposal))
                 cur.execute(f"""
                     SELECT p.proposal_id,
@@ -702,6 +738,17 @@ def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
     rows.append({"metric": "ttr_seconds_avg", "value": rep.get("ttr_seconds_avg")})
     rows.append({"metric": "mtbf_seconds_avg", "value": rep.get("mtbf_seconds_avg")})
     rows.append({"metric": "mttr_seconds_avg", "value": rep.get("mttr_seconds_avg")})
+    early_warning_summary = rep.get("early_warning_summary") or {}
+    rows.append({"metric": "early_warning_total_assets", "value": early_warning_summary.get("total_assets", 0)})
+    for status_name, status_total in (early_warning_summary.get("status_counts") or {}).items():
+        rows.append({"metric": f"early_warning_{status_name}_total", "value": status_total})
+    rows.append({"metric": "early_warning_last_evaluated_at", "value": early_warning_summary.get("last_evaluated_at")})
+    for top_asset in early_warning_summary.get("top_assets") or []:
+        asset_id = top_asset.get("asset_id")
+        if not asset_id:
+            continue
+        rows.append({"metric": f"early_warning_top_asset_{asset_id}_score", "value": top_asset.get("score")})
+        rows.append({"metric": f"early_warning_top_asset_{asset_id}_status", "value": top_asset.get("status")})
     cmms_summary = rep.get("cmms_summary") or {}
     rows.append({"metric": "cmms_success_total", "value": cmms_summary.get("success_total", 0)})
     rows.append({"metric": "cmms_pending_total", "value": cmms_summary.get("pending_total", 0)})
@@ -728,6 +775,14 @@ def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
     for backend_row in rep.get("top_backends_by_handoff_volume") or []:
         rows.append({"metric": f"top_backend_{backend_row['backend']}_handoff_count", "value": backend_row["count"]})
     for asset_id, asset_metrics in (rep.get("asset_metrics") or {}).items():
+        rows.append({
+            "metric": f"asset_{asset_id}_early_warning_score",
+            "value": asset_metrics.get("early_warning_score"),
+        })
+        rows.append({
+            "metric": f"asset_{asset_id}_early_warning_status",
+            "value": asset_metrics.get("early_warning_status"),
+        })
         for point in asset_metrics.get("workorder_volume") or []:
             rows.append({
                 "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
