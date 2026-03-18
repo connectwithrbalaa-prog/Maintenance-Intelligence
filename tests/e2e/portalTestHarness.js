@@ -505,17 +505,17 @@ function createPortalHarness(options = {}) {
     },
     {
       asset_id: 'FAN-9',
-      priority_score: 9,
-      events_window: 1,
-      workorders_window: 3,
-      open_workorders: 1,
+      priority_score: 26,
+      events_window: 0,
+      workorders_window: 4,
+      open_workorders: 4,
       signal_anomaly_score: 0,
-      feedback_acceptance_rate: 1,
-      latest_severity: 'medium',
+      feedback_acceptance_rate: 0,
+      latest_severity: 'low',
       last_event_at: '2026-03-14T17:10:00Z',
-      early_warning_status: 'watch',
-      early_warning_score: 28.0,
-      early_warning_reasons: ['Low-volume warning signals are present but not yet persistent'],
+      early_warning_status: 'normal',
+      early_warning_score: 12.0,
+      early_warning_reasons: [],
     },
   ];
   const badActorsReport = options.badActorsReport || defaultBadActorsReport;
@@ -916,11 +916,15 @@ function createPortalHarness(options = {}) {
       const url = new URL(route.request().url());
       expect(url.searchParams.get('limit')).toBe('6');
   	  expect(url.searchParams.get('window')).toBe('30');
+		  const warningsOnly = url.searchParams.get('warnings_only') === 'true';
       if (badActorsFailure) {
         await fulfillError(route, 503, badActorsFailure);
         return;
       }
-      await fulfillJson(route, badActorsReport);
+      const triageReport = warningsOnly
+        ? badActorsReport.filter((row) => ['critical', 'elevated', 'watch'].includes(row.early_warning_status))
+        : badActorsReport;
+      await fulfillJson(route, triageReport);
     });
 
     await page.route('**/api/v1/agents/pm/proposals', async (route) => {

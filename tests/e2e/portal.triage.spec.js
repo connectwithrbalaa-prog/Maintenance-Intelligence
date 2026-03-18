@@ -16,6 +16,7 @@ test('portal triage: ranks prioritized assets and highlights the current run ass
   await expect(triagePanel.getByText('Higher-pressure assets exist', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('PUMP-202 currently ranks above PUMP-101 in the triage queue.', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Source /api/v1/reports/prioritized-assets', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('Queue order PdM first', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead asset PUMP-202', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead score 28', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Lead severity high', { exact: true })).toBeVisible();
@@ -24,6 +25,7 @@ test('portal triage: ranks prioritized assets and highlights the current run ass
   await expect(triagePanel.getByText('PUMP-101 is Elevated', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#1 · PUMP-202', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('#2 · PUMP-101', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('#3 · FAN-9', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Open WOs 2', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Signal risk 6', { exact: true })).toBeVisible();
   await expect(triagePanel.getByText('Acceptance 25%', { exact: true })).toBeVisible();
@@ -34,6 +36,21 @@ test('portal triage: ranks prioritized assets and highlights the current run ass
   await expect(page.locator('[data-triage-asset-id="PUMP-202"]')).toBeVisible();
   await expect(page.locator('[data-triage-evidence-asset-id="PUMP-202"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open latest evidence' }).first()).toBeVisible();
+});
+
+test('portal triage: filters to warning assets only when the toggle is enabled', async ({ page }) => {
+  const harness = createPortalHarness();
+  await harness.install(page);
+
+  await openPortal(page);
+  const triagePanel = page.locator('.triage-panel');
+
+  await expect(triagePanel.getByText('#3 · FAN-9', { exact: true })).toBeVisible();
+  await page.getByLabel('Show warning assets only').check();
+
+  await expect(triagePanel.getByText('#3 · FAN-9', { exact: true })).toHaveCount(0);
+  await expect(triagePanel.getByText('#1 · PUMP-202', { exact: true })).toBeVisible();
+  await expect(triagePanel.getByText('#2 · PUMP-101', { exact: true })).toBeVisible();
 });
 
 test('portal triage: drills into asset trends and matching evidence runs', async ({ page }) => {

@@ -23,6 +23,13 @@ _SIGNAL_PERIOD_WEIGHTS = {
     "24h": 1.0,
 }
 
+_EARLY_WARNING_ORDER = {
+    "critical": 3,
+    "elevated": 2,
+    "watch": 1,
+    "normal": 0,
+}
+
 def with_pg(dsn: str):
     import time
     while True:
@@ -117,6 +124,12 @@ def _feedback_risk(acceptance_rate: Optional[float]) -> float:
     return (1.0 - acceptance_rate) * 4.0
 
 
+def _early_warning_rank(status: Any) -> int:
+    if not isinstance(status, str):
+        return 0
+    return _EARLY_WARNING_ORDER.get(status.strip().lower(), 0)
+
+
 def _score_asset(
     *,
     latest_severity: Any,
@@ -203,6 +216,7 @@ def prioritized_assets(
     request: Request,
     limit: int = Query(20, ge=1, le=200),
     window: int = Query(30, ge=1, le=365),
+    warnings_only: bool = Query(False),
 ) -> List[Dict[str, Any]]:
     require_authenticated_identity(request, detail="Prioritized asset reports require an authenticated identity")
     s = Settings()
@@ -337,7 +351,15 @@ def prioritized_assets(
                     },
                 }
             )
-        rows.sort(key=lambda row: (-float(row["priority_score"]), row["asset_id"]))
+        if warnings_only:
+            rows = [row for row in rows if _early_warning_rank(row.get("early_warning_status")) > 0]
+        rows.sort(
+            key=lambda row: (
+                -_early_warning_rank(row.get("early_warning_status")),
+                -float(row["priority_score"]),
+                row["asset_id"],
+            )
+        )
         return rows[:limit]
     finally:
         try:

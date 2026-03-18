@@ -656,10 +656,12 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Higher-pressure assets exist" in page.text
     assert "Current asset is outside the top queue" in page.text
     assert "Source /api/v1/reports/prioritized-assets" in page.text
+    assert "Queue order PdM first" in page.text
     assert "Lead severity" in page.text
     assert "Lead PdM" in page.text
     assert "PdM flagged" in page.text
     assert "PdM warning" in page.text
+    assert "Show warning assets only" in page.text
     assert "Current run asset" in page.text
     assert "Open asset trends" in page.text
     assert "Open current evidence" in page.text
@@ -693,10 +695,11 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "data-triage-asset-id" in page.text
     assert "data-triage-run-id" in page.text
     assert "data-triage-evidence-asset-id" in page.text
-    assert 'state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {' in page.text
+    assert "triageReportUrl" in page.text
+    assert 'return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;' in page.text
     assert 'const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {' in page.text
     assert "headers: portalIdentityHeaders()" in page.text
-    assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30" in page.text
+    assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? \"true\" : \"false\"}" in page.text
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
     assert "outcomesScopeSelect" in page.text

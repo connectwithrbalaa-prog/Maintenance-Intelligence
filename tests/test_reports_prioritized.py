@@ -31,12 +31,14 @@ class FakePrioritizedCursor:
             self.rows = [
                 ("PUMP-101", 1, 0),
                 ("PUMP-202", 2, 2),
+                ("FAN-9", 4, 4),
             ]
             return
         if "SELECT asset_id, SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accept_count, SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS reject_count FROM rca_feedback" in normalized:
             self.rows = [
                 ("PUMP-101", 2, 0),
                 ("PUMP-202", 0, 1),
+                ("FAN-9", 0, 1),
             ]
             return
         if "SELECT asset_id, signal_type, period, end_time, mean, max, anomaly_flags FROM signal_rollups" in normalized:
@@ -112,7 +114,7 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
 
     assert response.status_code == 200
     payload = response.json()
-    assert [row["asset_id"] for row in payload] == ["PUMP-202", "PUMP-101"]
+    assert [row["asset_id"] for row in payload] == ["PUMP-202", "PUMP-101", "FAN-9"]
 
     highest = payload[0]
     assert highest["asset_id"] == "PUMP-202"
@@ -149,5 +151,24 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
     assert second["last_event_at"] == "2026-03-15T10:00:00Z"
     assert second["score_components"]["feedback_risk"] == 0.0
 
-    assert highest["priority_score"] > second["priority_score"]
+    third = payload[2]
+    assert third["asset_id"] == "FAN-9"
+    assert third["priority_score"] > second["priority_score"]
+    assert third["early_warning_status"] is None
+    assert third["early_warning_reasons"] == []
+
     assert fake_conn.closed is True
+
+
+def test_prioritized_assets_filters_to_warning_status_assets(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_conn = FakePrioritizedConnection()
+    monkeypatch.setattr(reports_mod, "with_pg", lambda _dsn: fake_conn)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/reports/prioritized-assets?limit=5&window=30&warnings_only=true", headers=READ_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [row["asset_id"] for row in payload] == ["PUMP-202", "PUMP-101"]
+    assert all(row["early_warning_status"] in {"critical", "elevated", "watch"} for row in payload)

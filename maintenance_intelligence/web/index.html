@@ -1354,6 +1354,21 @@
 			color: var(--text);
 		}
 
+		.triage-toggle {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 10px 12px;
+			border-radius: 12px;
+			border: 1px solid rgba(14, 124, 102, 0.12);
+			background: rgba(255, 255, 255, 0.88);
+			font-size: 0.95rem;
+		}
+
+		.triage-toggle input {
+			margin: 0;
+		}
+
 		.handoff-age-chips {
 			display: flex;
 			flex-wrap: wrap;
@@ -1887,6 +1902,7 @@
 				loading: false,
 				error: "",
 				limit: 6,
+				warningsOnly: false,
 				resolvedRunByAssetId: new Map(),
 				lookupLoadingByAssetId: new Set(),
 				lookupErrorByAssetId: new Map(),
@@ -2133,6 +2149,10 @@
 			return value
 				.map((item) => asString(item).trim())
 				.filter(Boolean);
+		}
+
+		function triageReportUrl() {
+			return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;
 		}
 
 		function asPointList(value) {
@@ -4638,7 +4658,7 @@
 			if (state.triage.loading) {
 				return `
 					<div class="triage-panel">
-						${renderOutcomesNote("Loading", "Loading triage queue", `Ranking the top ${state.triage.limit} assets by signal, lifecycle, and feedback risk.`)}
+						${renderOutcomesNote("Loading", "Loading triage queue", `Ranking the top ${state.triage.limit} assets by PdM status, signal, lifecycle, and feedback risk.`)}
 					</div>
 				`;
 			}
@@ -4652,7 +4672,7 @@
 			if (!triageRows.length) {
 				return `
 					<div class="triage-panel">
-						${renderOutcomesNote("Quiet window", "No triage pressure yet", "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate.")}
+						${renderOutcomesNote("Quiet window", "No triage pressure yet", state.triage.warningsOnly ? "There are no assets with active PdM warning status in the current ranking window yet." : "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate.")}
 					</div>
 				`;
 			}
@@ -4694,6 +4714,17 @@
 					: "";
 			return `
 				<div class="triage-panel">
+					<div class="outcomes-toolbar">
+						<div class="outcomes-controls">
+							<label class="outcomes-control">
+								<span class="outcomes-control-head">
+									<span class="outcomes-control-label">Queue filter</span>
+									<span class="outcomes-control-hint">Keep the existing triage list, or narrow it to assets with active PdM warning status.</span>
+								</span>
+								<span class="triage-toggle"><input id="triageWarningsOnlyToggle" type="checkbox" ${state.triage.warningsOnly ? "checked" : ""} aria-label="Show warning assets only">Show warning assets only</span>
+							</label>
+						</div>
+					</div>
 					<div class="triage-summary">
 						<div class="triage-hero">
 							<div class="triage-hero-label">Current asset queue rank</div>
@@ -4703,6 +4734,7 @@
 						<div class="outcomes-chip-row">
 							<span class="chip">Queue size ${escapeHtml(triageRows.length)}</span>
 							<span class="chip">Source /api/v1/reports/prioritized-assets</span>
+							<span class="chip">Queue order PdM first</span>
 							<span class="chip">Lead asset ${escapeHtml(leadAsset.asset_id || "-")}</span>
 							<span class="chip">Lead score ${escapeHtml(leadAsset.priority_score ?? "-")}</span>
 							${leadAsset.latest_severity ? `<span class="chip">Lead severity ${escapeHtml(leadAsset.latest_severity)}</span>` : ""}
@@ -5971,6 +6003,15 @@
 				});
 			});
 
+			const triageWarningsOnlyToggle = elements.detailView.querySelector("#triageWarningsOnlyToggle");
+			if (triageWarningsOnlyToggle) {
+				triageWarningsOnlyToggle.addEventListener("change", () => {
+					state.triage.warningsOnly = Boolean(triageWarningsOnlyToggle.checked);
+					resetTriageReport();
+					renderDetail(run);
+				});
+			}
+
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
 			}
@@ -6056,7 +6097,7 @@
 				renderDetail(selectedRun);
 			}
 			try {
-				state.triage.report = await fetchJson(`/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30`, {
+				state.triage.report = await fetchJson(triageReportUrl(), {
 					headers: portalIdentityHeaders(),
 				});
 			} catch (error) {
