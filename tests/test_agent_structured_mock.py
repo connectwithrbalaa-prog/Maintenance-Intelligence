@@ -7,9 +7,9 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
     class FakeGW:
         def call_rca(self, event, context):
             return {
-                "text": "ok", 
-                "model_version": "gpt-4.1", 
-                "tokens": 42, 
+                "text": "ok",
+                "model_version": "gpt-4.1",
+                "tokens": 42,
                 "latency_ms": 12,
                 "structured": {
                     "title": "Seal wear on pump",

@@ -44,7 +44,6 @@ class GenAIGateway:
             "latency_ms": latency,
         }
 
-    
     def _build_prompt(self, event: Dict[str, Any], context: Dict[str, Any]) -> str:
         lines = []
         lines.append("You are an industrial maintenance RCA assistant. Respond with STRICT JSON only.")
