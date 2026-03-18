@@ -31,3 +31,18 @@ def test_trigger_runs_for_allowed_role(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"run_id": "RUN-TRIGGER", "status": "ok", "recommendation_id": "REC-EV-123"}
+
+
+def test_trigger_ignores_dev_headers_in_production_auth_mode(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_AUTH_MODE", "production")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/agents/rca/trigger",
+        json={"event_id": "EV-123"},
+        headers={"x-user-id": "planner-1", "x-user-role": "planner"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "RCA trigger requires an authenticated identity"

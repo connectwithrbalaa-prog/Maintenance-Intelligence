@@ -3,6 +3,7 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     env: str = Field(default="dev")
+    auth_mode: str = Field(default="demo")
     log_level: str = Field(default="INFO")
     kafka_bootstrap: str = Field(default="kafka:9092", alias="KAFKA_BOOTSTRAP_SERVERS")
     pg_db: str = Field(default="maintenance", alias="POSTGRES_DB")

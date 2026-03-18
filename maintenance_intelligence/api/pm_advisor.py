@@ -24,6 +24,7 @@ from maintenance_intelligence.api.middleware.identity import (
     get_identity_role,
     get_identity_subject,
     require_authenticated_identity,
+    require_scoped_identity,
 )
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
@@ -391,14 +392,49 @@ def _is_approval_role(role: Optional[str]) -> bool:
     return (role or "").strip().lower() in APPROVAL_ROLES
 
 
-def _require_approval_actor(request: Request) -> tuple[str, str]:
-    identity = get_identity(request)
-    actor_id = _as_text(get_identity_subject(identity)) if identity else None
-    actor_role = _as_text(get_identity_role(identity)) if identity else None
+def _proposal_scope(existing: Optional[Dict[str, Any]], payload: Optional[Dict[str, Any]]) -> tuple[Optional[str], Optional[str]]:
+    candidates: List[Dict[str, Any]] = []
+    if isinstance(existing, dict):
+        candidates.append(existing)
+        metadata = existing.get("metadata")
+        if isinstance(metadata, dict):
+            candidates.append(metadata)
+            context_meta = metadata.get("context_meta")
+            if isinstance(context_meta, dict):
+                candidates.append(context_meta)
+    if isinstance(payload, dict):
+        candidates.append(payload)
+        context_meta = payload.get("context_meta")
+        if isinstance(context_meta, dict):
+            candidates.append(context_meta)
+
+    org_id = None
+    site_id = None
+    for candidate in candidates:
+        if org_id is None:
+            org_id = _as_text(candidate.get("org_id"))
+        if site_id is None:
+            site_id = _as_text(candidate.get("site_id"))
+        if org_id is not None and site_id is not None:
+            break
+    return org_id, site_id
+
+
+def _require_approval_actor(request: Request, *, org_id: Optional[str] = None, site_id: Optional[str] = None) -> tuple[str, str]:
+    identity = require_scoped_identity(
+        request,
+        detail="PM approval requires an authenticated identity",
+        allowed_roles=APPROVAL_ROLES,
+        role_detail="PM approval requires planner, maintainer, or admin role",
+        org_id=org_id,
+        site_id=site_id,
+        org_detail="PM approval is not authorized for this organization",
+        site_detail="PM approval is not authorized for this site",
+    )
+    actor_id = _as_text(get_identity_subject(identity))
+    actor_role = _as_text(get_identity_role(identity))
     if actor_id is None:
         raise HTTPException(status_code=403, detail="PM approval requires an authenticated identity")
-    if not _is_approval_role(actor_role):
-        raise HTTPException(status_code=403, detail="PM approval requires planner, maintainer, or admin role")
     return actor_id, actor_role or ""
 
 
@@ -778,12 +814,14 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
     settings = Settings()
     max_attempts = _proposal_attempt_limit(settings)
     recommendation = _build_recommendation(payload)
-    approved_by, actor_role = _require_approval_actor(request)
     existing = None
     try:
         existing = _load_persisted_proposal(proposal_id)
     except Exception:
         existing = None
+
+    proposal_org_id, proposal_site_id = _proposal_scope(existing, payload)
+    approved_by, actor_role = _require_approval_actor(request, org_id=proposal_org_id, site_id=proposal_site_id)
 
     if existing and existing.get("status") == "approved" and existing.get("work_order_id"):
         return _approval_response(

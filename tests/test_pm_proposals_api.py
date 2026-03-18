@@ -197,10 +197,15 @@ class FakeConnection:
         self.closed = True
 
 
-def _write_summary(base_dir, name="RUN-1.json"):
+def _write_summary(base_dir, name="RUN-1.json", org_id=None, site_id=None):
     run_dir = base_dir / "2026-03-15"
     run_dir.mkdir(parents=True)
     path = run_dir / name
+    context_meta = {"asset_id": "PUMP-101"}
+    if org_id is not None:
+        context_meta["org_id"] = org_id
+    if site_id is not None:
+        context_meta["site_id"] = site_id
     path.write_text(
         json.dumps(
             {
@@ -216,7 +221,7 @@ def _write_summary(base_dir, name="RUN-1.json"):
                     "pm_suggestions": ["Schedule seal replacement"],
                     "confidence": 0.81,
                 },
-                "context_meta": {"asset_id": "PUMP-101"},
+                "context_meta": context_meta,
             }
         ),
         encoding="utf-8",
@@ -1062,3 +1067,23 @@ def test_proposal_read_endpoints_require_authenticated_identity(monkeypatch, tmp
     assert proposals.json()["detail"] == "PM proposal reads require an authenticated identity"
     assert history.status_code == 403
     assert history.json()["detail"] == "PM proposal reads require an authenticated identity"
+
+
+def test_approve_proposal_rejects_cross_tenant_org_scope(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries, org_id="demo-org")
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        headers={
+            "x-user-id": "planner-1",
+            "x-user-role": "planner",
+            "x-org-id": "other-org",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "PM approval is not authorized for this organization"
