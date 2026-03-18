@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     edge_mode_enabled: bool = Field(default=False)
     edge_buffer_path: str = Field(default="outputs/edge/edge_buffer.sqlite3")
+    edge_command_buffer_path: str = Field(default="outputs/edge/edge_command_buffer.sqlite3")
     edge_replay_batch_size: int = Field(default=100)
     edge_connectivity_check_interval_s: float = Field(default=5.0)
     edge_connectivity_timeout_s: int = Field(default=2)

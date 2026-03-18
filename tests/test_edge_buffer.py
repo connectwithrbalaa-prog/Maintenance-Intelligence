@@ -32,6 +32,9 @@ def test_edge_buffer_replays_events_in_fifo_order(tmp_path):
     snapshot = buffer.snapshot()
     assert snapshot["connectivity_status"] == "online"
     assert snapshot["buffered_event_count"] == 0
+    assert snapshot["total_buffered_events"] == 2
+    assert snapshot["total_replayed_events"] == 2
+    assert snapshot["total_replay_failures"] == 0
     assert snapshot["last_successful_central_write_at"]
 
 
@@ -56,4 +59,7 @@ def test_edge_buffer_preserves_failed_replay_for_retry(tmp_path):
     snapshot = buffer.snapshot()
     assert snapshot["connectivity_status"] == "degraded"
     assert snapshot["buffered_event_count"] == 2
+    assert snapshot["total_buffered_events"] == 2
+    assert snapshot["total_replayed_events"] == 0
+    assert snapshot["total_replay_failures"] == 1
     assert snapshot["last_error"] == "central write failed"

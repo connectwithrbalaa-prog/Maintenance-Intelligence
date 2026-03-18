@@ -7,6 +7,13 @@ import sqlite3
 from typing import Any, Callable, Dict
 
 
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -59,6 +66,17 @@ class EdgeEventBuffer:
         for key, value in fields.items():
             self._set_state(conn, key, value)
 
+    def _state_value(self, conn: sqlite3.Connection, key: str, default: int = 0) -> int:
+        row = conn.execute("SELECT value FROM runtime_state WHERE key = ?", (key,)).fetchone()
+        if not row:
+            return default
+        return _as_int(row["value"], default)
+
+    def _increment_state(self, conn: sqlite3.Connection, key: str, amount: int = 1) -> int:
+        next_value = self._state_value(conn, key, 0) + int(amount)
+        self._set_state(conn, key, next_value)
+        return next_value
+
     def buffered_event_count(self) -> int:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS total FROM buffered_events").fetchone()
@@ -84,6 +102,7 @@ class EdgeEventBuffer:
                 "INSERT INTO buffered_events(event_id, payload_json, created_at, last_error) VALUES(?, ?, ?, ?)",
                 (str(event.get("event_id") or ""), payload_json, created_at, error),
             )
+            self._increment_state(conn, "total_buffered_events")
             self._update_state(conn, connectivity_status="offline", last_error=error)
             conn.commit()
             return int(cursor.lastrowid or 0)
@@ -118,6 +137,7 @@ class EdgeEventBuffer:
                 try:
                     store_event(conn, payload)
                 except Exception as exc:
+                    self._increment_state(sqlite_conn, "total_replay_failures")
                     sqlite_conn.execute(
                         "UPDATE buffered_events SET replay_attempts = replay_attempts + 1, last_error = ? WHERE id = ?",
                         (str(exc), row["id"]),
@@ -131,6 +151,7 @@ class EdgeEventBuffer:
                     }
                 sqlite_conn.execute("DELETE FROM buffered_events WHERE id = ?", (row["id"],))
                 replayed += 1
+                self._increment_state(sqlite_conn, "total_replayed_events")
 
             if replayed:
                 self._update_state(
@@ -154,6 +175,9 @@ class EdgeEventBuffer:
             return {
                 "connectivity_status": state.get("connectivity_status") or "unknown",
                 "buffered_event_count": self.buffered_event_count(),
+                "total_buffered_events": _as_int(state.get("total_buffered_events"), 0),
+                "total_replayed_events": _as_int(state.get("total_replayed_events"), 0),
+                "total_replay_failures": _as_int(state.get("total_replay_failures"), 0),
                 "last_successful_central_write_at": state.get("last_successful_central_write_at"),
                 "last_replay_attempt_at": state.get("last_replay_attempt_at"),
                 "last_error": state.get("last_error"),
