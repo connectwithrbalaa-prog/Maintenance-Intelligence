@@ -361,3 +361,45 @@ def test_wo_bridge_replays_queued_edge_commands_before_live_messages(tmp_path):
     assert fake_connection.proposals["REC-QUEUED"]["status"] == "approved"
     assert fake_connection.proposals["REC-QUEUED"]["work_order_id"] == "WO-REC-1234"
     assert fake_connection.proposals["REC-QUEUED"]["metadata"]["approval"]["handoff_state"] == "success"
+
+
+def test_with_pg_retries_then_succeeds(monkeypatch):
+    attempts = {"count": 0}
+    sleeps = []
+    sentinel_conn = object()
+
+    def fake_connect(_dsn):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise RuntimeError("temporary db outage")
+        return sentinel_conn
+
+    monkeypatch.setattr(wo_bridge_mod.psycopg2, "connect", fake_connect)
+    monkeypatch.setattr(wo_bridge_mod.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    conn = wo_bridge_mod.with_pg("dbname=test", retry_interval_s=0.01, max_attempts=5)
+
+    assert conn is sentinel_conn
+    assert attempts["count"] == 3
+    assert sleeps == [0.01, 0.01]
+
+
+def test_with_pg_raises_after_max_attempts(monkeypatch):
+    attempts = {"count": 0}
+    sleeps = []
+
+    def fake_connect(_dsn):
+        attempts["count"] += 1
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(wo_bridge_mod.psycopg2, "connect", fake_connect)
+    monkeypatch.setattr(wo_bridge_mod.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    try:
+        wo_bridge_mod.with_pg("dbname=test", retry_interval_s=0.02, max_attempts=4)
+        assert False, "Expected with_pg to raise after max attempts"
+    except RuntimeError as exc:
+        assert str(exc) == "db down"
+
+    assert attempts["count"] == 4
+    assert sleeps == [0.02, 0.02, 0.02]

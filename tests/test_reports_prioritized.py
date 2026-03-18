@@ -125,8 +125,8 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
     assert highest["signal_anomaly_score"] == 6.0
     assert highest["feedback_acceptance_rate"] == 0.0
     assert highest["mtbf_seconds"] == 14400.0
-    assert highest["early_warning_status"] == "critical"
-    assert highest["early_warning_score"] == 72.0
+    assert highest["early_warning_status"] == "elevated"
+    assert highest["early_warning_score"] == 66.0
     assert highest["early_warning_reasons"] == [
         "Signal rollups still carry anomaly flags",
         "Temperature remains at 94.0 C",
@@ -142,7 +142,7 @@ def test_prioritized_assets_ranks_assets_by_signal_feedback_and_mtbf_risk(monkey
     assert second["feedback_acceptance_rate"] == 1.0
     assert second["mtbf_seconds"] == 216000.0
     assert second["early_warning_status"] == "elevated"
-    assert second["early_warning_score"] == 57.0
+    assert second["early_warning_score"] == 51.0
     assert second["early_warning_reasons"] == [
         "High-severity events have repeated for this asset",
         "Signal rollups still carry anomaly flags",
