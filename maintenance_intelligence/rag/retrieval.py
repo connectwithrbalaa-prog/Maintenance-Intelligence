@@ -41,25 +41,31 @@ class HybridRetriever:
                 self.bm25_weight = resolved_bm25 / total
 
     def retrieve(self, query: str, asset_id: Optional[str] = None, limit: int = 10,
-                 token_budget: int = 4000) -> List[Dict[str, Any]]:
+                 token_budget: int = 4000, fleet_wide: bool = False) -> List[Dict[str, Any]]:
         """
         Retrieve relevant chunks using hybrid BM25 + vector search.
         Returns top chunks within token budget.
         """
         # Get vector results
-        vector_results = self._vector_search(query, asset_id, limit * 2)
+        vector_results = self._vector_search(query, asset_id, limit * 2, fleet_wide=fleet_wide)
 
         # Get BM25 results
-        bm25_results = self._bm25_search(query, asset_id, limit * 2)
+        bm25_results = self._bm25_search(query, asset_id, limit * 2, fleet_wide=fleet_wide)
 
         # Combine scores
         combined = self._combine_scores(vector_results, bm25_results)
 
         # Sort by combined score and apply token budget
-        combined.sort(key=lambda x: (-x['score'], str(x.get('chunk_id', ''))))
+        combined.sort(
+            key=lambda x: (
+                -x['score'],
+                0 if x.get('source_scope') == 'local' else 1,
+                str(x.get('chunk_id', '')),
+            )
+        )
         return self._apply_token_budget(combined, token_budget)
 
-    def _vector_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _vector_search(self, query: str, asset_id: Optional[str], limit: int, fleet_wide: bool = False) -> List[Dict[str, Any]]:
         """Vector similarity search using pgvector."""
         api_key = self.settings.openai_api_key or os.getenv("OPENAI_API_KEY")
         if not api_key or OpenAI is None:
@@ -75,9 +81,9 @@ class HybridRetriever:
 
             conn = with_pg(self.db_url)
             with conn, conn.cursor() as cur:
-                if asset_id:
+                if asset_id and not fleet_wide:
                     cur.execute("""
-                        SELECT chunk_id, title, content, embedding <=> %s::vector as distance
+                        SELECT chunk_id, title, content, asset_id, source, embedding <=> %s::vector as distance
                         FROM doc_chunks
                         WHERE asset_id = %s AND embedding IS NOT NULL
                         ORDER BY embedding <=> %s::vector
@@ -85,7 +91,7 @@ class HybridRetriever:
                     """, (embedding, asset_id, embedding, limit))
                 else:
                     cur.execute("""
-                        SELECT chunk_id, title, content, embedding <=> %s::vector as distance
+                        SELECT chunk_id, title, content, asset_id, source, embedding <=> %s::vector as distance
                         FROM doc_chunks
                         WHERE embedding IS NOT NULL
                         ORDER BY embedding <=> %s::vector
@@ -97,7 +103,13 @@ class HybridRetriever:
                     'chunk_id': r[0],
                     'title': r[1],
                     'content': r[2],
-                    'vector_score': 1.0 / (1.0 + r[3])  # Convert distance to similarity
+                    'asset_id': r[3],
+                    'source': r[4],
+                    'org_id': None,
+                    'site_id': None,
+                    'asset_class': None,
+                    'source_scope': 'local' if not asset_id or r[3] == asset_id else 'fleet',
+                    'vector_score': 1.0 / (1.0 + r[5])  # Convert distance to similarity
                 } for r in results]
         except Exception:
             # Fallback to BM25 only if vector search fails
@@ -109,7 +121,7 @@ class HybridRetriever:
                 except Exception:
                     pass
 
-    def _bm25_search(self, query: str, asset_id: Optional[str], limit: int) -> List[Dict[str, Any]]:
+    def _bm25_search(self, query: str, asset_id: Optional[str], limit: int, fleet_wide: bool = False) -> List[Dict[str, Any]]:
         """BM25 text search."""
         # Tokenize query
         query_terms = self._tokenize(query)
@@ -117,21 +129,27 @@ class HybridRetriever:
         conn = with_pg(self.db_url)
         with conn, conn.cursor() as cur:
             # Get all documents
-            if asset_id:
-                cur.execute("SELECT chunk_id, title, content FROM doc_chunks WHERE asset_id = %s", (asset_id,))
+            if asset_id and not fleet_wide:
+                cur.execute("SELECT chunk_id, title, content, asset_id, source FROM doc_chunks WHERE asset_id = %s", (asset_id,))
             else:
-                cur.execute("SELECT chunk_id, title, content FROM doc_chunks")
+                cur.execute("SELECT chunk_id, title, content, asset_id, source FROM doc_chunks")
 
             docs = cur.fetchall()
 
             scored = []
-            for chunk_id, title, content in docs:
+            for chunk_id, title, content, row_asset_id, source in docs:
                 text = f"{title} {content}"
                 bm25_score = self._bm25_score(query_terms, text, docs)
                 scored.append({
                     'chunk_id': chunk_id,
                     'title': title,
                     'content': content,
+                    'asset_id': row_asset_id,
+                    'source': source,
+                    'org_id': None,
+                    'site_id': None,
+                    'asset_class': None,
+                    'source_scope': 'local' if not asset_id or row_asset_id == asset_id else 'fleet',
                     'bm25_score': bm25_score
                 })
 
@@ -215,7 +233,7 @@ class HybridRetriever:
 
         # Document length
         doc_len = len(doc_terms)
-        avg_doc_len = sum(len(self._tokenize(f"{title} {content}")) for _, title, content in all_docs) / len(all_docs)
+        avg_doc_len = sum(len(self._tokenize(f"{title} {content}")) for _, title, content, *_ in all_docs) / len(all_docs)
 
         k1 = 1.5  # BM25 parameters
         b = 0.75
@@ -224,7 +242,7 @@ class HybridRetriever:
         for term in query_terms:
             if term in doc_term_freq:
                 tf = doc_term_freq[term]
-                df = sum(1 for _, title, content in all_docs if term in self._tokenize(f"{title} {content}"))
+                df = sum(1 for _, title, content, *_ in all_docs if term in self._tokenize(f"{title} {content}"))
                 idf = math.log(1 + ((len(all_docs) - df + 0.5) / (df + 0.5)))
 
                 numerator = tf * (k1 + 1)

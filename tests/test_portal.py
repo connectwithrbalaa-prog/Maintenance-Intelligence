@@ -46,6 +46,24 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
                     "asset_id": "PUMP-101",
                     "event_kind": "anomaly",
                 },
+                "context_scope": "local+fleet",
+                "fleet_context_summary": {
+                    "external_ref_count": 1,
+                    "referenced_asset_ids": ["PUMP-202"],
+                    "referenced_sources": ["incident.md"],
+                    "current_asset_id": "PUMP-101",
+                },
+                "context_items": {
+                    "doc_chunks": [
+                        {
+                            "chunk_id": "DOC-77",
+                            "title": "Similar incident",
+                            "asset_id": "PUMP-202",
+                            "source": "incident.md",
+                            "source_scope": "fleet",
+                        }
+                    ]
+                },
             }
         ),
         encoding="utf-8",
@@ -75,6 +93,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail_payload["structured"]["evidence_ids"] == ["EV-9", "DOC-1", "SIG-1"]
     assert detail_payload["model"]["latency_ms"] == 812
     assert detail_payload["structured"]["summary"] == ""
+    assert detail_payload["context_scope"] == "local+fleet"
+    assert detail_payload["fleet_context_summary"]["external_ref_count"] == 1
+    assert detail_payload["context_items"]["doc_chunks"][0]["source_scope"] == "fleet"
 
     latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS)
     assert latest.status_code == 200
@@ -455,6 +476,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Contributing factor drift" in page.text
     assert "Evidence reference drift" in page.text
     assert "Present in both runs" in page.text
+    assert "Context scope" in page.text
+    assert "Local + Fleet" in page.text
+    assert "fleet_context_summary" in page.text
+    assert "renderFleetContextSummary" in page.text
     assert "repairPlanProcedureLabels" in page.text
     assert "repairPlanPartLabels" in page.text
     assert "formatCurrencyDelta" in page.text

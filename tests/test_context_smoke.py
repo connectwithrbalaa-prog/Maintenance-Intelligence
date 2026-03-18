@@ -8,7 +8,7 @@ class FakeCursor:
         self._responses = responses
         self._current = []
 
-    def execute(self, _query, _params):
+    def execute(self, _query, _params=None):
         self._current = next(self._responses)
 
     def fetchall(self):
@@ -101,20 +101,22 @@ def test_get_event_context_uses_retriever_and_preserves_recent_order():
         def __init__(self, dsn):
             self.dsn = dsn
 
-        def retrieve(self, query, asset_id, limit, token_budget):
+        def retrieve(self, query, asset_id, limit, token_budget, fleet_wide):
             assert query == "alarm pump vibration high 88"
             assert asset_id == "TEST-ASSET"
             assert limit == 5
             assert token_budget == 2000
+            assert fleet_wide is True
             return [
-                {"chunk_id": "DOC-9", "title": "Manual excerpt"},
-                {"chunk_id": "DOC-2", "title": "Past incident"},
+                {"chunk_id": "DOC-9", "title": "Manual excerpt", "asset_id": "TEST-ASSET", "source": "manual.pdf", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
+                {"chunk_id": "DOC-2", "title": "Past incident", "asset_id": "PUMP-202", "source": "incident.md", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "fleet"},
             ]
 
     ctx = get_event_context(
         {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration high", "details": {"temperature": 88}},
         connection_factory=lambda _dsn: fake_conn,
         retriever_cls=FakeRetriever,
+        fleet_wide=True,
     )
 
     assert ctx["last_wo_titles"] == ["WO newest", "WO older"]
@@ -122,9 +124,12 @@ def test_get_event_context_uses_retriever_and_preserves_recent_order():
     assert ctx["recent_signals"][0]["signal_id"] == "SIG-2"
     assert ctx["recent_signals"][1]["signal_id"] == "SIG-1"
     assert ctx["doc_chunks"] == [
-        {"chunk_id": "DOC-9", "title": "Manual excerpt"},
-        {"chunk_id": "DOC-2", "title": "Past incident"},
+        {"chunk_id": "DOC-9", "title": "Manual excerpt", "asset_id": "TEST-ASSET", "source": "manual.pdf", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
+        {"chunk_id": "DOC-2", "title": "Past incident", "asset_id": "PUMP-202", "source": "incident.md", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "fleet"},
     ]
+    assert ctx["context_scope"] == "local+fleet"
+    assert ctx["fleet_context_summary"]["external_ref_count"] == 1
+    assert ctx["fleet_context_summary"]["referenced_asset_ids"] == ["PUMP-202"]
     assert fake_conn.closed is True
 
 
@@ -135,9 +140,9 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
             [],
             [],
             [
-                ("DOC-3", "General manual", "routine inspection checklist", dt.datetime(2026, 3, 15, 12, 35)),
-                ("DOC-1", "Pump alarm playbook", "pump vibration response steps", dt.datetime(2026, 3, 15, 12, 10)),
-                ("DOC-2", "Pump maintenance", "bearing wear and pump vibration guide", dt.datetime(2026, 3, 15, 12, 20)),
+                ("DOC-3", "General manual", "routine inspection checklist", "TEST-ASSET", "manual.pdf", dt.datetime(2026, 3, 15, 12, 35)),
+                ("DOC-1", "Pump alarm playbook", "pump vibration response steps", "TEST-ASSET", "playbook.md", dt.datetime(2026, 3, 15, 12, 10)),
+                ("DOC-2", "Pump maintenance", "bearing wear and pump vibration guide", "TEST-ASSET", "maintenance.md", dt.datetime(2026, 3, 15, 12, 20)),
             ],
         ]
     )
@@ -146,7 +151,7 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
         def __init__(self, dsn):
             self.dsn = dsn
 
-        def retrieve(self, query, asset_id, limit, token_budget):
+        def retrieve(self, query, asset_id, limit, token_budget, fleet_wide):
             raise RuntimeError("retriever unavailable")
 
     ctx = get_event_context(
@@ -159,7 +164,8 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
     assert ctx["signal_rollups"] == []
     assert ctx["recent_signals"] == []
     assert ctx["doc_chunks"] == [
-        {"chunk_id": "DOC-1", "title": "Pump alarm playbook"},
-        {"chunk_id": "DOC-2", "title": "Pump maintenance"},
-        {"chunk_id": "DOC-3", "title": "General manual"},
+        {"chunk_id": "DOC-1", "title": "Pump alarm playbook", "asset_id": "TEST-ASSET", "source": "playbook.md", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
+        {"chunk_id": "DOC-2", "title": "Pump maintenance", "asset_id": "TEST-ASSET", "source": "maintenance.md", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
+        {"chunk_id": "DOC-3", "title": "General manual", "asset_id": "TEST-ASSET", "source": "manual.pdf", "org_id": None, "site_id": None, "asset_class": None, "source_scope": "local"},
     ]
+    assert ctx["context_scope"] == "local"

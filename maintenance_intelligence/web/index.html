@@ -2307,6 +2307,30 @@
 					latency_ms: asNumber(modelSource.latency_ms),
 					confidence: asNumber(modelSource.confidence),
 				},
+				context_scope: asString(source.context_scope, "local") || "local",
+				fleet_context_summary: {
+					external_ref_count: asNumber(asObject(source.fleet_context_summary).external_ref_count) ?? 0,
+					referenced_asset_ids: asStringList(asObject(source.fleet_context_summary).referenced_asset_ids),
+					referenced_sources: asStringList(asObject(source.fleet_context_summary).referenced_sources),
+					current_asset_id: asString(asObject(source.fleet_context_summary).current_asset_id),
+				},
+				context_items: {
+					doc_chunks: Array.isArray(asObject(source.context_items).doc_chunks)
+						? asObject(source.context_items).doc_chunks.map((item) => {
+							const chunk = asObject(item);
+							return {
+								chunk_id: asString(chunk.chunk_id),
+								title: asString(chunk.title),
+								asset_id: asString(chunk.asset_id),
+								source: asString(chunk.source),
+								org_id: asString(chunk.org_id),
+								site_id: asString(chunk.site_id),
+								asset_class: asString(chunk.asset_class),
+								source_scope: asString(chunk.source_scope, "local") || "local",
+							};
+						})
+						: [],
+				},
 				repair_plan: hasRepairPlanContent(repairPlan) ? repairPlan : null,
 				context_meta: asObject(contextMeta),
 				date: asString(source.date),
@@ -2697,6 +2721,51 @@
 							`).join('')}</ol>` : `<p class="muted">No rollups were returned for this asset.</p>`}
 						</div>
 					</div>
+				</div>
+			`;
+		}
+
+		function renderFleetContextSummary(run) {
+			const summary = asObject(run?.fleet_context_summary);
+			const externalRefCount = typeof summary.external_ref_count === "number" && Number.isFinite(summary.external_ref_count)
+				? summary.external_ref_count
+				: 0;
+			const referencedAssetIds = asStringList(summary.referenced_asset_ids);
+			const referencedSources = asStringList(summary.referenced_sources);
+			const scope = asString(run?.context_scope, "local") || "local";
+			const scopeLabel = scope === "local+fleet" ? "Local + Fleet" : "Local";
+			const externalChunks = Array.isArray(run?.context_items?.doc_chunks)
+				? run.context_items.doc_chunks.filter((item) => item?.source_scope === "fleet")
+				: [];
+
+			if (!externalRefCount) {
+				return `
+					<div class="outcomes-note">
+						<strong>Context scope</strong>
+						<div>${escapeHtml(scopeLabel)}</div>
+						<div class="footer-note">No fleet references were pulled into this run yet.</div>
+					</div>
+				`;
+			}
+
+			return `
+				<div class="repair-plan-shell">
+					<div class="outcomes-chip-row">
+						<span class="chip">Context scope ${escapeHtml(scopeLabel)}</span>
+						<span class="chip">Fleet references ${escapeHtml(externalRefCount)}</span>
+						${referencedAssetIds.length ? `<span class="chip">External assets ${escapeHtml(referencedAssetIds.length)}</span>` : ""}
+					</div>
+					${referencedAssetIds.length ? `<div class="footer-note">Referenced assets: ${escapeHtml(referencedAssetIds.join(", "))}</div>` : ""}
+					${referencedSources.length ? `<div class="footer-note">Referenced sources: ${escapeHtml(referencedSources.join(", "))}</div>` : ""}
+					${externalChunks.length ? `<ol class="repair-plan-part-list">${externalChunks.map((item) => `
+						<li class="repair-plan-part">
+							<div class="repair-plan-part-head">
+								<strong>${escapeHtml(item.title || item.chunk_id || "External context")}</strong>
+								<span class="chip">${escapeHtml(item.asset_id || "Fleet")}</span>
+							</div>
+							${item.source ? `<div class="muted">${escapeHtml(item.source)}</div>` : ""}
+						</li>
+					`).join("")}</ol>` : ""}
 				</div>
 			`;
 		}
@@ -5428,6 +5497,14 @@
 					<div class="section">
 						<h3>Evidence references</h3>
 						${renderEvidenceReferences(run)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Context scope</h3>
+							<span class="muted tiny">Show whether this RCA run used only local evidence or pulled in fleet-wide references.</span>
+						</div>
+						${renderFleetContextSummary(run)}
 					</div>
 
 					<div class="section">

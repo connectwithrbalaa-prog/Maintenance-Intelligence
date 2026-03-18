@@ -141,7 +141,7 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         return None
 
     _t0 = time.time()
-    ctx = get_event_context(evt, settings)
+    ctx = get_event_context(evt, settings, fleet_wide=getattr(settings, "rca_fleet_wide_context", True))
 
     if gateway:
         g = gateway.call_rca(evt, ctx)
@@ -202,6 +202,9 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             "wo_titles_count": len(ctx.get("last_wo_titles", [])),
             "doc_chunk_ids": doc_chunk_ids,
             "signal_ids": signal_ids,
+            "context_scope": ctx.get("context_scope", "local"),
+            "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get("external_ref_count", 0),
+            "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get("referenced_asset_ids", []),
         },
     }
 
@@ -235,6 +238,9 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "model": model_meta,
         "structured": structured,
         "context_meta": out.get("context_meta", {}),
+        "context_scope": ctx.get("context_scope", "local"),
+        "fleet_context_summary": ctx.get("fleet_context_summary", {}),
+        "context_items": {"doc_chunks": ctx.get("doc_chunks", [])},
     }
     if persisted_plan is not None:
         summary_payload["repair_plan_id"] = persisted_plan["plan_id"]

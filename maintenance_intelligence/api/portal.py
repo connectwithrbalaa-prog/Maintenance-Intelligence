@@ -90,6 +90,36 @@ def _sanitize_model(value: Any) -> Dict[str, Any]:
     }
 
 
+def _sanitize_context_item(value: Any) -> Dict[str, Any]:
+    item = _as_dict(value)
+    return {
+        "chunk_id": _as_safe_text(item.get("chunk_id")),
+        "title": _as_safe_text(item.get("title")),
+        "asset_id": _as_safe_text(item.get("asset_id")),
+        "source": _as_safe_text(item.get("source")),
+        "org_id": _as_safe_text(item.get("org_id")),
+        "site_id": _as_safe_text(item.get("site_id")),
+        "asset_class": _as_safe_text(item.get("asset_class")),
+        "source_scope": _as_safe_text(item.get("source_scope"), "local") or "local",
+    }
+
+
+def _sanitize_context_items(value: Any) -> Dict[str, Any]:
+    items = _as_dict(value)
+    doc_chunks = [_sanitize_context_item(item) for item in items.get("doc_chunks") or [] if isinstance(item, dict)]
+    return {"doc_chunks": doc_chunks}
+
+
+def _sanitize_fleet_context_summary(value: Any) -> Dict[str, Any]:
+    summary = _as_dict(value)
+    return {
+        "external_ref_count": int(_as_number(summary.get("external_ref_count")) or 0),
+        "referenced_asset_ids": _as_string_list(summary.get("referenced_asset_ids")),
+        "referenced_sources": _as_string_list(summary.get("referenced_sources")),
+        "current_asset_id": _as_safe_text(summary.get("current_asset_id")),
+    }
+
+
 def _sanitize_structured(value: Any) -> Dict[str, Any]:
     structured = _as_dict(value)
     repair_plan = _sanitize_structured_repair_plan(structured.get("repair_plan"))
@@ -286,6 +316,8 @@ def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str
         "repair_plan_id": _as_safe_text(payload.get("repair_plan_id")) or _as_safe_text(structured_repair_plan.get("plan_id")),
         "model": model,
         "context_meta": _sanitize_context_meta(payload.get("context_meta")),
+        "context_scope": _as_safe_text(payload.get("context_scope"), "local") or "local",
+        "fleet_context_summary": _sanitize_fleet_context_summary(payload.get("fleet_context_summary")),
         "date": source_path.parent.name,
         "source_file": source_path.name,
         "updated_at": source_path.stat().st_mtime,
@@ -370,5 +402,6 @@ def run_details(run_id: str, request: Request) -> Dict[str, Any]:
             **_extract_run_summary(payload, path),
             "structured": _sanitize_structured(payload.get("structured")),
             "repair_plan": _extract_repair_plan(payload),
+            "context_items": _sanitize_context_items(payload.get("context_items")),
         }
     raise HTTPException(status_code=404, detail="Run summary not found")

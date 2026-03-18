@@ -95,10 +95,17 @@ def test_rca_agent_loop_processes_event_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rca_mod,
         "get_event_context",
-        lambda evt, settings: {
+        lambda evt, settings, fleet_wide=None: {
             "last_wo_titles": ["Prior seal replacement"],
-            "doc_chunks": [{"chunk_id": "DOC-1"}],
+            "doc_chunks": [{"chunk_id": "DOC-1", "asset_id": "PUMP-101", "source_scope": "local", "source": "manual.pdf"}],
             "recent_signals": [{"signal_id": "SIG-1"}],
+            "context_scope": "local+fleet",
+            "fleet_context_summary": {
+                "external_ref_count": 1,
+                "referenced_asset_ids": ["PUMP-202"],
+                "referenced_sources": ["incident.md"],
+                "current_asset_id": "PUMP-101",
+            },
         },
     )
     monkeypatch.setattr(
@@ -139,6 +146,9 @@ def test_rca_agent_loop_processes_event_end_to_end(monkeypatch, tmp_path):
     assert written["summary"]["context_meta"]["org_id"] == "ORG-1"
     assert written["summary"]["context_meta"]["doc_chunk_ids"] == ["DOC-1"]
     assert written["summary"]["context_meta"]["signal_ids"] == ["SIG-1"]
+    assert written["summary"]["context_scope"] == "local+fleet"
+    assert written["summary"]["fleet_context_summary"]["external_ref_count"] == 1
+    assert written["summary"]["context_items"]["doc_chunks"][0]["source_scope"] == "local"
     assert persisted["plan"]["recommendation_id"] == payload["recommendation"]["id"]
     assert persisted["plan"]["asset_id"] == "PUMP-101"
     assert persisted["parts"][0]["plan_id"] == "RP-123"
@@ -182,7 +192,7 @@ def test_process_event_logs_and_continues_when_repair_plan_persistence_fails(mon
                 },
             }
 
-    monkeypatch.setattr(rca_mod, "get_event_context", lambda evt, settings: {"last_wo_titles": [], "doc_chunks": [], "recent_signals": []})
+    monkeypatch.setattr(rca_mod, "get_event_context", lambda evt, settings, fleet_wide=None: {"last_wo_titles": [], "doc_chunks": [], "recent_signals": [], "context_scope": "local", "fleet_context_summary": {"external_ref_count": 0, "referenced_asset_ids": [], "referenced_sources": [], "current_asset_id": "PUMP-101"}})
     monkeypatch.setattr(rca_mod, "send_recommendation", lambda producer, recommendation: sent.setdefault("event", recommendation))
     monkeypatch.setattr(rca_mod, "write_run_summary", lambda dir_path, run_id, payload: written.setdefault("payload", payload) or str(tmp_path / "summary.json"))
     monkeypatch.setattr(rca_mod, "create_repair_plan", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("db down")))
