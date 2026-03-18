@@ -1,11 +1,15 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, timezone
-import io, csv
+import io
+import csv
 import psycopg2
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
-from maintenance_intelligence.services.pdm_scorer import build_early_warning_report, empty_early_warning_summary
+from maintenance_intelligence.services.pdm_scorer import (
+    build_early_warning_report,
+    empty_early_warning_summary,
+)
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 FEEDBACK_ACTIONS = ("accept", "reject", "edited")
@@ -22,8 +26,10 @@ PLACEHOLDER_NOTES = {
     "mttr_seconds_avg": "Placeholder until work order lifecycle repair timestamps are available.",
 }
 
+
 def with_pg(dsn: str):
     import time
+
     last_error = None
     for _ in range(3):
         try:
@@ -32,6 +38,7 @@ def with_pg(dsn: str):
             last_error = exc
             time.sleep(0.2)
     raise last_error
+
 
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
@@ -105,7 +112,9 @@ def _empty_asset_series(bucket_dates: List[str], *, empty_value: Any) -> List[Di
     return [{"date": bucket_date, "value": empty_value} for bucket_date in bucket_dates]
 
 
-def _series_to_rows(values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any) -> Dict[str, List[Dict[str, Any]]]:
+def _series_to_rows(
+    values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any
+) -> Dict[str, List[Dict[str, Any]]]:
     rows: Dict[str, List[Dict[str, Any]]] = {}
     for asset_id, per_day in values.items():
         rows[asset_id] = [
@@ -115,11 +124,22 @@ def _series_to_rows(values: Dict[str, Dict[str, Any]], bucket_dates: List[str], 
     return rows
 
 
-def _set_asset_metric_series(out: Dict[str, Any], metric_name: str, series: Dict[str, List[Dict[str, Any]]], bucket_dates: List[str]) -> None:
+def _set_asset_metric_series(
+    out: Dict[str, Any],
+    metric_name: str,
+    series: Dict[str, List[Dict[str, Any]]],
+    bucket_dates: List[str],
+) -> None:
     _set_group_metric_series(out, "asset_metrics", metric_name, series, bucket_dates)
 
 
-def _set_group_metric_series(out: Dict[str, Any], group_key: str, metric_name: str, series: Dict[str, List[Dict[str, Any]]], bucket_dates: List[str]) -> None:
+def _set_group_metric_series(
+    out: Dict[str, Any],
+    group_key: str,
+    metric_name: str,
+    series: Dict[str, List[Dict[str, Any]]],
+    bucket_dates: List[str],
+) -> None:
     group_metrics = out.setdefault(group_key, {})
     group_ids = set(group_metrics) | set(series)
     for group_id in sorted(group_ids):
@@ -127,7 +147,9 @@ def _set_group_metric_series(out: Dict[str, Any], group_key: str, metric_name: s
         empty_value = 0 if metric_name == "workorder_volume" else None
         if metric_name == "feedback_volume":
             empty_value = 0
-        group_entry[metric_name] = series.get(group_id, _empty_asset_series(bucket_dates, empty_value=empty_value))
+        group_entry[metric_name] = series.get(
+            group_id, _empty_asset_series(bucket_dates, empty_value=empty_value)
+        )
 
 
 def _update_group_feedback_totals(out: Dict[str, Any], group_key: str, rows: List[Any]) -> None:
@@ -139,20 +161,22 @@ def _update_group_feedback_totals(out: Dict[str, Any], group_key: str, rows: Lis
         action = str(row[1])
         count = int(row[2] or 0)
         entity_entry = group_metrics.setdefault(entity_id, {})
-        counts = entity_entry.setdefault("feedback_counts", {feedback_action: 0 for feedback_action in FEEDBACK_ACTIONS})
+        counts = entity_entry.setdefault(
+            "feedback_counts", {feedback_action: 0 for feedback_action in FEEDBACK_ACTIONS}
+        )
         if action in FEEDBACK_ACTIONS:
             counts[action] = count
         total = sum(int(counts.get(feedback_action, 0)) for feedback_action in FEEDBACK_ACTIONS)
         entity_entry["feedback_total"] = total
         decided_total = int(counts.get("accept", 0)) + int(counts.get("reject", 0))
-        entity_entry["acceptance_rate"] = (int(counts.get("accept", 0)) / decided_total) if decided_total > 0 else None
+        entity_entry["acceptance_rate"] = (
+            (int(counts.get("accept", 0)) / decided_total) if decided_total > 0 else None
+        )
 
 
 def _set_top_group_rows(out: Dict[str, Any], top_key: str, id_label: str, rows: List[Any]) -> None:
     out[top_key] = [
-        {id_label: str(row[0]), "count": int(row[1] or 0)}
-        for row in (rows or [])
-        if row and row[0]
+        {id_label: str(row[0]), "count": int(row[1] or 0)} for row in (rows or []) if row and row[0]
     ]
 
 
@@ -202,7 +226,7 @@ def _workorder_backend(workorder_metadata: Any) -> str:
     source = (_as_text(metadata.get("source")) or "").lower()
     prefix = "agent-wo-bridge-"
     if source.startswith(prefix):
-        derived_backend = source[len(prefix):].strip()
+        derived_backend = source[len(prefix) :].strip()
         if derived_backend:
             return derived_backend
     return "unknown"
@@ -215,13 +239,19 @@ def _proposal_attempt_count(metadata: Any) -> int:
     if isinstance(attempts, list):
         return sum(1 for item in attempts if isinstance(item, dict))
     approval = metadata.get("approval")
-    if isinstance(approval, dict) and any(_as_text(approval.get(field)) for field in ("attempted_at", "approved_at", "approved_by")):
+    if isinstance(approval, dict) and any(
+        _as_text(approval.get(field)) for field in ("attempted_at", "approved_at", "approved_by")
+    ):
         return 1
     return 0
 
 
 def _proposal_handoff_state(status: Any, work_order_id: Any, metadata: Any) -> str:
-    approval = metadata.get("approval") if isinstance(metadata, dict) and isinstance(metadata.get("approval"), dict) else {}
+    approval = (
+        metadata.get("approval")
+        if isinstance(metadata, dict) and isinstance(metadata.get("approval"), dict)
+        else {}
+    )
     handoff_state = (_as_text(approval.get("handoff_state")) or "").lower()
     if handoff_state in {"success", "pending", "failure"}:
         return handoff_state
@@ -241,7 +271,14 @@ def _bucket_date_text(value: Any) -> str | None:
     return _as_text(value)
 
 
-def _update_cmms_bucket(bucket: Dict[str, Any], status: Any, work_order_id: Any, proposal_metadata: Any, handoff_completed_at: Any, max_attempts: int) -> None:
+def _update_cmms_bucket(
+    bucket: Dict[str, Any],
+    status: Any,
+    work_order_id: Any,
+    proposal_metadata: Any,
+    handoff_completed_at: Any,
+    max_attempts: int,
+) -> None:
     summary = _ensure_cmms_bucket(bucket)
     metadata = proposal_metadata if isinstance(proposal_metadata, dict) else {}
     attempt_count = _proposal_attempt_count(metadata)
@@ -255,7 +292,9 @@ def _update_cmms_bucket(bucket: Dict[str, Any], status: Any, work_order_id: Any,
         summary["pending_total"] = int(summary.get("pending_total") or 0) + 1
 
     if _as_text(status) != "approved" and attempt_count > 0:
-        summary["admin_retry_required_total"] = int(summary.get("admin_retry_required_total") or 0) + 1
+        summary["admin_retry_required_total"] = (
+            int(summary.get("admin_retry_required_total") or 0) + 1
+        )
     if _as_text(status) != "approved" and attempt_count >= max_attempts:
         summary["limit_reached_total"] = int(summary.get("limit_reached_total") or 0) + 1
 
@@ -272,7 +311,9 @@ def _finalize_cmms_bucket(bucket: Dict[str, Any]) -> None:
     summary = _ensure_cmms_bucket(bucket)
     lead_time_total = float(summary.pop("_lead_time_total", 0.0) or 0.0)
     lead_time_count = int(summary.pop("_lead_time_count", 0) or 0)
-    summary["approval_to_handoff_seconds_avg"] = (lead_time_total / lead_time_count) if lead_time_count > 0 else None
+    summary["approval_to_handoff_seconds_avg"] = (
+        (lead_time_total / lead_time_count) if lead_time_count > 0 else None
+    )
 
 
 def _update_cmms_summary(out: Dict[str, Any], rows: List[Any], max_attempts: int) -> None:
@@ -292,12 +333,28 @@ def _update_cmms_summary(out: Dict[str, Any], rows: List[Any], max_attempts: int
         workorder_asset_id = row[6] if len(row) > 6 else None
         workorder_metadata = row[7] if len(row) > 7 and isinstance(row[7], dict) else {}
 
-        _update_cmms_bucket(summary, status, work_order_id, proposal_metadata, handoff_completed_at, max_attempts)
+        _update_cmms_bucket(
+            summary, status, work_order_id, proposal_metadata, handoff_completed_at, max_attempts
+        )
 
         asset_key = _proposal_asset_id(proposal_asset_id, workorder_asset_id)
         backend_key = _workorder_backend(workorder_metadata)
-        _update_cmms_bucket(by_asset.setdefault(asset_key, _empty_cmms_summary()), status, work_order_id, proposal_metadata, handoff_completed_at, max_attempts)
-        _update_cmms_bucket(by_backend.setdefault(backend_key, _empty_cmms_summary()), status, work_order_id, proposal_metadata, handoff_completed_at, max_attempts)
+        _update_cmms_bucket(
+            by_asset.setdefault(asset_key, _empty_cmms_summary()),
+            status,
+            work_order_id,
+            proposal_metadata,
+            handoff_completed_at,
+            max_attempts,
+        )
+        _update_cmms_bucket(
+            by_backend.setdefault(backend_key, _empty_cmms_summary()),
+            status,
+            work_order_id,
+            proposal_metadata,
+            handoff_completed_at,
+            max_attempts,
+        )
 
     _finalize_cmms_bucket(summary)
     for bucket in by_asset.values():
@@ -336,27 +393,44 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
 
         bucket_date = _bucket_date_text(created_at)
         if bucket_date:
-            handoff_volume.setdefault(backend_key, {})[bucket_date] = int(handoff_volume.setdefault(backend_key, {}).get(bucket_date) or 0) + 1
+            handoff_volume.setdefault(backend_key, {})[bucket_date] = (
+                int(handoff_volume.setdefault(backend_key, {}).get(bucket_date) or 0) + 1
+            )
             if handoff_state in {"success", "failure"}:
-                daily_terminal_counts.setdefault(backend_key, {})[bucket_date] = int(daily_terminal_counts.setdefault(backend_key, {}).get(bucket_date) or 0) + 1
+                daily_terminal_counts.setdefault(backend_key, {})[bucket_date] = (
+                    int(daily_terminal_counts.setdefault(backend_key, {}).get(bucket_date) or 0) + 1
+                )
                 if handoff_state == "success":
-                    daily_success_counts.setdefault(backend_key, {})[bucket_date] = int(daily_success_counts.setdefault(backend_key, {}).get(bucket_date) or 0) + 1
+                    daily_success_counts.setdefault(backend_key, {})[bucket_date] = (
+                        int(daily_success_counts.setdefault(backend_key, {}).get(bucket_date) or 0)
+                        + 1
+                    )
 
     success_rate_series: Dict[str, Dict[str, float | None]] = {}
     for backend_key, per_day in daily_terminal_counts.items():
         for bucket_date, total in per_day.items():
             success_total = int((daily_success_counts.get(backend_key) or {}).get(bucket_date) or 0)
-            success_rate_series.setdefault(backend_key, {})[bucket_date] = (success_total / total) if total > 0 else None
+            success_rate_series.setdefault(backend_key, {})[bucket_date] = (
+                (success_total / total) if total > 0 else None
+            )
 
     for backend_key in set(backend_metrics) | set(total_counts) | set(terminal_counts):
         backend_entry = backend_metrics.setdefault(backend_key, {})
-        backend_entry["handoff_total"] = int(total_counts.get(backend_key) or backend_entry.get("handoff_total") or 0)
+        backend_entry["handoff_total"] = int(
+            total_counts.get(backend_key) or backend_entry.get("handoff_total") or 0
+        )
         terminal_total = int(terminal_counts.get(backend_key) or 0)
-        backend_entry["handoff_success_rate"] = (int(success_counts.get(backend_key) or 0) / terminal_total) if terminal_total > 0 else None
+        backend_entry["handoff_success_rate"] = (
+            (int(success_counts.get(backend_key) or 0) / terminal_total)
+            if terminal_total > 0
+            else None
+        )
 
     out["top_backends_by_handoff_volume"] = [
         {"backend": backend_key, "count": count}
-        for backend_key, count in sorted(total_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        for backend_key, count in sorted(
+            total_counts.items(), key=lambda item: (-item[1], item[0])
+        )[:10]
     ]
     _set_group_metric_series(
         out,
@@ -373,9 +447,12 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
         bucket_dates,
     )
 
+
 @router.get("/rca-outcomes")
 def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
-    require_authenticated_identity(request, detail="Outcomes reports require an authenticated identity")
+    require_authenticated_identity(
+        request, detail="Outcomes reports require an authenticated identity"
+    )
     if window > 365:
         raise HTTPException(status_code=400, detail="Window cannot exceed 365 days")
     s = Settings()
@@ -398,7 +475,9 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                 out["feedback_counts"].update({key: fb.get(key, 0) for key in FEEDBACK_ACTIONS})
                 out["feedback_total"] = sum(out["feedback_counts"].values())
                 accept = out["feedback_counts"].get("accept", 0)
-                out["acceptance_rate"] = (accept / out["feedback_total"]) if out["feedback_total"] > 0 else None
+                out["acceptance_rate"] = (
+                    (accept / out["feedback_total"]) if out["feedback_total"] > 0 else None
+                )
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"feedback aggregation unavailable: {exc}")
@@ -426,7 +505,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                         delta = (wo_ts - rec_ts).total_seconds()
                         if delta >= 0:
                             ttrs.append(delta)
-                out["ttr_seconds_avg"] = (sum(ttrs)/len(ttrs)) if ttrs else None
+                out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"ttr aggregation unavailable: {exc}")
@@ -500,7 +579,9 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     ORDER BY n DESC
                     LIMIT 10
                 """)
-                out["top_assets_by_wo_volume"] = [{"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r]
+                out["top_assets_by_wo_volume"] = [
+                    {"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r
+                ]
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"asset volume aggregation unavailable: {exc}")
@@ -520,7 +601,9 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
-                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
                     workorder_volume.setdefault(asset_id, {})[bucket_date] = int(row[2] or 0)
                 _set_asset_metric_series(
                     out,
@@ -550,11 +633,15 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
-                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
                     accepted_count = int(row[2] or 0)
                     rejected_count = int(row[3] or 0)
                     total = accepted_count + rejected_count
-                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (accepted_count / total) if total > 0 else None
+                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (
+                        (accepted_count / total) if total > 0 else None
+                    )
                 _set_asset_metric_series(
                     out,
                     "acceptance_rate",
@@ -591,10 +678,14 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     ORDER BY asset_id, end_time DESC
                 """)
                 early_warning_rollup_rows = cur.fetchall()
-                early_warning = build_early_warning_report(early_warning_event_rows, early_warning_rollup_rows)
+                early_warning = build_early_warning_report(
+                    early_warning_event_rows, early_warning_rollup_rows
+                )
                 out["early_warning_summary"] = early_warning["summary"]
                 for asset_id, asset_warning in (early_warning.get("asset_metrics") or {}).items():
-                    out.setdefault("asset_metrics", {}).setdefault(asset_id, {}).update(asset_warning)
+                    out.setdefault("asset_metrics", {}).setdefault(asset_id, {}).update(
+                        asset_warning
+                    )
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"early warning summary unavailable: {exc}")
@@ -656,7 +747,9 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                         if not row or not row[0] or not row[1]:
                             continue
                         entity_id = str(row[0])
-                        bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                        bucket_date = (
+                            row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                        )
                         feedback_volume.setdefault(entity_id, {})[bucket_date] = int(row[2] or 0)
                     _set_group_metric_series(
                         out,
@@ -687,11 +780,15 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                         if not row or not row[0] or not row[1]:
                             continue
                         entity_id = str(row[0])
-                        bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                        bucket_date = (
+                            row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                        )
                         accepted_count = int(row[2] or 0)
                         rejected_count = int(row[3] or 0)
                         total = accepted_count + rejected_count
-                        acceptance_rate.setdefault(entity_id, {})[bucket_date] = (accepted_count / total) if total > 0 else None
+                        acceptance_rate.setdefault(entity_id, {})[bucket_date] = (
+                            (accepted_count / total) if total > 0 else None
+                        )
                     _set_group_metric_series(
                         out,
                         group_key,
@@ -722,6 +819,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
     finally:
         conn.close()
 
+
 @router.get("/rca-outcomes/csv")
 def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
     # Flatten a report view for leadership export
@@ -739,105 +837,169 @@ def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
     rows.append({"metric": "mtbf_seconds_avg", "value": rep.get("mtbf_seconds_avg")})
     rows.append({"metric": "mttr_seconds_avg", "value": rep.get("mttr_seconds_avg")})
     early_warning_summary = rep.get("early_warning_summary") or {}
-    rows.append({"metric": "early_warning_total_assets", "value": early_warning_summary.get("total_assets", 0)})
+    rows.append(
+        {
+            "metric": "early_warning_total_assets",
+            "value": early_warning_summary.get("total_assets", 0),
+        }
+    )
     for status_name, status_total in (early_warning_summary.get("status_counts") or {}).items():
         rows.append({"metric": f"early_warning_{status_name}_total", "value": status_total})
-    rows.append({"metric": "early_warning_last_evaluated_at", "value": early_warning_summary.get("last_evaluated_at")})
+    rows.append(
+        {
+            "metric": "early_warning_last_evaluated_at",
+            "value": early_warning_summary.get("last_evaluated_at"),
+        }
+    )
     for top_asset in early_warning_summary.get("top_assets") or []:
         asset_id = top_asset.get("asset_id")
         if not asset_id:
             continue
-        rows.append({"metric": f"early_warning_top_asset_{asset_id}_score", "value": top_asset.get("score")})
-        rows.append({"metric": f"early_warning_top_asset_{asset_id}_status", "value": top_asset.get("status")})
+        rows.append(
+            {"metric": f"early_warning_top_asset_{asset_id}_score", "value": top_asset.get("score")}
+        )
+        rows.append(
+            {
+                "metric": f"early_warning_top_asset_{asset_id}_status",
+                "value": top_asset.get("status"),
+            }
+        )
     cmms_summary = rep.get("cmms_summary") or {}
     rows.append({"metric": "cmms_success_total", "value": cmms_summary.get("success_total", 0)})
     rows.append({"metric": "cmms_pending_total", "value": cmms_summary.get("pending_total", 0)})
     rows.append({"metric": "cmms_failure_total", "value": cmms_summary.get("failure_total", 0)})
-    rows.append({"metric": "cmms_admin_retry_required_total", "value": cmms_summary.get("admin_retry_required_total", 0)})
-    rows.append({"metric": "cmms_limit_reached_total", "value": cmms_summary.get("limit_reached_total", 0)})
-    rows.append({"metric": "cmms_approval_to_handoff_seconds_avg", "value": cmms_summary.get("approval_to_handoff_seconds_avg")})
+    rows.append(
+        {
+            "metric": "cmms_admin_retry_required_total",
+            "value": cmms_summary.get("admin_retry_required_total", 0),
+        }
+    )
+    rows.append(
+        {"metric": "cmms_limit_reached_total", "value": cmms_summary.get("limit_reached_total", 0)}
+    )
+    rows.append(
+        {
+            "metric": "cmms_approval_to_handoff_seconds_avg",
+            "value": cmms_summary.get("approval_to_handoff_seconds_avg"),
+        }
+    )
     cmms_breakdowns = rep.get("cmms_breakdowns") or {}
     for asset_id, asset_summary in (cmms_breakdowns.get("by_asset") or {}).items():
         for metric_name in CMMS_SUMMARY_FIELDS:
-            rows.append({
-                "metric": f"cmms_asset_{asset_id}_{metric_name}",
-                "value": asset_summary.get(metric_name),
-            })
+            rows.append(
+                {
+                    "metric": f"cmms_asset_{asset_id}_{metric_name}",
+                    "value": asset_summary.get(metric_name),
+                }
+            )
     for backend, backend_summary in (cmms_breakdowns.get("by_backend") or {}).items():
         for metric_name in CMMS_SUMMARY_FIELDS:
-            rows.append({
-                "metric": f"cmms_backend_{backend}_{metric_name}",
-                "value": backend_summary.get(metric_name),
-            })
+            rows.append(
+                {
+                    "metric": f"cmms_backend_{backend}_{metric_name}",
+                    "value": backend_summary.get(metric_name),
+                }
+            )
     # Asset highlights as separate rows for easier slicing
     for a in rep.get("top_assets_by_wo_volume") or []:
         rows.append({"metric": f"top_asset_{a['asset_id']}_wo_count", "value": a["count"]})
     for backend_row in rep.get("top_backends_by_handoff_volume") or []:
-        rows.append({"metric": f"top_backend_{backend_row['backend']}_handoff_count", "value": backend_row["count"]})
+        rows.append(
+            {
+                "metric": f"top_backend_{backend_row['backend']}_handoff_count",
+                "value": backend_row["count"],
+            }
+        )
     for asset_id, asset_metrics in (rep.get("asset_metrics") or {}).items():
-        rows.append({
-            "metric": f"asset_{asset_id}_early_warning_score",
-            "value": asset_metrics.get("early_warning_score"),
-        })
-        rows.append({
-            "metric": f"asset_{asset_id}_early_warning_status",
-            "value": asset_metrics.get("early_warning_status"),
-        })
+        rows.append(
+            {
+                "metric": f"asset_{asset_id}_early_warning_score",
+                "value": asset_metrics.get("early_warning_score"),
+            }
+        )
+        rows.append(
+            {
+                "metric": f"asset_{asset_id}_early_warning_status",
+                "value": asset_metrics.get("early_warning_status"),
+            }
+        )
         for point in asset_metrics.get("workorder_volume") or []:
-            rows.append({
-                "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
-                "value": point.get("value", 0),
-            })
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
+                    "value": point.get("value", 0),
+                }
+            )
         for point in asset_metrics.get("acceptance_rate") or []:
-            rows.append({
-                "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
-                "value": point.get("value"),
-            })
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
+                    "value": point.get("value"),
+                }
+            )
     for backend, backend_metrics in (rep.get("backend_metrics") or {}).items():
-        rows.append({
-            "metric": f"backend_{backend}_handoff_total",
-            "value": backend_metrics.get("handoff_total"),
-        })
-        rows.append({
-            "metric": f"backend_{backend}_handoff_success_rate",
-            "value": backend_metrics.get("handoff_success_rate"),
-        })
+        rows.append(
+            {
+                "metric": f"backend_{backend}_handoff_total",
+                "value": backend_metrics.get("handoff_total"),
+            }
+        )
+        rows.append(
+            {
+                "metric": f"backend_{backend}_handoff_success_rate",
+                "value": backend_metrics.get("handoff_success_rate"),
+            }
+        )
         for point in backend_metrics.get("handoff_volume") or []:
-            rows.append({
-                "metric": f"backend_{backend}_handoff_volume_{point['date']}",
-                "value": point.get("value", 0),
-            })
+            rows.append(
+                {
+                    "metric": f"backend_{backend}_handoff_volume_{point['date']}",
+                    "value": point.get("value", 0),
+                }
+            )
         for point in backend_metrics.get("handoff_success_rate_series") or []:
-            rows.append({
-                "metric": f"backend_{backend}_handoff_success_rate_{point['date']}",
-                "value": point.get("value"),
-            })
+            rows.append(
+                {
+                    "metric": f"backend_{backend}_handoff_success_rate_{point['date']}",
+                    "value": point.get("value"),
+                }
+            )
     for entity_name, metrics_key in (("user", "user_metrics"), ("org", "org_metrics")):
         for entity_id, entity_metrics in (rep.get(metrics_key) or {}).items():
             feedback_counts = entity_metrics.get("feedback_counts") or {}
             for action in FEEDBACK_ACTIONS:
-                rows.append({
-                    "metric": f"{entity_name}_{entity_id}_feedback_{action}",
-                    "value": feedback_counts.get(action, 0),
-                })
-            rows.append({
-                "metric": f"{entity_name}_{entity_id}_feedback_total",
-                "value": entity_metrics.get("feedback_total"),
-            })
-            rows.append({
-                "metric": f"{entity_name}_{entity_id}_acceptance_rate",
-                "value": entity_metrics.get("acceptance_rate"),
-            })
+                rows.append(
+                    {
+                        "metric": f"{entity_name}_{entity_id}_feedback_{action}",
+                        "value": feedback_counts.get(action, 0),
+                    }
+                )
+            rows.append(
+                {
+                    "metric": f"{entity_name}_{entity_id}_feedback_total",
+                    "value": entity_metrics.get("feedback_total"),
+                }
+            )
+            rows.append(
+                {
+                    "metric": f"{entity_name}_{entity_id}_acceptance_rate",
+                    "value": entity_metrics.get("acceptance_rate"),
+                }
+            )
             for point in entity_metrics.get("feedback_volume") or []:
-                rows.append({
-                    "metric": f"{entity_name}_{entity_id}_feedback_volume_{point['date']}",
-                    "value": point.get("value", 0),
-                })
+                rows.append(
+                    {
+                        "metric": f"{entity_name}_{entity_id}_feedback_volume_{point['date']}",
+                        "value": point.get("value", 0),
+                    }
+                )
             for point in entity_metrics.get("acceptance_rate_series") or []:
-                rows.append({
-                    "metric": f"{entity_name}_{entity_id}_acceptance_rate_{point['date']}",
-                    "value": point.get("value"),
-                })
+                rows.append(
+                    {
+                        "metric": f"{entity_name}_{entity_id}_acceptance_rate_{point['date']}",
+                        "value": point.get("value"),
+                    }
+                )
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["metric", "value"])

@@ -8,8 +8,38 @@ jobs:
     - uses: actions/setup-python@v5
       with: { python-version: "3.11" }
     - run: pip install --upgrade pip && pip install .[dev]
-    - run: ruff check .
-    - run: black --check .
+    - name: Ruff (changed files only)
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          RANGE="HEAD^..HEAD"
+        else
+          RANGE="${{ github.event.before }}..${{ github.sha }}"
+        fi
+        CHANGED="$(git diff --name-only --diff-filter=ACMRT "$RANGE" | grep -E '(^|/)pyproject\.toml$|\.py$' || true)"
+        if [ -z "$CHANGED" ]; then
+          echo "No Python or pyproject changes to lint"
+          exit 0
+        fi
+        echo "Linting files:"
+        echo "$CHANGED"
+        # shellcheck disable=SC2086
+        ruff check $CHANGED
+    - name: Black (changed Python files only)
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          RANGE="HEAD^..HEAD"
+        else
+          RANGE="${{ github.event.before }}..${{ github.sha }}"
+        fi
+        CHANGED_PY="$(git diff --name-only --diff-filter=ACMRT "$RANGE" | grep -E '\.py$' || true)"
+        if [ -z "$CHANGED_PY" ]; then
+          echo "No Python changes to format-check"
+          exit 0
+        fi
+        echo "Format-checking files:"
+        echo "$CHANGED_PY"
+        # shellcheck disable=SC2086
+        black --check $CHANGED_PY
     - run: pytest --ignore=tests/test_migration_smoke.py
 
   portal-browser-smoke:

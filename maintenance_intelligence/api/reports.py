@@ -30,6 +30,7 @@ _EARLY_WARNING_ORDER = {
     "normal": 0,
 }
 
+
 def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
     """Open a PostgreSQL connection with bounded retries."""
     import time
@@ -115,9 +116,7 @@ def _asset_mtbf(rows: List[Any]) -> Dict[str, float]:
                 intervals.setdefault(asset_id, []).append(delta)
         last_seen[asset_id] = event_ts
     return {
-        asset_id: (sum(values) / len(values))
-        for asset_id, values in intervals.items()
-        if values
+        asset_id: (sum(values) / len(values)) for asset_id, values in intervals.items() if values
     }
 
 
@@ -160,9 +159,12 @@ def _score_asset(
     components["priority_score"] = round(sum(components.values()), 2)
     return components
 
+
 @router.get("/bad-actors")
 def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
-    require_authenticated_identity(request, detail="Bad-actor reports require an authenticated identity")
+    require_authenticated_identity(
+        request, detail="Bad-actor reports require an authenticated identity"
+    )
     """
     Ranks assets by recent event/WO activity (MVP heuristic):
     - score = (#events last 90d) + 2*(#workorders last 90d)
@@ -179,7 +181,9 @@ def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[D
                 WHERE occurred_at > (NOW() - INTERVAL '90 days')
                 GROUP BY asset_id
             """)
-            ev = {r[0]: {"ev_count": r[1], "last_evt_at": r[2]} for r in cur.fetchall() if r and r[0]}
+            ev = {
+                r[0]: {"ev_count": r[1], "last_evt_at": r[2]} for r in cur.fetchall() if r and r[0]
+            }
 
             # latest severity per asset
             cur.execute("""
@@ -205,19 +209,23 @@ def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[D
             ec = ev.get(a, {}).get("ev_count", 0)
             wc = wo.get(a, 0)
             score = ec + 2 * wc
-            rows.append({
-                "asset_id": a,
-                "score": int(score),
-                "events_90d": int(ec),
-                "workorders_90d": int(wc),
-                "latest_severity": sev.get(a),
-                "last_event_at": ev.get(a, {}).get("last_evt_at"),
-            })
+            rows.append(
+                {
+                    "asset_id": a,
+                    "score": int(score),
+                    "events_90d": int(ec),
+                    "workorders_90d": int(wc),
+                    "latest_severity": sev.get(a),
+                    "last_event_at": ev.get(a, {}).get("last_evt_at"),
+                }
+            )
         rows.sort(key=lambda r: r["score"], reverse=True)
         return rows[:limit]
     finally:
-        try: conn.close()
-        except Exception: pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @router.get("/prioritized-assets")
@@ -227,7 +235,9 @@ def prioritized_assets(
     window: int = Query(30, ge=1, le=365),
     warnings_only: bool = Query(False),
 ) -> List[Dict[str, Any]]:
-    require_authenticated_identity(request, detail="Prioritized asset reports require an authenticated identity")
+    require_authenticated_identity(
+        request, detail="Prioritized asset reports require an authenticated identity"
+    )
     s = Settings()
     conn = with_pg(s.pg_dsn)
     try:
@@ -253,11 +263,7 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
                 ORDER BY asset_id, occurred_at DESC
             """)
-            severities = {
-                str(row[0]): row[1]
-                for row in cur.fetchall() or []
-                if row and row[0]
-            }
+            severities = {str(row[0]): row[1] for row in cur.fetchall() or [] if row and row[0]}
 
             cur.execute(f"""
                 SELECT asset_id,
@@ -295,11 +301,13 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
             """)
             rollup_rows = cur.fetchall()
-            signal_scores = _signal_anomaly_scores([
-                (row[0], row[2], row[6])
-                for row in (rollup_rows or [])
-                if row and len(row) > 6 and row[0]
-            ])
+            signal_scores = _signal_anomaly_scores(
+                [
+                    (row[0], row[2], row[6])
+                    for row in (rollup_rows or [])
+                    if row and len(row) > 6 and row[0]
+                ]
+            )
 
             cur.execute(f"""
                 SELECT asset_id, severity, occurred_at, details
@@ -308,7 +316,11 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
             """)
             early_warning_report = build_early_warning_report(cur.fetchall(), rollup_rows)
-            early_warning_metrics = early_warning_report.get("asset_metrics", {}) if isinstance(early_warning_report, dict) else {}
+            early_warning_metrics = (
+                early_warning_report.get("asset_metrics", {})
+                if isinstance(early_warning_report, dict)
+                else {}
+            )
 
             cur.execute(f"""
                 SELECT asset_id, occurred_at
@@ -320,7 +332,9 @@ def prioritized_assets(
             mtbf_by_asset = _asset_mtbf(cur.fetchall())
 
         rows = []
-        asset_ids = set(events) | set(workorders) | set(feedback) | set(signal_scores) | set(mtbf_by_asset)
+        asset_ids = (
+            set(events) | set(workorders) | set(feedback) | set(signal_scores) | set(mtbf_by_asset)
+        )
         for asset_id in asset_ids:
             event_count = int(events.get(asset_id, {}).get("event_count", 0))
             workorder_count = int(workorders.get(asset_id, {}).get("workorder_count", 0))
@@ -337,7 +351,11 @@ def prioritized_assets(
                 acceptance_rate=acceptance_rate,
                 mtbf_seconds=mtbf_seconds,
             )
-            early_warning = early_warning_metrics.get(asset_id, {}) if isinstance(early_warning_metrics, dict) else {}
+            early_warning = (
+                early_warning_metrics.get(asset_id, {})
+                if isinstance(early_warning_metrics, dict)
+                else {}
+            )
             rows.append(
                 {
                     "asset_id": asset_id,
