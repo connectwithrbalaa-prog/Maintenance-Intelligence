@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import portal as portal_mod
+from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
 READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
 
@@ -75,6 +76,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert page.status_code == 200
     assert "Maintenance Intelligence Portal" in page.text
     assert "Early warning summary" in page.text
+    assert "Edge mode status" in page.text
+    assert "loadEdgeStatus" in page.text
+    assert "/api/v1/portal/edge-status" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
     assert runs.status_code == 200
@@ -148,6 +152,38 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
         "latency_ms": None,
         "confidence": None,
     }
+
+
+def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
+    buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
+    buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
+    buffer.buffer_event(
+        {
+            "event_id": "EV-OFFLINE",
+            "occurred_at": "2026-03-15T10:00:00Z",
+            "org_id": "demo-org",
+            "asset_id": "PUMP-101",
+            "kind": "anomaly",
+            "severity": "high",
+            "summary": "Offline buffered event",
+            "details": {"source": "edge"},
+            "lineage": {"channel": "kafka"},
+        },
+        error="central store unavailable",
+    )
+
+    client = TestClient(app)
+    response = client.get("/api/v1/portal/edge-status", headers=READ_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["edge_mode_enabled"] is True
+    assert payload["connectivity_status"] == "offline"
+    assert payload["buffered_event_count"] == 1
+    assert payload["last_successful_central_write_at"] is None
+    assert payload["last_error"] == "central store unavailable"
 
 
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):

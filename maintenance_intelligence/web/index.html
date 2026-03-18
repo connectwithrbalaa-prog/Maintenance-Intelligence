@@ -162,6 +162,22 @@
 			font-size: 1rem;
 		}
 
+		.edge-status-card {
+			margin-top: 14px;
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(24, 34, 38, 0.1);
+			background: rgba(255, 255, 255, 0.72);
+			display: grid;
+			gap: 10px;
+		}
+
+		.edge-status-body {
+			font-size: 13px;
+			line-height: 1.5;
+			color: var(--muted);
+		}
+
 		.dev-toggle {
 			display: grid;
 			grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1802,6 +1818,18 @@
 						</label>
 						<button id="identityApplyButton" type="submit">Apply demo identity</button>
 					</form>
+					<div id="edgeStatusCard" class="edge-status-card">
+						<div class="identity-row">
+							<div>
+								<div class="meta-label">Edge mode status</div>
+								<div class="identity-badge">
+									<strong>Diagnostics pending</strong>
+									<span class="status-pill unknown">unknown</span>
+								</div>
+							</div>
+						</div>
+						<div class="edge-status-body">Edge diagnostics load when the portal connects.</div>
+					</div>
 				</div>
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
@@ -1913,6 +1941,11 @@
 				error: "",
 				windowDays: 30,
 			},
+			edgeStatus: {
+				data: null,
+				loading: false,
+				error: "",
+			},
 			session: {
 				subject: "portal.user",
 				role: "planner",
@@ -1937,6 +1970,7 @@
 			refreshButton: document.getElementById("refreshButton"),
 			identityBadge: document.getElementById("identityBadge"),
 			identityHint: document.getElementById("identityHint"),
+			edgeStatusCard: document.getElementById("edgeStatusCard"),
 			identityControls: document.getElementById("identityControls"),
 			identitySubjectInput: document.getElementById("identitySubjectInput"),
 			identityRoleSelect: document.getElementById("identityRoleSelect"),
@@ -2085,6 +2119,110 @@
 			syncIdentityInputs(identity);
 		}
 
+		function normalizeEdgeConnectivityStatus(value) {
+			const status = asString(value, "unknown").toLowerCase();
+			if (status === "online") {
+				return { label: "online", className: "ok" };
+			}
+			if (status === "offline") {
+				return { label: "offline", className: "error" };
+			}
+			if (status === "degraded") {
+				return { label: "degraded", className: "warn" };
+			}
+			return { label: status || "unknown", className: "unknown" };
+		}
+
+		function renderEdgeStatusCard() {
+			if (!elements.edgeStatusCard) {
+				return;
+			}
+
+			if (state.edgeStatus.loading) {
+				elements.edgeStatusCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Edge mode status</div>
+							<div class="identity-badge">
+								<strong>Loading edge diagnostics</strong>
+								<span class="status-pill unknown">loading</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">Checking whether edge buffering is enabled and whether central storage is reachable.</div>
+				`;
+				return;
+			}
+
+			if (state.edgeStatus.error) {
+				elements.edgeStatusCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Edge mode status</div>
+							<div class="identity-badge">
+								<strong>Edge diagnostics unavailable</strong>
+								<span class="status-pill warn">warn</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">${escapeHtml(state.edgeStatus.error)}</div>
+				`;
+				return;
+			}
+
+			const payload = asObject(state.edgeStatus.data);
+			const edgeEnabled = Boolean(payload.edge_mode_enabled);
+			const connectivity = normalizeEdgeConnectivityStatus(edgeEnabled ? payload.connectivity_status : "disabled");
+			const bufferedCount = asNumber(payload.buffered_event_count) ?? 0;
+			const lastSync = formatDate(payload.last_successful_central_write_at) || "No central sync yet";
+			const lastReplay = formatDate(payload.last_replay_attempt_at) || "No replay yet";
+			const lastError = asString(payload.last_error);
+			const summary = !edgeEnabled
+				? "Edge buffering is disabled for this deployment. Ingestion writes directly to central storage."
+				: (connectivity.label === "online"
+					? "Central storage is reachable. Buffered events replay before new edge writes are committed."
+					: (bufferedCount > 0
+						? `${bufferedCount} buffered event${bufferedCount === 1 ? " is" : "s are"} waiting for central connectivity to return.`
+						: "Central storage is unavailable. New edge events will queue locally until connectivity returns."));
+
+			elements.edgeStatusCard.innerHTML = `
+				<div class="identity-row">
+					<div>
+						<div class="meta-label">Edge mode status</div>
+						<div class="identity-badge">
+							<strong>${escapeHtml(edgeEnabled ? "Edge mode active" : "Edge mode off")}</strong>
+							<span class="status-pill ${escapeHtml(connectivity.className)}">${escapeHtml(connectivity.label)}</span>
+						</div>
+					</div>
+				</div>
+				<div class="edge-status-body">${escapeHtml(summary)}</div>
+				<div class="outcomes-chip-row">
+					<span class="chip">Mode ${escapeHtml(edgeEnabled ? "On" : "Off")}</span>
+					<span class="chip">Buffered ${escapeHtml(bufferedCount)}</span>
+					<span class="chip">Last sync ${escapeHtml(lastSync)}</span>
+					<span class="chip">Last replay ${escapeHtml(lastReplay)}</span>
+					${lastError ? `<span class="chip trend-rising">Last issue ${escapeHtml(lastError)}</span>` : ""}
+				</div>
+			`;
+		}
+
+		async function loadEdgeStatus(force = false) {
+			if (state.edgeStatus.loading || (!force && state.edgeStatus.data && !state.edgeStatus.error)) {
+				return;
+			}
+			state.edgeStatus.loading = true;
+			state.edgeStatus.error = "";
+			renderEdgeStatusCard();
+			try {
+				state.edgeStatus.data = await fetchJson("/api/v1/portal/edge-status", { headers: portalIdentityHeaders() });
+			} catch (error) {
+				state.edgeStatus.error = error instanceof Error ? error.message : "Unknown edge status error";
+			} finally {
+				state.edgeStatus.loading = false;
+				renderEdgeStatusCard();
+			}
+		}
+
 		async function refreshIdentity() {
 			const localIdentity = readPortalIdentity();
 			state.session = localIdentity;
@@ -2113,6 +2251,7 @@
 			} catch (error) {
 				void error;
 			}
+			void loadEdgeStatus(true);
 		}
 
 		function escapeHtml(value) {
@@ -6706,6 +6845,9 @@
 			resetHandoffExceptionsReport();
 			resetOutcomesReport();
 			resetTriageReport();
+			state.edgeStatus.data = null;
+			state.edgeStatus.error = "";
+			void loadEdgeStatus(true);
 			await loadRuns();
 		});
 		elements.identityControls.addEventListener("submit", async (event) => {
@@ -6727,6 +6869,7 @@
 		state.session = readPortalIdentity();
 		applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 		renderIdentityPanel();
+		renderEdgeStatusCard();
 		refreshIdentity();
 		loadRuns();
 	</script>
