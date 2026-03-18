@@ -328,4 +328,5 @@ Signals improve RCA evidence quality by providing measurement trends and anomaly
 - The ServiceNow adapter is a scaffold for table-based work order create flows and uses the same normalized lifecycle semantics surfaced by the PM API and portal.
 - Smoke harness:
   - `pytest -k maximo_smoke`
-  - Uses `pytest-httpserver` to stand up a local Maximo-like endpoint and exercises the real HTTP adapter path without external credentials.
+  - `pytest -k servicenow_smoke`
+  - Uses `pytest-httpserver` to stand up local connector-like endpoints and exercises the real HTTP adapter path without external credentials.

@@ -4308,6 +4308,7 @@
 			const attemptsRemaining = typeof proposal?.attempts_remaining === "number" ? proposal.attempts_remaining : Math.max(0, maxAttempts - attemptCount);
 			return {
 				proposalId: asString(proposal?.proposal_id || proposal?.recommendation_id || proposal?.run_id),
+				provenanceSummary: provenanceSummary,
 				title: asString(proposal?.title) || "Untitled PM proposal",
 				status: asString(proposal?.status || "pending").toLowerCase(),
 				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
@@ -4494,6 +4495,23 @@
 			const provenanceAttemptCount = typeof followThrough.handoffAttemptCount === "number" && Number.isFinite(followThrough.handoffAttemptCount)
 				? followThrough.handoffAttemptCount
 				: followThrough.attemptCount;
+			const rawProvenance = asObject(followThrough.provenanceSummary);
+			const rawProvenanceFields = [
+				["proposal_id", asString(rawProvenance.proposal_id)],
+				["recommendation_id", asString(rawProvenance.recommendation_id)],
+				["origin", asString(rawProvenance.origin)],
+				["approved_by", asString(rawProvenance.approved_by)],
+				["recorded_at", asString(rawProvenance.recorded_at)],
+				["attempt_count", asString(rawProvenance.attempt_count)],
+				["backend", asString(rawProvenance.backend)],
+				["connector_status", asString(rawProvenance.connector_status)],
+				["connector_lifecycle_phase", asString(rawProvenance.connector_lifecycle_phase)],
+				["work_order_id", asString(rawProvenance.work_order_id)],
+				["work_order_status", asString(rawProvenance.work_order_status)],
+				["work_order_lifecycle_phase", asString(rawProvenance.work_order_lifecycle_phase)],
+				["transition_from", asString(rawProvenance.transition_from)],
+				["transition_to", asString(rawProvenance.transition_to)],
+			].filter((entry) => entry[1]);
 			const noteMarkup = followThrough.workOrderCompletedAt
 				? renderOutcomesNote("Closed", "Work order follow-through complete", `${followThrough.workOrderId || "The linked work order"} has completed its lifecycle for this recommendation.`)
 				: (followThrough.workOrderId
@@ -4538,6 +4556,20 @@
 								${followThrough.handoffRecommendationId ? `<span class="chip">Recommendation ${escapeHtml(followThrough.handoffRecommendationId)}</span>` : ""}
 							</div>
 							<div class="muted">${escapeHtml(followThrough.handoffProposalId || followThrough.proposalId)} was recorded ${escapeHtml(provenanceRecordedAt)} after ${escapeHtml(String(provenanceAttemptCount))} handoff attempt${provenanceAttemptCount === 1 ? "" : "s"}.</div>
+						</div>
+						<div class="compare-card">
+							<strong>Connector provenance summary</strong>
+							<div class="muted">Raw connector provenance summary fields for debugging and reviewer verification.</div>
+							${rawProvenanceFields.length ? `
+								<ol class="list">
+									${rawProvenanceFields.map((entry) => `
+										<li>
+											<strong>${escapeHtml(entry[0])}</strong>
+											<div class="footer-note">${escapeHtml(entry[1])}</div>
+										</li>
+									`).join("")}
+								</ol>
+							` : `<div class="footer-note">No connector provenance summary fields are recorded yet.</div>`}
 						</div>
 					</div>
 					<ol class="follow-stage-list">${stages.map((stage) => `
