@@ -25,6 +25,18 @@ def _as_text(value: Any) -> Optional[str]:
     return None
 
 
+def _as_text_list(value: Any) -> List[str]:
+    if isinstance(value, (list, tuple, set)):
+        items: List[str] = []
+        for item in value:
+            text = _as_text(item)
+            if text is not None:
+                items.append(text)
+        return items
+    text = _as_text(value)
+    return [text] if text is not None else []
+
+
 def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
@@ -37,39 +49,98 @@ def _notification_log_path(settings: Settings) -> Path:
     return Path(settings.notification_log_path).expanduser()
 
 
-def _parse_routes(settings: Settings) -> Dict[str, Dict[str, Any]]:
+def _normalize_severity(value: Any, *, default: str = "warning") -> str:
+    normalized = (_as_text(value) or default).strip().lower()
+    return normalized if normalized in SEVERITY_ORDER else default
+
+
+def _normalize_severity_list(value: Any) -> List[str]:
+    items = []
+    for item in _as_text_list(value):
+        normalized = _normalize_severity(item, default="")
+        if normalized and normalized not in items:
+            items.append(normalized)
+    return items
+
+
+def _coerce_route(route_id_hint: Optional[str], route_value: Any, *, index: int) -> Optional[Dict[str, Any]]:
+    if isinstance(route_value, str):
+        route = {"webhook_url": route_value}
+    elif isinstance(route_value, dict):
+        route = route_value
+    else:
+        return None
+
+    webhook_url = _as_text(route.get("webhook_url"))
+    if webhook_url is None:
+        return None
+
+    route_id = _as_text(route.get("route_id")) or route_id_hint or f"route-{index}"
+    org_ids = _as_text_list(route.get("org_ids") or route.get("org_id"))
+    site_ids = _as_text_list(route.get("site_ids") or route.get("site_id"))
+    event_types = _as_text_list(route.get("event_types") or route.get("event_type"))
+    severities = _normalize_severity_list(route.get("severities") or route.get("severity"))
+
+    if (
+        route_id_hint
+        and route_id_hint != "default"
+        and not org_ids
+        and "org_ids" not in route
+        and "org_id" not in route
+    ):
+        org_ids = [route_id_hint]
+
+    priority = route.get("priority", 0)
+    try:
+        normalized_priority = int(priority)
+    except (TypeError, ValueError):
+        normalized_priority = 0
+
+    return {
+        "route_id": route_id,
+        "webhook_url": webhook_url,
+        "minimum_severity": _normalize_severity(route.get("minimum_severity")),
+        "org_ids": org_ids,
+        "site_ids": site_ids,
+        "event_types": event_types,
+        "severities": severities,
+        "priority": normalized_priority,
+    }
+
+
+def _parse_routes(settings: Settings) -> List[Dict[str, Any]]:
     raw = settings.notification_webhook_routes
     if not raw:
-        return {}
+        return []
     try:
         parsed = json.loads(raw)
     except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    if not isinstance(parsed, dict):
-        return {}
+        return []
 
-    routes: Dict[str, Dict[str, Any]] = {}
-    for route_key, route_value in parsed.items():
-        route_name = _as_text(route_key)
-        if route_name is None:
-            continue
-        if isinstance(route_value, str):
-            route = {"webhook_url": route_value}
-        elif isinstance(route_value, dict):
-            route = route_value
+    route_entries: List[tuple[Optional[str], Any]] = []
+    if isinstance(parsed, dict):
+        if isinstance(parsed.get("routes"), list):
+            route_entries.extend((None, value) for value in parsed.get("routes") or [])
         else:
-            continue
-        webhook_url = _as_text(route.get("webhook_url"))
-        if webhook_url is None:
-            continue
-        minimum_severity = (_as_text(route.get("minimum_severity")) or "warning").lower()
-        if minimum_severity not in SEVERITY_ORDER:
-            minimum_severity = "warning"
-        routes[route_name] = {
-            "route_id": route_name,
-            "webhook_url": webhook_url,
-            "minimum_severity": minimum_severity,
-        }
+            for route_key, route_value in parsed.items():
+                route_name = _as_text(route_key)
+                if route_name is None:
+                    continue
+                if isinstance(route_value, list):
+                    for value in route_value:
+                        route_entries.append((route_name, value))
+                else:
+                    route_entries.append((route_name, route_value))
+    elif isinstance(parsed, list):
+        route_entries.extend((None, value) for value in parsed)
+    else:
+        return []
+
+    routes: List[Dict[str, Any]] = []
+    for index, (route_id_hint, route_value) in enumerate(route_entries, start=1):
+        route = _coerce_route(route_id_hint, route_value, index=index)
+        if route is not None:
+            routes.append(route)
     return routes
 
 
@@ -77,21 +148,70 @@ def _severity_value(value: str) -> int:
     return SEVERITY_ORDER.get(value.lower(), SEVERITY_ORDER["warning"])
 
 
-def _resolve_route(settings: Settings, *, org_id: Optional[str], severity: str) -> Optional[Dict[str, Any]]:
-    routes = _parse_routes(settings)
-    candidates: List[str] = []
+def _route_matches(
+    route: Dict[str, Any],
+    *,
+    org_id: Optional[str],
+    site_id: Optional[str],
+    event_type: str,
+    severity: str,
+) -> bool:
+    normalized_severity = _normalize_severity(severity)
+    if _severity_value(normalized_severity) < _severity_value(route.get("minimum_severity", "warning")):
+        return False
+
+    explicit_severities = route.get("severities") or []
+    if explicit_severities and normalized_severity not in explicit_severities:
+        return False
+
     org_key = _as_text(org_id)
-    if org_key:
-        candidates.append(org_key)
-    candidates.append("default")
-    for route_key in candidates:
-        route = routes.get(route_key)
-        if not route:
-            continue
-        if _severity_value(severity) < _severity_value(route.get("minimum_severity", "warning")):
-            return None
-        return route
-    return None
+    site_key = _as_text(site_id)
+    event_key = _as_text(event_type)
+
+    if route.get("org_ids") and org_key not in route["org_ids"]:
+        return False
+    if route.get("site_ids") and site_key not in route["site_ids"]:
+        return False
+    if route.get("event_types") and event_key not in route["event_types"]:
+        return False
+    return True
+
+
+def _route_specificity(route: Dict[str, Any]) -> int:
+    specificity = 0
+    if route.get("org_ids"):
+        specificity += 1
+    if route.get("site_ids"):
+        specificity += 1
+    if route.get("event_types"):
+        specificity += 1
+    if route.get("severities"):
+        specificity += 1
+    return specificity
+
+
+def _resolve_routes(
+    settings: Settings,
+    *,
+    org_id: Optional[str],
+    site_id: Optional[str],
+    event_type: str,
+    severity: str,
+) -> List[Dict[str, Any]]:
+    routes = _parse_routes(settings)
+    matching = [
+        route
+        for route in routes
+        if _route_matches(route, org_id=org_id, site_id=site_id, event_type=event_type, severity=severity)
+    ]
+    if not matching:
+        return []
+
+    best_specificity = max(_route_specificity(route) for route in matching)
+    most_specific = [route for route in matching if _route_specificity(route) == best_specificity]
+    best_priority = max(int(route.get("priority", 0)) for route in most_specific)
+    selected = [route for route in most_specific if int(route.get("priority", 0)) == best_priority]
+    return sorted(selected, key=lambda route: _as_text(route.get("route_id")) or "")
 
 
 def _load_records(settings: Settings) -> List[Dict[str, Any]]:
@@ -160,6 +280,14 @@ def _matches_filter(record_value: Any, filter_value: Optional[str]) -> bool:
     return normalized_record == normalized_filter
 
 
+def _matches_contains_filter(record_value: Any, filter_value: Optional[str]) -> bool:
+    normalized_filter = (_as_text(filter_value) or "").strip().lower()
+    if not normalized_filter or normalized_filter == "all":
+        return True
+    normalized_record = (_as_text(record_value) or "").strip().lower()
+    return normalized_filter in normalized_record
+
+
 def _send_webhook(url: str, payload: Dict[str, Any], timeout_s: float) -> tuple[bool, Optional[int], str]:
     try:
         with httpx.Client(timeout=timeout_s) as client:
@@ -187,57 +315,104 @@ def emit_notification(
     if duplicate is not None:
         return duplicate
 
-    normalized_severity = (_as_text(severity) or "warning").lower()
-    if normalized_severity not in SEVERITY_ORDER:
-        normalized_severity = "warning"
-    route = _resolve_route(settings, org_id=org_id, severity=normalized_severity)
-    webhook_url = _as_text(route.get("webhook_url")) if route else None
-    route_id = _as_text(route.get("route_id")) if route else None
+    normalized_severity = _normalize_severity(severity)
+    event_name = _as_text(event_type) or "unknown"
+    selected_routes = _resolve_routes(
+        settings,
+        org_id=org_id,
+        site_id=site_id,
+        event_type=event_name,
+        severity=normalized_severity,
+    )
     attempted_at = _utcnow_text()
-    record = {
-        "attempted_at": attempted_at,
-        "delivered_at": None,
-        "channel": "webhook",
-        "status": "skipped",
-        "event_type": _as_text(event_type) or "unknown",
-        "severity": normalized_severity,
-        "summary": _as_text(summary) or "",
-        "org_id": _as_text(org_id) or "",
-        "site_id": _as_text(site_id) or "",
-        "route_id": route_id or "",
-        "destination": _destination_label(webhook_url),
-        "dedupe_key": _as_text(dedupe_key) or "",
-        "response_status_code": None,
-        "delivery_error": "",
-        "payload": payload if isinstance(payload, dict) else {},
-    }
-    if not webhook_url:
-        record["delivery_error"] = "No webhook route configured"
+    payload_data = payload if isinstance(payload, dict) else {}
+
+    if not selected_routes:
+        record = {
+            "attempted_at": attempted_at,
+            "delivered_at": None,
+            "channel": "webhook",
+            "status": "skipped",
+            "event_type": event_name,
+            "severity": normalized_severity,
+            "summary": _as_text(summary) or "",
+            "org_id": _as_text(org_id) or "",
+            "site_id": _as_text(site_id) or "",
+            "route_id": "",
+            "destination": "unconfigured",
+            "dedupe_key": _as_text(dedupe_key) or "",
+            "response_status_code": None,
+            "delivery_error": "No webhook route configured",
+            "payload": payload_data,
+        }
         _persist_record(settings, record)
         return record
 
-    delivered, status_code, error = _send_webhook(
-        webhook_url,
-        {
-            "event_type": record["event_type"],
-            "severity": record["severity"],
-            "summary": record["summary"],
-            "org_id": record["org_id"],
-            "site_id": record["site_id"],
-            "occurred_at": attempted_at,
-            "payload": record["payload"],
-        },
-        settings.notification_webhook_timeout_s,
-    )
-    record["response_status_code"] = status_code
-    if delivered:
-        record["status"] = "sent"
-        record["delivered_at"] = attempted_at
-    else:
-        record["status"] = "failed"
-        record["delivery_error"] = error
-    _persist_record(settings, record)
-    return record
+    deliveries: List[Dict[str, Any]] = []
+    for route in selected_routes:
+        webhook_url = _as_text(route.get("webhook_url"))
+        route_id = _as_text(route.get("route_id")) or ""
+        record = {
+            "attempted_at": attempted_at,
+            "delivered_at": None,
+            "channel": "webhook",
+            "status": "skipped",
+            "event_type": event_name,
+            "severity": normalized_severity,
+            "summary": _as_text(summary) or "",
+            "org_id": _as_text(org_id) or "",
+            "site_id": _as_text(site_id) or "",
+            "route_id": route_id,
+            "destination": _destination_label(webhook_url),
+            "dedupe_key": _as_text(dedupe_key) or "",
+            "response_status_code": None,
+            "delivery_error": "",
+            "payload": payload_data,
+        }
+        if not webhook_url:
+            record["delivery_error"] = "No webhook route configured"
+            _persist_record(settings, record)
+            deliveries.append(record)
+            continue
+
+        delivered, status_code, error = _send_webhook(
+            webhook_url,
+            {
+                "event_type": record["event_type"],
+                "severity": record["severity"],
+                "summary": record["summary"],
+                "org_id": record["org_id"],
+                "site_id": record["site_id"],
+                "occurred_at": attempted_at,
+                "payload": record["payload"],
+            },
+            settings.notification_webhook_timeout_s,
+        )
+        record["response_status_code"] = status_code
+        if delivered:
+            record["status"] = "sent"
+            record["delivered_at"] = attempted_at
+        else:
+            record["status"] = "failed"
+            record["delivery_error"] = error
+        _persist_record(settings, record)
+        deliveries.append(record)
+
+    overall_status = "sent"
+    if any((_as_text(record.get("status")) or "") == "failed" for record in deliveries):
+        overall_status = "failed"
+    elif all((_as_text(record.get("status")) or "") == "skipped" for record in deliveries):
+        overall_status = "skipped"
+
+    return {
+        "event_type": event_name,
+        "severity": normalized_severity,
+        "org_id": _as_text(org_id) or "",
+        "site_id": _as_text(site_id) or "",
+        "status": overall_status,
+        "delivery_count": len(deliveries),
+        "deliveries": deliveries,
+    }
 
 
 def recent_notification_deliveries(
@@ -259,7 +434,7 @@ def recent_notification_deliveries(
         and _matches_filter(record.get("status"), status)
         and _matches_filter(record.get("severity"), severity)
         and _matches_filter(record.get("event_type"), event_type)
-        and _matches_filter(record.get("destination"), destination)
+        and _matches_contains_filter(record.get("destination"), destination)
     ]
 
     ordered_by_time = sorted(filtered, key=lambda record: _as_text(record.get("attempted_at")) or "", reverse=True)

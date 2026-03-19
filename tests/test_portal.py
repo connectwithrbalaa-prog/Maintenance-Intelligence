@@ -93,6 +93,8 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Terminal" in page.text
     assert "Notification delivery" in page.text
     assert "All statuses" in page.text
+    assert "Response code" in page.text
+    assert "Error detail" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
     assert "/api/v1/portal/notifications" in page.text
@@ -339,6 +341,7 @@ def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, 
     assert failed_response.status_code == 200
     failed_payload = failed_response.json()
     assert len(failed_payload) == 1
+    assert failed_payload[0]["response_status_code"] == 503
     assert failed_payload[0]["delivery_error"] == "gateway down"
 
     assert critical_response.status_code == 200

@@ -313,6 +313,50 @@
 			opacity: 0.94;
 		}
 
+		.notification-history-table-wrap {
+			overflow-x: auto;
+			border: 1px solid rgba(24, 34, 38, 0.08);
+			border-radius: 16px;
+			background: rgba(255, 255, 255, 0.76);
+		}
+
+		.notification-history-table {
+			width: 100%;
+			border-collapse: collapse;
+			min-width: 760px;
+		}
+
+		.notification-history-table th,
+		.notification-history-table td {
+			padding: 10px 12px;
+			text-align: left;
+			vertical-align: top;
+			border-bottom: 1px solid rgba(24, 34, 38, 0.08);
+			font-size: 12px;
+			line-height: 1.45;
+		}
+
+		.notification-history-table th {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			background: rgba(24, 34, 38, 0.04);
+		}
+
+		.notification-history-table tbody tr:last-child td {
+			border-bottom: 0;
+		}
+
+		.notification-status-cell {
+			font-weight: 600;
+		}
+
+		.notification-error-cell {
+			min-width: 220px;
+			color: var(--muted);
+		}
+
 		.run-list {
 			display: grid;
 			gap: 12px;
@@ -2350,13 +2394,14 @@
 			const latest = asObject(items[0]);
 			const latestStatus = asString(latest.status, "unknown").toLowerCase();
 			const badgeClass = latestStatus === "sent" ? "ok" : (latestStatus === "failed" ? "error" : "warn");
-			const attemptsMarkup = items.slice(0, 4).map((item) => {
+			const attemptsMarkup = items.slice(0, 2).map((item) => {
 				const record = asObject(item);
 				const status = asString(record.status, "unknown");
 				const severity = asString(record.severity, "warning");
 				const eventType = asString(record.event_type, "unknown");
 				const destination = asString(record.destination, "webhook");
 				const attemptedAt = formatDate(record.attempted_at) || "Unknown time";
+				const responseCode = record.response_status_code == null ? "n/a" : String(record.response_status_code);
 				const summary = asString(record.summary, "");
 				const detail = asString(record.delivery_error, "");
 				return `
@@ -2366,10 +2411,35 @@
 							<span class="chip">Status ${escapeHtml(status)}</span>
 							<span class="chip">Severity ${escapeHtml(severity)}</span>
 							<span class="chip">Route ${escapeHtml(destination)}</span>
+							<span class="chip">Response ${escapeHtml(responseCode)}</span>
 							<span class="chip">Attempt ${escapeHtml(attemptedAt)}</span>
 						</div>
 						<div class="muted">${escapeHtml(summary || detail || "No delivery detail recorded.")}</div>
 					</div>
+				`;
+			}).join("");
+
+			const historyRows = items.map((item) => {
+				const record = asObject(item);
+				const status = asString(record.status, "unknown");
+				const severity = asString(record.severity, "warning");
+				const eventType = asString(record.event_type, "unknown");
+				const routeId = asString(record.route_id, "unlabeled");
+				const destination = asString(record.destination, "webhook");
+				const responseCode = record.response_status_code == null ? "n/a" : String(record.response_status_code);
+				const errorDetail = asString(record.delivery_error, "") || "none";
+				const attemptedAt = formatDate(record.attempted_at) || "Unknown time";
+				return `
+					<tr>
+						<td>${escapeHtml(eventType)}</td>
+						<td class="notification-status-cell">${escapeHtml(status)}</td>
+						<td>${escapeHtml(severity)}</td>
+						<td>${escapeHtml(routeId)}</td>
+						<td>${escapeHtml(destination)}</td>
+						<td>${escapeHtml(responseCode)}</td>
+						<td class="notification-error-cell">${escapeHtml(errorDetail)}</td>
+						<td>${escapeHtml(attemptedAt)}</td>
+					</tr>
 				`;
 			}).join("");
 
@@ -2386,6 +2456,23 @@
 				${controlsMarkup}
 				<div class="edge-status-body">Recent routed notifications for terminal CMMS failures and edge degraded states. Failed deliveries sort first by default.</div>
 				<div class="compare-summary-grid">${attemptsMarkup}</div>
+				<div class="notification-history-table-wrap">
+					<table class="notification-history-table">
+						<thead>
+							<tr>
+								<th>Event</th>
+								<th>Status</th>
+								<th>Severity</th>
+								<th>Route ID</th>
+								<th>Destination</th>
+								<th>Response code</th>
+								<th>Error detail</th>
+								<th>Attempted at</th>
+							</tr>
+						</thead>
+						<tbody>${historyRows}</tbody>
+					</table>
+				</div>
 			`;
 			bindNotificationStatusControls();
 		}
