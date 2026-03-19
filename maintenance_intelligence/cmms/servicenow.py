@@ -6,7 +6,7 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
-    CMMSUnavailableError,
+    CMMSConfigurationError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -80,7 +80,7 @@ class ServiceNowCMMSAdapter(CMMSAdapter):
 
     def _endpoint(self) -> str:
         if not self.base_url:
-            raise CMMSUnavailableError("ServiceNow backend is not configured: set MI_SERVICENOW_BASE_URL")
+            raise CMMSConfigurationError("ServiceNow backend is not configured: set MI_SERVICENOW_BASE_URL")
         return f"{self.base_url.rstrip('/')}/api/now/table/{self.table}"
 
     def _map_recommendation(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:

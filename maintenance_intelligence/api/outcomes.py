@@ -13,6 +13,8 @@ CMMS_SUMMARY_FIELDS = (
     "success_total",
     "pending_total",
     "failure_total",
+    "retryable_failure_total",
+    "terminal_failure_total",
     "admin_retry_required_total",
     "limit_reached_total",
     "approval_to_handoff_seconds_avg",
@@ -42,6 +44,8 @@ def _empty_cmms_summary() -> Dict[str, Any]:
         "success_total": 0,
         "pending_total": 0,
         "failure_total": 0,
+        "retryable_failure_total": 0,
+        "terminal_failure_total": 0,
         "admin_retry_required_total": 0,
         "limit_reached_total": 0,
         "approval_to_handoff_seconds_avg": None,
@@ -230,6 +234,23 @@ def _proposal_handoff_state(status: Any, work_order_id: Any, metadata: Any) -> s
     return "pending"
 
 
+def _proposal_failure_summary(metadata: Any) -> Dict[str, Any]:
+    if not isinstance(metadata, dict):
+        return {}
+    approval = metadata.get("approval") if isinstance(metadata.get("approval"), dict) else {}
+    failure_summary = approval.get("failure_summary") if isinstance(approval.get("failure_summary"), dict) else {}
+    if failure_summary:
+        return failure_summary
+    attempts = metadata.get("approval_attempts")
+    if isinstance(attempts, list):
+        normalized_attempts = [item for item in attempts if isinstance(item, dict)]
+        if normalized_attempts:
+            latest = normalized_attempts[-1]
+            if isinstance(latest.get("failure_summary"), dict):
+                return latest.get("failure_summary") or {}
+    return {}
+
+
 def _bucket_date_text(value: Any) -> str | None:
     if value is None:
         return None
@@ -246,11 +267,16 @@ def _update_cmms_bucket(bucket: Dict[str, Any], status: Any, work_order_id: Any,
     metadata = proposal_metadata if isinstance(proposal_metadata, dict) else {}
     attempt_count = _proposal_attempt_count(metadata)
     handoff_state = _proposal_handoff_state(status, work_order_id, metadata)
+    failure_summary = _proposal_failure_summary(metadata)
 
     if handoff_state == "success":
         summary["success_total"] = int(summary.get("success_total") or 0) + 1
     elif handoff_state == "failure":
         summary["failure_total"] = int(summary.get("failure_total") or 0) + 1
+        if bool(failure_summary.get("retryable")):
+            summary["retryable_failure_total"] = int(summary.get("retryable_failure_total") or 0) + 1
+        else:
+            summary["terminal_failure_total"] = int(summary.get("terminal_failure_total") or 0) + 1
     else:
         summary["pending_total"] = int(summary.get("pending_total") or 0) + 1
 
@@ -311,6 +337,8 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
     handoff_volume: Dict[str, Dict[str, int]] = {}
     success_counts: Dict[str, int] = {}
     terminal_counts: Dict[str, int] = {}
+    retryable_failure_counts: Dict[str, int] = {}
+    terminal_failure_counts: Dict[str, int] = {}
     daily_success_counts: Dict[str, Dict[str, int]] = {}
     daily_terminal_counts: Dict[str, Dict[str, int]] = {}
     total_counts: Dict[str, int] = {}
@@ -325,6 +353,7 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
         created_at = row[8] if len(row) > 8 else None
         backend_key = _workorder_backend(workorder_metadata)
         handoff_state = _proposal_handoff_state(status, work_order_id, proposal_metadata)
+        failure_summary = _proposal_failure_summary(proposal_metadata)
         backend_entry = backend_metrics.setdefault(backend_key, {})
         backend_entry["handoff_total"] = int(backend_entry.get("handoff_total") or 0) + 1
         total_counts[backend_key] = int(total_counts.get(backend_key) or 0) + 1
@@ -333,6 +362,10 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
             terminal_counts[backend_key] = int(terminal_counts.get(backend_key) or 0) + 1
             if handoff_state == "success":
                 success_counts[backend_key] = int(success_counts.get(backend_key) or 0) + 1
+            elif bool(failure_summary.get("retryable")):
+                retryable_failure_counts[backend_key] = int(retryable_failure_counts.get(backend_key) or 0) + 1
+            else:
+                terminal_failure_counts[backend_key] = int(terminal_failure_counts.get(backend_key) or 0) + 1
 
         bucket_date = _bucket_date_text(created_at)
         if bucket_date:
@@ -353,6 +386,8 @@ def _update_backend_metrics(out: Dict[str, Any], rows: List[Any], bucket_dates: 
         backend_entry["handoff_total"] = int(total_counts.get(backend_key) or backend_entry.get("handoff_total") or 0)
         terminal_total = int(terminal_counts.get(backend_key) or 0)
         backend_entry["handoff_success_rate"] = (int(success_counts.get(backend_key) or 0) / terminal_total) if terminal_total > 0 else None
+        backend_entry["retryable_failure_total"] = int(retryable_failure_counts.get(backend_key) or 0)
+        backend_entry["terminal_failure_total"] = int(terminal_failure_counts.get(backend_key) or 0)
 
     out["top_backends_by_handoff_volume"] = [
         {"backend": backend_key, "count": count}
@@ -753,6 +788,8 @@ def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
     rows.append({"metric": "cmms_success_total", "value": cmms_summary.get("success_total", 0)})
     rows.append({"metric": "cmms_pending_total", "value": cmms_summary.get("pending_total", 0)})
     rows.append({"metric": "cmms_failure_total", "value": cmms_summary.get("failure_total", 0)})
+    rows.append({"metric": "cmms_retryable_failure_total", "value": cmms_summary.get("retryable_failure_total", 0)})
+    rows.append({"metric": "cmms_terminal_failure_total", "value": cmms_summary.get("terminal_failure_total", 0)})
     rows.append({"metric": "cmms_admin_retry_required_total", "value": cmms_summary.get("admin_retry_required_total", 0)})
     rows.append({"metric": "cmms_limit_reached_total", "value": cmms_summary.get("limit_reached_total", 0)})
     rows.append({"metric": "cmms_approval_to_handoff_seconds_avg", "value": cmms_summary.get("approval_to_handoff_seconds_avg")})
@@ -801,6 +838,14 @@ def rca_outcomes_csv(request: Request, window: int = Query(30, ge=1, le=365)):
         rows.append({
             "metric": f"backend_{backend}_handoff_success_rate",
             "value": backend_metrics.get("handoff_success_rate"),
+        })
+        rows.append({
+            "metric": f"backend_{backend}_retryable_failure_total",
+            "value": backend_metrics.get("retryable_failure_total", 0),
+        })
+        rows.append({
+            "metric": f"backend_{backend}_terminal_failure_total",
+            "value": backend_metrics.get("terminal_failure_total", 0),
         })
         for point in backend_metrics.get("handoff_volume") or []:
             rows.append({

@@ -6,8 +6,8 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
+    CMMSConfigurationError,
     CMMSPayloadError,
-    CMMSUnavailableError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -89,7 +89,7 @@ class SAPPMCMMSAdapter(CMMSAdapter):
 
     def _endpoint(self) -> str:
         if not self.base_url:
-            raise CMMSUnavailableError("SAP PM backend is not configured: set MI_SAP_PM_BASE_URL")
+            raise CMMSConfigurationError("SAP PM backend is not configured: set MI_SAP_PM_BASE_URL")
         return (
             f"{self.base_url.rstrip('/')}/sap/opu/odata/sap/"
             "ZMI_WORKORDER_SRV/WorkOrders"

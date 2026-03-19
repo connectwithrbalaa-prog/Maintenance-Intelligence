@@ -10,15 +10,18 @@ for name in list(sys.modules):
         del sys.modules[name]
 
 from maintenance_intelligence.cmms.adapter import (
+    CMMSConfigurationError,
     CMMSPayloadError,
     CMMSUnavailableError,
     UnsupportedBackendError,
     create_cmms_adapter,
+    normalize_cmms_failure_summary,
     discover_cmms_backends,
     lifecycle_phase_for_status,
     normalize_work_order_lifecycle,
     parse_json_response_body,
     post_json_request,
+    submit_work_order_with_retry,
     supported_cmms_backends,
 )
 from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
@@ -123,6 +126,66 @@ def test_shared_http_helpers_post_and_parse_json():
 
     assert client.calls[0]["url"] == "https://example.test/workorders"
     assert body == {"ok": True}
+
+
+def test_normalize_cmms_failure_summary_distinguishes_payload_and_transient_failures():
+    payload_failure = normalize_cmms_failure_summary(detail="CMMS backend returned malformed payload", handoff_state="failure")
+    transient_failure = normalize_cmms_failure_summary(detail="temporary outage", handoff_state="failure")
+
+    assert payload_failure == {
+        "failure_class": "payload",
+        "retryable": False,
+        "terminal": True,
+        "message": "CMMS backend returned malformed payload",
+    }
+    assert transient_failure == {
+        "failure_class": "transient",
+        "retryable": True,
+        "terminal": False,
+        "message": "temporary outage",
+    }
+
+
+def test_submit_work_order_with_retry_marks_payload_failures_as_terminal():
+    class BadAdapter:
+        backend_name = "bad"
+        lifecycle_status_map = {}
+
+        def create_work_order(self, recommendation):
+            return "bad-payload"
+
+    with pytest.raises(CMMSPayloadError) as exc_info:
+        submit_work_order_with_retry(BadAdapter(), {"id": "REC-1", "asset_id": "PUMP-101"}, retry_attempts=3, retry_interval_s=0)
+
+    exc = exc_info.value
+    assert exc.failure_summary["failure_class"] == "payload"
+    assert exc.failure_summary["retryable"] is False
+    assert len(exc.attempts) == 1
+    assert exc.attempts[0]["failure_summary"]["terminal"] is True
+
+
+def test_submit_work_order_with_retry_retries_transient_failures_until_success():
+    class FlakyAdapter:
+        backend_name = "flaky"
+        lifecycle_status_map = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            if self.calls < 3:
+                raise CMMSUnavailableError("temporary outage")
+            return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
+
+    adapter = FlakyAdapter()
+    result = submit_work_order_with_retry(adapter, {"id": "REC-1", "asset_id": "PUMP-101"}, retry_attempts=3, retry_interval_s=0)
+
+    assert adapter.calls == 3
+    assert len(result["_attempts"]) == 3
+    assert result["_attempts"][0]["failure_summary"]["failure_class"] == "transient"
+    assert result["_attempts"][1]["failure_summary"]["failure_class"] == "transient"
+    assert result["_attempts"][2]["handoff_state"] == "success"
 
 
 def test_translate_connector_response_maps_backend_specific_fields():
@@ -273,7 +336,7 @@ def test_maximo_adapter_rejects_invalid_json(monkeypatch):
 def test_sap_pm_adapter_requires_base_url():
     adapter = SAPPMCMMSAdapter(Settings())
 
-    with pytest.raises(CMMSUnavailableError, match="MI_SAP_PM_BASE_URL"):
+    with pytest.raises(CMMSConfigurationError, match="MI_SAP_PM_BASE_URL"):
         adapter.create_work_order({"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"})
 
 
@@ -339,7 +402,7 @@ def test_sap_pm_adapter_maps_and_parses_odata_response():
 def test_servicenow_adapter_requires_base_url():
     adapter = ServiceNowCMMSAdapter(Settings())
 
-    with pytest.raises(CMMSUnavailableError, match="MI_SERVICENOW_BASE_URL"):
+    with pytest.raises(CMMSConfigurationError, match="MI_SERVICENOW_BASE_URL"):
         adapter.create_work_order({"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"})
 
 

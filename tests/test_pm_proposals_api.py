@@ -300,11 +300,14 @@ def test_list_proposals_includes_retry_metadata_for_exceptions(monkeypatch, tmp_
     assert payload[0]["attempt_count"] == 2
     assert payload[0]["attempts_remaining"] == 1
     assert payload[0]["max_attempts"] == 3
-    assert payload[0]["retry_allowed"] is True
-    assert payload[0]["admin_retry_required"] is True
+    assert payload[0]["retry_allowed"] is False
+    assert payload[0]["admin_retry_required"] is False
+    assert payload[0]["failure_summary"]["failure_class"] == "payload"
+    assert payload[0]["failure_summary"]["retryable"] is False
     assert payload[0]["last_attempt_info"]["origin"] == "admin"
     assert payload[0]["last_attempt_info"]["handoff_state"] == "failure"
     assert payload[0]["last_attempt_info"]["error_message"] == "CMMS backend returned malformed payload"
+    assert payload[0]["last_attempt_info"]["failure_summary"]["failure_class"] == "payload"
 
 
 def test_analyze_persists_proposal_record(monkeypatch, tmp_path):
@@ -760,14 +763,18 @@ def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch,
     assert payload["attempt_count"] == 1
     assert payload["attempts_remaining"] == 2
     assert payload["max_attempts"] == 3
-    assert payload["retry_allowed"] is True
+    assert payload["retry_allowed"] is False
+    assert payload["failure_summary"]["failure_class"] == "payload"
+    assert payload["failure_summary"]["terminal"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 1
+    assert payload["last_attempt_info"]["failure_summary"]["failure_class"] == "payload"
     assert payload["detail"] == "CMMS backend returned malformed payload"
     assert payload["approved"] is False
     assert payload["proposal"]["approved_by"] == "dev-user"
     assert fake_connection.proposals["REC-1"]["status"] == "pending"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["detail"] == "CMMS backend returned malformed payload"
     assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["handoff_state"] == "failure"
+    assert fake_connection.proposals["REC-1"]["metadata"]["approval"]["failure_summary"]["failure_class"] == "payload"
 
 
 def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeypatch, tmp_path):
@@ -812,7 +819,7 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert payload["attempt_count"] == 2
     assert payload["attempts_remaining"] == 1
     assert payload["max_attempts"] == 3
-    assert payload["retry_allowed"] is True
+    assert payload["retry_allowed"] is False
     assert payload["total_count"] == 2
     assert payload["page"] == 1
     assert payload["size"] == 3
@@ -822,6 +829,7 @@ def test_proposal_history_returns_recent_attempts_with_normalized_fields(monkeyp
     assert payload["attempts"][0]["handoff_state"] == "failure"
     assert payload["attempts"][0]["origin"] == "admin"
     assert payload["attempts"][0]["error_message"] == "CMMS backend returned malformed payload"
+    assert payload["attempts"][0]["failure_summary"]["failure_class"] == "payload"
     assert payload["attempts"][1]["approved_by"] == "planner-1"
     assert payload["attempts"][1]["handoff_state"] == "pending"
     assert payload["attempts"][1]["origin"] == "approval"
@@ -908,6 +916,8 @@ def test_approve_proposal_retries_transient_failures_before_success(monkeypatch,
     assert history["attempts"][0]["handoff_state"] == "success"
     assert history["attempts"][1]["handoff_state"] == "failure"
     assert history["attempts"][2]["handoff_state"] == "failure"
+    assert history["attempts"][1]["failure_summary"]["failure_class"] == "transient"
+    assert history["attempts"][1]["failure_summary"]["retryable"] is True
 
 
 def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypatch, tmp_path):
@@ -945,12 +955,44 @@ def test_approve_proposal_returns_final_failure_after_retry_exhaustion(monkeypat
     assert payload["attempts_remaining"] == 1
     assert payload["max_attempts"] == 3
     assert payload["retry_allowed"] is True
+    assert payload["failure_summary"]["failure_class"] == "transient"
+    assert payload["failure_summary"]["retryable"] is True
     assert payload["last_attempt_info"]["attempt_number"] == 2
     assert payload["detail"] == "temporary outage"
     assert adapter.calls == 2
     history = client.get("/api/v1/agents/pm/proposals/REC-1/history", headers=READ_HEADERS).json()
     assert len(history["attempts"]) == 2
     assert all(attempt["handoff_state"] == "failure" for attempt in history["attempts"])
+    assert all(attempt["failure_summary"]["failure_class"] == "transient" for attempt in history["attempts"])
+
+
+def test_approve_proposal_blocks_retry_after_terminal_failure(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_connection = FakeConnection()
+
+    class BadAdapter:
+        backend_name = "bad"
+
+        def create_work_order(self, recommendation):
+            return "bad-payload"
+
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: BadAdapter())
+
+    client = TestClient(app)
+    first = client.post("/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"})
+    second = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        json={"admin_retry": True},
+        headers={"x-user-id": "planner-2", "x-user-role": "maintainer"},
+    )
+
+    assert first.status_code == 502
+    assert second.status_code == 409
+    assert second.json()["detail"] == "Latest connector failure is terminal (payload); retry is not allowed"
 
 
 def test_approve_proposal_retry_appends_history_and_creates_single_workorder(monkeypatch, tmp_path):
@@ -1120,7 +1162,7 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
     outcomes = iter(
         [
             {"status": "queued", "backend": "history", "response": {"status": "queued"}},
-            "bad-payload",
+            pm_mod.CMMSUnavailableError("temporary outage"),
             {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": "history"},
         ]
     )
@@ -1129,7 +1171,10 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
         backend_name = "history"
 
         def create_work_order(self, recommendation):
-            return next(outcomes)
+            outcome = next(outcomes)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
 
     monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: SequenceAdapter())
     client = TestClient(app)
@@ -1139,7 +1184,7 @@ def test_proposal_history_supports_paging_and_boundary_pages(monkeypatch, tmp_pa
         "/api/v1/agents/pm/proposals/REC-1/approve",
         json={"admin_retry": True},
         headers={"x-user-id": "planner-2", "x-user-role": "admin"},
-    ).status_code == 502
+    ).status_code == 503
     assert client.post(
         "/api/v1/agents/pm/proposals/REC-1/approve",
         json={"admin_retry": True},

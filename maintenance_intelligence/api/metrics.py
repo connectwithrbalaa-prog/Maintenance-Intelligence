@@ -93,6 +93,8 @@ class CMMSSnapshotCollector:
             "cmms_handoff_success_total": ("CMMS handoff successes observed in the last 30 days", float(summary.get("success_total") or 0)),
             "cmms_handoff_pending_total": ("CMMS handoff proposals still pending in the last 30 days", float(summary.get("pending_total") or 0)),
             "cmms_handoff_failure_total": ("CMMS handoff proposals in failure state in the last 30 days", float(summary.get("failure_total") or 0)),
+            "cmms_handoff_retryable_failure_total": ("CMMS handoff proposals in retryable failure state in the last 30 days", float(summary.get("retryable_failure_total") or 0)),
+            "cmms_handoff_terminal_failure_total": ("CMMS handoff proposals in terminal failure state in the last 30 days", float(summary.get("terminal_failure_total") or 0)),
             "cmms_handoff_admin_retry_required_total": ("CMMS handoff proposals requiring admin retry review in the last 30 days", float(summary.get("admin_retry_required_total") or 0)),
             "cmms_handoff_limit_reached_total": ("CMMS handoff proposals that hit the retry ceiling in the last 30 days", float(summary.get("limit_reached_total") or 0)),
             "cmms_handoff_backlog_total": (
@@ -115,6 +117,8 @@ class CMMSSnapshotCollector:
         backend_metric_specs = {
             "cmms_handoff_backend_pending_total": ("Per-backend CMMS pending handoff proposals in the last 30 days", "pending_total"),
             "cmms_handoff_backend_failure_total": ("Per-backend CMMS handoff failures in the last 30 days", "failure_total"),
+            "cmms_handoff_backend_retryable_failure_total": ("Per-backend retryable CMMS handoff failures in the last 30 days", "retryable_failure_total"),
+            "cmms_handoff_backend_terminal_failure_total": ("Per-backend terminal CMMS handoff failures in the last 30 days", "terminal_failure_total"),
             "cmms_handoff_backend_admin_retry_required_total": ("Per-backend CMMS proposals requiring admin retry review in the last 30 days", "admin_retry_required_total"),
             "cmms_handoff_backend_limit_reached_total": ("Per-backend CMMS proposals that hit the retry ceiling in the last 30 days", "limit_reached_total"),
         }

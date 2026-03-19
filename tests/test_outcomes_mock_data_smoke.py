@@ -180,6 +180,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                 "success_total": 2,
                 "pending_total": 1,
                 "failure_total": 1,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 1,
                 "admin_retry_required_total": 2,
                 "limit_reached_total": 1,
                 "approval_to_handoff_seconds_avg": pytest.approx(450.0),
@@ -190,6 +192,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                         "success_total": 2,
                         "pending_total": 0,
                         "failure_total": 0,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 0,
                         "admin_retry_required_total": 0,
                         "limit_reached_total": 0,
                         "approval_to_handoff_seconds_avg": pytest.approx(450.0),
@@ -198,6 +202,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                         "success_total": 0,
                         "pending_total": 1,
                         "failure_total": 1,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 1,
                         "admin_retry_required_total": 2,
                         "limit_reached_total": 1,
                         "approval_to_handoff_seconds_avg": None,
@@ -208,6 +214,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                         "success_total": 1,
                         "pending_total": 0,
                         "failure_total": 0,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 0,
                         "admin_retry_required_total": 0,
                         "limit_reached_total": 0,
                         "approval_to_handoff_seconds_avg": pytest.approx(600.0),
@@ -216,6 +224,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                         "success_total": 1,
                         "pending_total": 0,
                         "failure_total": 0,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 0,
                         "admin_retry_required_total": 0,
                         "limit_reached_total": 0,
                         "approval_to_handoff_seconds_avg": pytest.approx(300.0),
@@ -224,6 +234,8 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                         "success_total": 0,
                         "pending_total": 1,
                         "failure_total": 1,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 1,
                         "admin_retry_required_total": 2,
                         "limit_reached_total": 1,
                         "approval_to_handoff_seconds_avg": None,
@@ -254,10 +266,16 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
             assert payload["asset_metrics"]["PUMP-202"]["early_warning_score"] >= 0
             assert payload["backend_metrics"]["maximo"]["handoff_total"] == 1
             assert payload["backend_metrics"]["maximo"]["handoff_success_rate"] == pytest.approx(1.0)
+            assert payload["backend_metrics"]["maximo"]["retryable_failure_total"] == 0
+            assert payload["backend_metrics"]["maximo"]["terminal_failure_total"] == 0
             assert payload["backend_metrics"]["mock"]["handoff_total"] == 1
             assert payload["backend_metrics"]["mock"]["handoff_success_rate"] == pytest.approx(1.0)
+            assert payload["backend_metrics"]["mock"]["retryable_failure_total"] == 0
+            assert payload["backend_metrics"]["mock"]["terminal_failure_total"] == 0
             assert payload["backend_metrics"]["unknown"]["handoff_total"] == 2
             assert payload["backend_metrics"]["unknown"]["handoff_success_rate"] == pytest.approx(0.0)
+            assert payload["backend_metrics"]["unknown"]["retryable_failure_total"] == 0
+            assert payload["backend_metrics"]["unknown"]["terminal_failure_total"] == 1
             assert any(point["value"] == 1 for point in payload["backend_metrics"]["mock"]["handoff_volume"])
             assert any(point["value"] == 0.0 for point in payload["backend_metrics"]["unknown"]["handoff_success_rate_series"] if point["value"] is not None)
             assert payload["user_metrics"]["operator-1"]["feedback_total"] == 1

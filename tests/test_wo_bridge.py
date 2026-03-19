@@ -1,5 +1,6 @@
 import json
 
+from maintenance_intelligence.cmms.adapter import CMMSUnavailableError
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.services import wo_bridge as wo_bridge_mod
@@ -366,6 +367,54 @@ def test_wo_bridge_replays_queued_edge_commands_before_live_messages(tmp_path):
     assert fake_connection.proposals["REC-QUEUED"]["status"] == "approved"
     assert fake_connection.proposals["REC-QUEUED"]["work_order_id"] == "WO-REC-1234"
     assert fake_connection.proposals["REC-QUEUED"]["metadata"]["approval"]["handoff_state"] == "success"
+
+
+def test_replay_failure_records_normalized_failure_summary(tmp_path):
+    fake_connection = FakeConnection()
+    fake_connection.proposals["REC-FAIL"] = {
+        "proposal_id": "REC-FAIL",
+        "status": "queued-offline",
+        "approved_by": "planner-1",
+        "work_order_id": None,
+        "metadata": {},
+    }
+    queue_path = tmp_path / "edge-command.sqlite3"
+    command_queue = EdgeCommandBuffer(str(queue_path))
+    command_queue.enqueue_command(
+        "REC-FAIL",
+        {
+            "proposal_id": "REC-FAIL",
+            "recommendation_id": "REC-FAIL",
+            "recommendation": {
+                "id": "REC-FAIL",
+                "asset_id": "PUMP-101",
+                "title": "Replay queued handoff",
+                "rationale": "Buffered approval",
+                "priority": "HIGH",
+            },
+            "handoff_context": {
+                "proposal_id": "REC-FAIL",
+                "recommendation_id": "REC-FAIL",
+                "approved_by": "planner-1",
+                "origin": "approval",
+            },
+        },
+        error="temporary outage",
+    )
+
+    class DownAdapter:
+        backend_name = "offline"
+
+        def create_work_order(self, recommendation):
+            raise CMMSUnavailableError("temporary outage")
+
+    outcome = wo_bridge_mod._replay_edge_command_queue(fake_connection, DownAdapter(), command_queue)
+
+    assert outcome == {"replayed": 0, "error": "temporary outage"}
+    attempt = fake_connection.proposals["REC-FAIL"]["metadata"]["approval_attempts"][0]
+    assert attempt["handoff_state"] == "queued-offline"
+    assert attempt["failure_summary"]["failure_class"] == "transient"
+    assert attempt["failure_summary"]["retryable"] is True
 
 
 def test_with_pg_retries_then_succeeds(monkeypatch):

@@ -14,28 +14,53 @@ from maintenance_intelligence.runner.config import Settings
 TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
 REGRESSIVE_WORK_ORDER_STATUSES = {"PENDING", "QUEUED", "DRAFT", "NEW"}
 VALID_LIFECYCLE_PHASES = {"pending", "created", "handoff-complete", "active", "completed"}
+VALID_FAILURE_CLASSES = {"transient", "payload", "configuration", "unsupported", "unknown"}
 
 
 class CMMSAdapterError(RuntimeError):
-    pass
+    failure_class = "unknown"
+    retryable = False
+    terminal = True
+
+    def __init__(self, message: str, *, failure_summary: Optional[Dict[str, Any]] = None, attempts: Optional[list[dict[str, Any]]] = None):
+        super().__init__(message)
+        self.failure_summary = normalize_cmms_failure_summary(
+            failure_summary,
+            detail=message,
+            failure_class=self.failure_class,
+            retryable=self.retryable,
+            terminal=self.terminal,
+        )
+        self.attempts = list(attempts or [])
 
 
 class UnsupportedBackendError(CMMSAdapterError):
-    pass
+    failure_class = "unsupported"
+    retryable = False
+    terminal = True
 
 
 class CMMSUnavailableError(CMMSAdapterError):
-    pass
+    failure_class = "transient"
+    retryable = True
+    terminal = False
+
+
+class CMMSConfigurationError(CMMSAdapterError):
+    failure_class = "configuration"
+    retryable = False
+    terminal = True
 
 
 class CMMSPayloadError(CMMSAdapterError):
-    pass
+    failure_class = "payload"
+    retryable = False
+    terminal = True
 
 
 class CMMSRetryExhaustedError(CMMSUnavailableError):
-    def __init__(self, message: str, *, attempts: list[dict[str, Any]]):
-        super().__init__(message)
-        self.attempts = attempts
+    def __init__(self, message: str, *, attempts: list[dict[str, Any]], failure_summary: Optional[Dict[str, Any]] = None):
+        super().__init__(message, failure_summary=failure_summary, attempts=attempts)
 
 
 def _as_dict(value: Any) -> Dict[str, Any]:
@@ -72,6 +97,73 @@ def _first_timestamp(*values: Any) -> Optional[str]:
 def _status_upper(status: Any) -> Optional[str]:
     text = _as_text(status)
     return text.upper() if text else None
+
+
+def normalize_cmms_failure_summary(
+    value: Any = None,
+    *,
+    detail: Any = None,
+    handoff_state: Any = None,
+    failure_class: Optional[str] = None,
+    retryable: Optional[bool] = None,
+    terminal: Optional[bool] = None,
+) -> Dict[str, Any]:
+    raw_value = value if isinstance(value, dict) else {}
+    message = _as_text(raw_value.get("message")) or _as_text(detail)
+    normalized_handoff_state = (_as_text(raw_value.get("handoff_state")) or _as_text(handoff_state) or "").lower()
+    inferred_class = (_as_text(raw_value.get("failure_class")) or _as_text(failure_class) or "").lower()
+    if inferred_class not in VALID_FAILURE_CLASSES:
+        message_lower = (message or "").lower()
+        if normalized_handoff_state == "queued-offline":
+            inferred_class = "transient"
+        elif "unsupported cmms backend" in message_lower or "unsupported backend" in message_lower:
+            inferred_class = "unsupported"
+        elif "not configured" in message_lower or "set mi_" in message_lower or "missing config" in message_lower:
+            inferred_class = "configuration"
+        elif "malformed payload" in message_lower or "invalid json" in message_lower or "bad payload" in message_lower:
+            inferred_class = "payload"
+        elif any(token in message_lower for token in ("outage", "offline", "timeout", "timed out", "temporar", "unavailable", "request failed", "connection", "refused")):
+            inferred_class = "transient"
+        elif message:
+            inferred_class = "unknown"
+        else:
+            inferred_class = ""
+    if not inferred_class:
+        return {}
+
+    normalized_retryable = retryable
+    if normalized_retryable is None and "retryable" in raw_value:
+        normalized_retryable = bool(raw_value.get("retryable"))
+    if normalized_retryable is None:
+        normalized_retryable = inferred_class == "transient"
+
+    normalized_terminal = terminal
+    if normalized_terminal is None and "terminal" in raw_value:
+        normalized_terminal = bool(raw_value.get("terminal"))
+    if normalized_terminal is None:
+        normalized_terminal = not normalized_retryable
+
+    return {
+        "failure_class": inferred_class,
+        "retryable": bool(normalized_retryable),
+        "terminal": bool(normalized_terminal),
+        "message": message or "",
+    }
+
+
+def cmms_failure_summary_from_error(error: BaseException) -> Dict[str, Any]:
+    summary = getattr(error, "failure_summary", None)
+    if isinstance(summary, dict) and summary:
+        return normalize_cmms_failure_summary(summary)
+    failure_class = getattr(error, "failure_class", None)
+    retryable = getattr(error, "retryable", None)
+    terminal = getattr(error, "terminal", None)
+    return normalize_cmms_failure_summary(
+        detail=str(error),
+        failure_class=failure_class,
+        retryable=retryable,
+        terminal=terminal,
+    )
 
 
 def normalize_lifecycle_status_map(status_map: Any) -> Dict[str, str]:
@@ -416,6 +508,7 @@ def _attempt_entry(
     handoff_state: str,
     connector_result: Optional[Dict[str, Any]] = None,
     error_message: Optional[str] = None,
+    failure_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
         "attempt_number": attempt_number,
@@ -424,6 +517,11 @@ def _attempt_entry(
         "result": "failure" if error_message else ("success" if handoff_state == "success" else "pending"),
         "connector_result": connector_result or {},
         "error_message": error_message or "",
+        "failure_summary": normalize_cmms_failure_summary(
+            failure_summary,
+            detail=error_message,
+            handoff_state=handoff_state,
+        ),
     }
 
 
@@ -455,28 +553,33 @@ def submit_work_order_with_retry(
                 )
             )
             return {**result, "_attempts": attempts}
-        except CMMSPayloadError as exc:
+        except (CMMSPayloadError, CMMSConfigurationError, UnsupportedBackendError) as exc:
+            failure_summary = cmms_failure_summary_from_error(exc)
             attempts.append(
                 _attempt_entry(
                     attempt_number=attempt_number,
                     handoff_state="failure",
                     error_message=str(exc),
+                    failure_summary=failure_summary,
                 )
             )
             exc.attempts = attempts
+            exc.failure_summary = failure_summary
             raise
         except CMMSAdapterError as exc:
-            if isinstance(exc, UnsupportedBackendError):
-                raise
+            failure_summary = cmms_failure_summary_from_error(exc)
             attempts.append(
                 _attempt_entry(
                     attempt_number=attempt_number,
                     handoff_state="failure",
                     error_message=str(exc),
+                    failure_summary=failure_summary,
                 )
             )
-            if attempt_number >= max_attempts:
-                raise CMMSRetryExhaustedError(str(exc), attempts=attempts) from exc
+            exc.attempts = attempts
+            exc.failure_summary = failure_summary
+            if attempt_number >= max_attempts or not failure_summary.get("retryable", False):
+                raise CMMSRetryExhaustedError(str(exc), attempts=attempts, failure_summary=failure_summary) from exc
             sleep_fn(max(0.0, float(retry_interval_s)))
 
     raise CMMSRetryExhaustedError("CMMS handoff retries exhausted", attempts=attempts)

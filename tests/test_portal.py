@@ -85,6 +85,8 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Lifecycle mappings" in page.text
     assert "Handoff provenance" in page.text
     assert "Connector provenance summary" in page.text
+    assert "Failure class" in page.text
+    assert "Retryability" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
     assert "/api/v1/agents/pm/connectors" in page.text

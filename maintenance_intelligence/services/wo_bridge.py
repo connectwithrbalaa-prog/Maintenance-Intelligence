@@ -6,8 +6,10 @@ from loguru import logger
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapterError,
     CMMSPayloadError,
+    cmms_failure_summary_from_error,
     create_cmms_adapter,
     is_terminal_work_order_status,
+    normalize_cmms_failure_summary,
     normalize_work_order_lifecycle,
     submit_work_order_with_retry,
     work_order_lifecycle_phase,
@@ -122,6 +124,7 @@ def _attempt_entry(result=None, *, handoff_state="pending", approved_by=None, or
         "result": "success" if handoff_state == "success" else ("failure" if error_message else "pending"),
         "connector_result": result if isinstance(result, dict) else {},
         "error_message": error_message or "",
+        "failure_summary": normalize_cmms_failure_summary(detail=error_message, handoff_state=handoff_state),
     }
 
 
@@ -152,6 +155,11 @@ def _proposal_metadata_with_attempt(existing_metadata, attempt, *, approved_by=N
         "origin": normalized_attempt.get("origin") or "bridge",
         "result": normalized_attempt.get("connector_result") if isinstance(normalized_attempt.get("connector_result"), dict) else {},
         "detail": normalized_attempt.get("error_message") or None,
+        "failure_summary": normalize_cmms_failure_summary(
+            normalized_attempt.get("failure_summary"),
+            detail=normalized_attempt.get("error_message"),
+            handoff_state=handoff_state,
+        ),
     }
     return {
         **metadata,
@@ -346,7 +354,7 @@ def _replay_edge_command_queue(conn, adapter, queue: EdgeCommandBuffer, *, batch
                     None,
                     approved_by=_as_text(context.get("approved_by")),
                     origin="edge-replay",
-                    error_message=str(exc),
+                    error_message=cmms_failure_summary_from_error(exc).get("message") or str(exc),
                 )
             return {"replayed": replayed_total, "error": str(exc)}
     return {"replayed": replayed_total, "error": None}

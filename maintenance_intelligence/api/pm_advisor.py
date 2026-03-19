@@ -11,13 +11,16 @@ from pydantic import BaseModel, Field
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapterError,
+    CMMSConfigurationError,
     CMMSPayloadError,
     CMMSRetryExhaustedError,
     CMMSUnavailableError,
     UnsupportedBackendError,
+    cmms_failure_summary_from_error,
     create_cmms_adapter,
     discover_cmms_backends,
     normalize_work_order_lifecycle,
+    normalize_cmms_failure_summary,
 )
 from maintenance_intelligence.api.middleware.identity import (
     ADMIN_ROLES,
@@ -87,8 +90,19 @@ def _approval_attempt_failure_metadata(
             "handoff_state": "failure",
             "detail": detail,
             "result": {},
+            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state="failure"),
         }
     }
+
+
+def _attempt_failure_summary(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return normalize_cmms_failure_summary(
+        value.get("failure_summary"),
+        detail=value.get("error_message") or value.get("detail"),
+        handoff_state=value.get("handoff_state"),
+    )
 
 
 def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
@@ -104,6 +118,7 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(connector_result, dict):
         connector_result = value.get("result") if isinstance(value.get("result"), dict) else {}
     error_message = _as_text(value.get("error_message")) or _as_text(value.get("detail"))
+    failure_summary = _attempt_failure_summary(value)
     result = _as_text(value.get("result"))
     if result not in {"success", "pending", "failure"}:
         if handoff_state == "success":
@@ -124,6 +139,7 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
         "result": result,
         "connector_result": connector_result,
         "error_message": error_message or "",
+        "failure_summary": failure_summary,
     }
 
 
@@ -163,12 +179,18 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
     attempt_count = len(attempts)
     attempts_remaining = max(0, max_attempts - attempt_count)
     proposal_status = _as_text(proposal.get("status")) or "pending"
-    retry_allowed = proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and attempts_remaining > 0
+    latest_attempt = attempts[0] if attempts else {}
+    latest_failure_summary = _attempt_failure_summary(latest_attempt)
+    latest_retryable = True
+    if (latest_attempt.get("handoff_state") or "") == "failure" and latest_failure_summary:
+        latest_retryable = bool(latest_failure_summary.get("retryable"))
+    retry_allowed = proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and attempts_remaining > 0 and latest_retryable
     return {
         "attempt_count": attempt_count,
         "attempts_remaining": attempts_remaining,
         "max_attempts": max_attempts,
         "retry_allowed": retry_allowed,
+        "failure_summary": latest_failure_summary,
     }
 
 
@@ -179,7 +201,7 @@ def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> 
     return {
         **proposal,
         **_retry_fields(proposal, max_attempts),
-        "admin_retry_required": bool(attempts) and proposal_status not in {"approved", QUEUED_OFFLINE_STATUS},
+        "admin_retry_required": bool(attempts) and proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and _retry_fields(proposal, max_attempts)["retry_allowed"],
         "last_attempt_info": latest_attempt,
     }
 
@@ -202,6 +224,7 @@ def _connector_provenance_summary(
     handoff = snapshot_metadata.get("handoff") if isinstance(snapshot_metadata.get("handoff"), dict) else {}
     handoff_lifecycle = handoff.get("lifecycle") if isinstance(handoff.get("lifecycle"), dict) else {}
     connector_lifecycle = connector_result.get("lifecycle") if isinstance(connector_result.get("lifecycle"), dict) else {}
+    failure_summary = _attempt_failure_summary(latest_attempt)
     return {
         "proposal_id": proposal_id,
         "recommendation_id": recommendation_id,
@@ -219,6 +242,7 @@ def _connector_provenance_summary(
         "work_order_terminal_state": bool(snapshot.get("terminal_state") or (snapshot.get("lifecycle", {}).get("terminal") if isinstance(snapshot.get("lifecycle"), dict) else False)),
         "transition_from": _as_text(handoff.get("status_before")) or "",
         "transition_to": _as_text(handoff.get("status_after")) or _as_text(snapshot.get("status")) or _as_text(connector_result.get("status")) or "",
+        "failure_summary": failure_summary,
     }
 
 
@@ -333,6 +357,11 @@ def _append_approval_metadata(
                 "result": _as_text(attempt.get("result")) or ("success" if handoff_state == "success" else ("failure" if attempt.get("error_message") else "pending")),
                 "connector_result": attempt.get("connector_result") if isinstance(attempt.get("connector_result"), dict) else {},
                 "error_message": _as_text(attempt.get("error_message")) or "",
+                "failure_summary": normalize_cmms_failure_summary(
+                    attempt.get("failure_summary"),
+                    detail=attempt.get("error_message"),
+                    handoff_state=handoff_state,
+                ),
             }
         )
     accumulated.extend(normalized_attempts)
@@ -344,6 +373,7 @@ def _append_approval_metadata(
         "result": "pending",
         "connector_result": {},
         "error_message": "",
+        "failure_summary": {},
     })
     approval = {
         "approved_by": latest.get("approved_by"),
@@ -353,6 +383,7 @@ def _append_approval_metadata(
         "origin": latest.get("origin") or origin,
         "result": latest.get("connector_result") or {},
         "detail": latest.get("error_message") or None,
+        "failure_summary": _attempt_failure_summary(latest),
     }
     return {
         "approval": approval,
@@ -386,6 +417,7 @@ def _approval_response(
     attempts = normalized_proposal.get("approval_history") or _approval_attempts(normalized_proposal.get("metadata") or {})
     latest_attempt = attempts[0] if attempts else {}
     retry_fields = _retry_fields(normalized_proposal, max_attempts)
+    failure_summary = _attempt_failure_summary(latest_attempt)
     body = {
         "status": approval_status,
         "handoff_state": handoff_state,
@@ -396,9 +428,10 @@ def _approval_response(
         "attempts_remaining": retry_fields["attempts_remaining"],
         "max_attempts": retry_fields["max_attempts"],
         "retry_allowed": retry_fields["retry_allowed"],
+        "failure_summary": failure_summary,
         "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
         "last_attempt_info": latest_attempt,
-        "admin_retry_required": bool(attempts) and approval_status not in {"approved", QUEUED_OFFLINE_STATUS},
+        "admin_retry_required": bool(attempts) and approval_status not in {"approved", QUEUED_OFFLINE_STATUS} and retry_fields["retry_allowed"],
         "proposal_id": normalized_proposal.get("proposal_id"),
         "approved_by": approved_by,
         "approved_at": approved_at,
@@ -693,6 +726,7 @@ def _queue_attempts(attempts: List[Dict[str, Any]], queued_result: Dict[str, Any
             "result": "pending",
             "connector_result": queued_result,
             "error_message": detail,
+            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state=QUEUED_OFFLINE_STATUS),
         }
         return [*attempts[:-1], queued_attempt]
     return [
@@ -703,6 +737,7 @@ def _queue_attempts(attempts: List[Dict[str, Any]], queued_result: Dict[str, Any
             "result": "pending",
             "connector_result": queued_result,
             "error_message": detail,
+            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state=QUEUED_OFFLINE_STATUS),
         }
     ]
 
@@ -911,8 +946,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
 
     existing_attempts = _approval_attempts((existing or {}).get("metadata") or {})
     attempts_remaining = max(0, max_attempts - len(existing_attempts))
+    latest_existing_attempt = existing_attempts[0] if existing_attempts else {}
+    latest_failure_summary = _attempt_failure_summary(latest_existing_attempt)
     if attempts_remaining <= 0:
         raise HTTPException(status_code=409, detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts")
+    if latest_existing_attempt.get("handoff_state") == "failure" and latest_failure_summary and not latest_failure_summary.get("retryable", False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Latest connector failure is terminal ({latest_failure_summary.get('failure_class')}); retry is not allowed",
+        )
 
     manual_retry = bool(existing_attempts) and (existing or {}).get("status") != "approved"
     attempt_origin = "admin" if approve_request.admin_retry else "approval"
@@ -963,7 +1005,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 pass
     except UnsupportedBackendError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except CMMSPayloadError as exc:
+    except (CMMSPayloadError, CMMSConfigurationError) as exc:
         detail = str(exc)
         persisted: Dict[str, Any] = {}
         attempts = getattr(exc, "attempts", [])
@@ -1036,9 +1078,12 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             detail,
             max_attempts=max_attempts,
         )
-    except CMMSUnavailableError as exc:
+    except CMMSAdapterError as exc:
         detail = str(exc)
-        if settings.edge_mode_enabled:
+        persisted = {}
+        attempts = getattr(exc, "attempts", [])
+        failure_summary = cmms_failure_summary_from_error(exc)
+        if settings.edge_mode_enabled and failure_summary.get("retryable"):
             try:
                 persisted, queued_result = _queue_offline_handoff(
                     settings,
@@ -1048,7 +1093,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     attempt_origin,
                     detail,
                     proposal,
-                    list(getattr(exc, "attempts", []) or []),
+                    list(attempts or []),
                 )
                 return _approval_response(
                     persisted,
@@ -1060,8 +1105,6 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 )
             except Exception:
                 pass
-        persisted = {}
-        attempts = getattr(exc, "attempts", [])
         try:
             conn = connection_factory(settings.pg_dsn)
             try:
@@ -1080,33 +1123,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
             None,
-            503,
-            detail,
-            max_attempts=max_attempts,
-        )
-    except CMMSAdapterError as exc:
-        detail = str(exc)
-        persisted = {}
-        attempts = getattr(exc, "attempts", [])
-        try:
-            conn = connection_factory(settings.pg_dsn)
-            try:
-                persisted = _update_proposal_status(
-                    conn,
-                    proposal_id,
-                    approved_by,
-                    None,
-                    "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
-                )
-            finally:
-                conn.close()
-        except Exception:
-            pass
-        return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
-            None,
-            503,
+            503 if failure_summary.get("retryable") else 502,
             detail,
             max_attempts=max_attempts,
         )

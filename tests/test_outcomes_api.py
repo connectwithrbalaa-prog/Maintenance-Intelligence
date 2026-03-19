@@ -149,6 +149,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
         "success_total": 1,
         "pending_total": 1,
         "failure_total": 2,
+        "retryable_failure_total": 0,
+        "terminal_failure_total": 2,
         "admin_retry_required_total": 3,
         "limit_reached_total": 1,
         "approval_to_handoff_seconds_avg": 600.0,
@@ -159,6 +161,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 "success_total": 1,
                 "pending_total": 0,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 0,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 600.0,
@@ -167,6 +171,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 "success_total": 0,
                 "pending_total": 0,
                 "failure_total": 2,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 2,
                 "admin_retry_required_total": 2,
                 "limit_reached_total": 1,
                 "approval_to_handoff_seconds_avg": None,
@@ -175,6 +181,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 "success_total": 0,
                 "pending_total": 1,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 1,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": None,
@@ -185,6 +193,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 "success_total": 1,
                 "pending_total": 0,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 0,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 600.0,
@@ -193,6 +203,8 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 "success_total": 0,
                 "pending_total": 1,
                 "failure_total": 2,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 2,
                 "admin_retry_required_total": 3,
                 "limit_reached_total": 1,
                 "approval_to_handoff_seconds_avg": None,
@@ -213,8 +225,12 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert sorted(payload["backend_metrics"].keys()) == ["maximo", "unknown"]
     assert payload["backend_metrics"]["maximo"]["handoff_total"] == 1
     assert payload["backend_metrics"]["maximo"]["handoff_success_rate"] == 1.0
+    assert payload["backend_metrics"]["maximo"]["retryable_failure_total"] == 0
+    assert payload["backend_metrics"]["maximo"]["terminal_failure_total"] == 0
     assert payload["backend_metrics"]["unknown"]["handoff_total"] == 3
     assert payload["backend_metrics"]["unknown"]["handoff_success_rate"] == 0.0
+    assert payload["backend_metrics"]["unknown"]["retryable_failure_total"] == 0
+    assert payload["backend_metrics"]["unknown"]["terminal_failure_total"] == 2
     assert any(point["value"] == 2 for point in payload["backend_metrics"]["unknown"]["handoff_volume"])
     assert any(point["value"] == 0.0 for point in payload["backend_metrics"]["unknown"]["handoff_success_rate_series"] if point["value"] is not None)
     assert payload["user_metrics"]["operator-1"]["feedback_counts"] == {"accept": 1, "reject": 0, "edited": 0}
@@ -338,6 +354,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
         "success_total": 2,
         "pending_total": 1,
         "failure_total": 0,
+        "retryable_failure_total": 0,
+        "terminal_failure_total": 0,
         "admin_retry_required_total": 1,
         "limit_reached_total": 0,
         "approval_to_handoff_seconds_avg": 540.0,
@@ -348,6 +366,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 "success_total": 1,
                 "pending_total": 0,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 0,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 600.0,
@@ -356,6 +376,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 "success_total": 1,
                 "pending_total": 1,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 1,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 480.0,
@@ -366,6 +388,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 "success_total": 1,
                 "pending_total": 0,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 0,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 600.0,
@@ -374,6 +398,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 "success_total": 1,
                 "pending_total": 0,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 0,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": 480.0,
@@ -382,6 +408,8 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 "success_total": 0,
                 "pending_total": 1,
                 "failure_total": 0,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 0,
                 "admin_retry_required_total": 1,
                 "limit_reached_total": 0,
                 "approval_to_handoff_seconds_avg": None,
@@ -448,6 +476,8 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
         "success_total": 0,
         "pending_total": 0,
         "failure_total": 0,
+        "retryable_failure_total": 0,
+        "terminal_failure_total": 0,
         "admin_retry_required_total": 0,
         "limit_reached_total": 0,
         "approval_to_handoff_seconds_avg": None,
@@ -504,6 +534,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
                 "success_total": 2,
                 "pending_total": 1,
                 "failure_total": 1,
+                "retryable_failure_total": 0,
+                "terminal_failure_total": 1,
                 "admin_retry_required_total": 2,
                 "limit_reached_total": 1,
                 "approval_to_handoff_seconds_avg": 450.0,
@@ -514,6 +546,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
                         "success_total": 2,
                         "pending_total": 1,
                         "failure_total": 1,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 1,
                         "admin_retry_required_total": 2,
                         "limit_reached_total": 1,
                         "approval_to_handoff_seconds_avg": 450.0,
@@ -524,6 +558,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
                         "success_total": 1,
                         "pending_total": 1,
                         "failure_total": 0,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 0,
                         "admin_retry_required_total": 1,
                         "limit_reached_total": 0,
                         "approval_to_handoff_seconds_avg": 300.0,
@@ -532,6 +568,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
                         "success_total": 1,
                         "pending_total": 0,
                         "failure_total": 1,
+                        "retryable_failure_total": 0,
+                        "terminal_failure_total": 1,
                         "admin_retry_required_total": 1,
                         "limit_reached_total": 1,
                         "approval_to_handoff_seconds_avg": 600.0,
@@ -628,6 +666,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     assert metrics["cmms_success_total"] == "2"
     assert metrics["cmms_pending_total"] == "1"
     assert metrics["cmms_failure_total"] == "1"
+    assert metrics["cmms_retryable_failure_total"] == "0"
+    assert metrics["cmms_terminal_failure_total"] == "1"
     assert metrics["cmms_admin_retry_required_total"] == "2"
     assert metrics["cmms_limit_reached_total"] == "1"
     assert metrics["cmms_approval_to_handoff_seconds_avg"] == "450.0"
@@ -635,6 +675,7 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     assert metrics["cmms_asset_PUMP-7_approval_to_handoff_seconds_avg"] == "450.0"
     assert metrics["cmms_backend_maximo_pending_total"] == "1"
     assert metrics["cmms_backend_mock_limit_reached_total"] == "1"
+    assert metrics["cmms_backend_mock_terminal_failure_total"] == "1"
     assert metrics["top_asset_PUMP-7_wo_count"] == "2"
     assert metrics["top_backend_maximo_handoff_count"] == "2"
     assert metrics["asset_PUMP-7_workorder_volume_2026-03-14"] == "2"
@@ -643,6 +684,8 @@ def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     assert metrics["asset_PUMP-7_acceptance_rate_2026-03-15"] == ""
     assert metrics["backend_maximo_handoff_total"] == "2"
     assert metrics["backend_maximo_handoff_success_rate"] == "0.5"
+    assert metrics["backend_maximo_retryable_failure_total"] == "0"
+    assert metrics["backend_maximo_terminal_failure_total"] == "0"
     assert metrics["backend_maximo_handoff_volume_2026-03-14"] == "1"
     assert metrics["backend_maximo_handoff_success_rate_2026-03-15"] == "0.0"
     assert metrics["user_operator-9_feedback_accept"] == "1"

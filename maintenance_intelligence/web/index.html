@@ -6542,12 +6542,15 @@
 			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
 			const lastAttempt = result.last_attempt_info && typeof result.last_attempt_info === "object" ? result.last_attempt_info : {};
 			const provenanceSummary = result.connector_provenance_summary && typeof result.connector_provenance_summary === "object" ? result.connector_provenance_summary : {};
+			const failureSummary = result.failure_summary && typeof result.failure_summary === "object" ? result.failure_summary : {};
 			const attemptCount = typeof result.attempt_count === "number" ? result.attempt_count : 0;
 			const attemptNumber = typeof lastAttempt.attempt_number === "number" ? lastAttempt.attempt_number : attemptCount;
 			const connectorMessage = lastAttempt.connector_result?.message || lastAttempt.error_message || result.detail || "Approval update recorded";
 			const connectorStatus = provenanceSummary.connector_status || lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
 			const connectorLifecyclePhase = provenanceSummary.connector_lifecycle_phase || lastAttempt.connector_result?.lifecycle_phase || lastAttempt.connector_result?.lifecycle?.phase || result.work_order?.lifecycle_phase || "unknown";
 			const connectorBackend = provenanceSummary.backend || lastAttempt.connector_result?.backend || result.work_order?.backend || "unknown";
+			const failureClass = failureSummary.failure_class || provenanceSummary.failure_summary?.failure_class || "none";
+			const retryability = failureSummary.failure_class ? (failureSummary.retryable ? "Retryable" : "Terminal") : "N/A";
 			const reuseLine = result.reused_result ? "Reused existing CMMS handoff result." : "Fresh handoff result.";
 			const attemptSummary = attemptCount > 0 ? `Attempt ${attemptNumber} of ${attemptCount}` : "No attempts recorded";
 			const retryLine = result.retry_allowed
@@ -6580,11 +6583,19 @@
 							<div class="approval-stat-label">Lifecycle phase</div>
 							<div class="approval-stat-value">${escapeHtml(formatFollowThroughValue(connectorLifecyclePhase, "Unknown"))}</div>
 						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Failure class</div>
+							<div class="approval-stat-value">${escapeHtml(formatFollowThroughValue(failureClass, "None"))}</div>
+						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Retryability</div>
+							<div class="approval-stat-value">${escapeHtml(retryability)}</div>
+						</div>
 					</div>
 					<div class="approval-connector-note">
 						<div class="approval-connector-title">Latest connector outcome</div>
 						<div>${escapeHtml(connectorMessage)}</div>
-						<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Backend: ${escapeHtml(connectorBackend)} · Connector: ${escapeHtml(connectorStatus)} · Lifecycle: ${escapeHtml(formatFollowThroughValue(connectorLifecyclePhase, "Unknown"))}</div>
+							<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Backend: ${escapeHtml(connectorBackend)} · Connector: ${escapeHtml(connectorStatus)} · Lifecycle: ${escapeHtml(formatFollowThroughValue(connectorLifecyclePhase, "Unknown"))} · Failure class: ${escapeHtml(formatFollowThroughValue(failureClass, "None"))}</div>
 					</div>
 					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved at: ${escapeHtml(approvedAt)}</div>
 					<div class="footer-note">${escapeHtml(retryLine)}</div>
@@ -6608,6 +6619,11 @@
 			return `
 				<ol class="list">${attempts.map((attempt) => `
 					<li class="audit-item ${(attempt.origin || "approval") === "admin" ? "admin-origin" : ""}">
+						${(() => {
+							const failureSummary = attempt.failure_summary && typeof attempt.failure_summary === "object" ? attempt.failure_summary : {};
+							const failureClass = failureSummary.failure_class || "";
+							const retryability = failureClass ? (failureSummary.retryable ? "Retryable" : "Terminal") : "";
+							return `
 						<div class="audit-head">
 							<strong class="audit-state">${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
 							<span class="audit-badge actor">Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}</span>
@@ -6634,6 +6650,16 @@
 									<div>${escapeHtml(attempt.connector_result.backend)}</div>
 								</div>
 							` : ""}
+							${failureClass ? `
+								<div class="audit-detail">
+									<div class="audit-detail-label">Failure class</div>
+									<div>${escapeHtml(formatFollowThroughValue(failureClass, "Unknown"))}</div>
+								</div>
+								<div class="audit-detail">
+									<div class="audit-detail-label">Retryability</div>
+									<div>${escapeHtml(retryability)}</div>
+								</div>
+							` : ""}
 							${attempt.connector_result?.message ? `
 								<div class="audit-detail">
 									<div class="audit-detail-label">Connector message</div>
@@ -6647,6 +6673,8 @@
 								</div>
 							` : ""}
 						</div>
+							`;
+						})()}
 					</li>
 					`).join("")}</ol>
 				<div class="audit-history-meta">
