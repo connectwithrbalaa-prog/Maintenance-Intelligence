@@ -5,11 +5,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
-from maintenance_intelligence.api.middleware.identity import get_identity, get_identity_org_id, require_authenticated_identity
+from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-from maintenance_intelligence.services.notifications import emit_notification, recent_notification_deliveries
+from maintenance_intelligence.services.notifications import recent_notification_deliveries
 from maintenance_intelligence.services.repair_plan_service import get_repair_plan, list_parts_for_plan
 
 router = APIRouter(tags=["portal"])
@@ -339,33 +339,6 @@ def _edge_status_payload() -> Dict[str, Any]:
     }
 
 
-def _maybe_notify_edge_degraded(request: Request, payload: Dict[str, Any]) -> None:
-    if not bool(payload.get("edge_mode_enabled")):
-        return
-    connectivity_status = _as_safe_text(payload.get("connectivity_status"), "unknown") or "unknown"
-    if connectivity_status not in {"offline", "degraded"}:
-        return
-    identity = get_identity(request)
-    org_id = get_identity_org_id(identity)
-    severity = "critical" if connectivity_status == "offline" else "warning"
-    buffered_event_count = int(payload.get("buffered_event_count") or 0)
-    queued_command_count = int(payload.get("queued_command_count") or 0)
-    last_error = _as_text(payload.get("last_error")) or _as_text(payload.get("last_command_error")) or "edge connectivity degraded"
-    emit_notification(
-        event_type="edge.degraded",
-        severity=severity,
-        summary=f"Edge connectivity is {connectivity_status}; buffered events={buffered_event_count}, queued handoffs={queued_command_count}",
-        org_id=org_id,
-        dedupe_key=f"edge:{org_id or 'default'}:{connectivity_status}:{last_error}",
-        payload={
-            "connectivity_status": connectivity_status,
-            "buffered_event_count": buffered_event_count,
-            "queued_command_count": queued_command_count,
-            "last_error": last_error,
-        },
-    )
-
-
 def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = _sanitize_structured(payload.get("structured"))
     model = _sanitize_model(payload.get("model"))
@@ -449,9 +422,7 @@ def recent_runs(request: Request, limit: int = Query(12, ge=1, le=50)) -> List[D
 @router.get("/api/v1/portal/edge-status")
 def edge_status(request: Request) -> Dict[str, Any]:
     _require_read_access(request)
-    payload = _edge_status_payload()
-    _maybe_notify_edge_degraded(request, payload)
-    return payload
+    return _edge_status_payload()
 
 
 @router.get("/api/v1/portal/notifications")

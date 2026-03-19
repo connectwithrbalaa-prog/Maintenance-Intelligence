@@ -7,7 +7,20 @@ import backoff
 from maintenance_intelligence.api.metrics import events_ingested_total
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
+from maintenance_intelligence.services.notifications import emit_notification
 from maintenance_intelligence.services.connectivity import open_central_connection, safe_close_connection
+
+
+def _as_text(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
 
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
 def create_db_connection(dsn: str):
@@ -57,6 +70,36 @@ def _replay_buffered_events(conn, edge_buffer: EdgeEventBuffer, batch_size: int)
     return {"replayed": replayed_total, "error": None}
 
 
+def _emit_edge_connectivity_notification(settings: Settings, edge_buffer: EdgeEventBuffer, *, org_id: str | None = None) -> None:
+    snapshot = edge_buffer.snapshot()
+    connectivity_status = _as_text(snapshot.get("connectivity_status")) or "unknown"
+    if connectivity_status not in {"offline", "degraded"}:
+        return
+    resolved_org_id = _as_text(org_id) or _as_text(snapshot.get("last_buffered_org_id"))
+    queued_command_count = 0
+    try:
+        queue_snapshot = EdgeCommandBuffer(settings.edge_command_buffer_path).snapshot()
+        queued_command_count = int(queue_snapshot.get("queued_command_count") or 0)
+    except Exception:
+        queued_command_count = 0
+    buffered_event_count = int(snapshot.get("buffered_event_count") or 0)
+    last_error = _as_text(snapshot.get("last_error")) or "edge connectivity degraded"
+    severity = "critical" if connectivity_status == "offline" else "warning"
+    emit_notification(
+        event_type="edge.degraded",
+        severity=severity,
+        summary=f"Edge connectivity is {connectivity_status}; buffered events={buffered_event_count}, queued handoffs={queued_command_count}",
+        org_id=resolved_org_id,
+        dedupe_key=f"edge:{resolved_org_id or 'default'}:{connectivity_status}:{last_error}",
+        payload={
+            "connectivity_status": connectivity_status,
+            "buffered_event_count": buffered_event_count,
+            "queued_command_count": queued_command_count,
+            "last_error": last_error,
+        },
+    )
+
+
 def _connect_edge_central(pg_dsn: str, settings: Settings, edge_buffer: EdgeEventBuffer):
     try:
         conn = open_central_connection(pg_dsn, timeout_s=settings.edge_connectivity_timeout_s)
@@ -64,6 +107,7 @@ def _connect_edge_central(pg_dsn: str, settings: Settings, edge_buffer: EdgeEven
         return conn
     except Exception as exc:
         edge_buffer.mark_connectivity("offline", last_error=str(exc))
+        _emit_edge_connectivity_notification(settings, edge_buffer)
         return None
 
 def ingestion(kafka_bootstrap: str, pg_dsn: str):
@@ -123,10 +167,12 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                         logger.error({"event": "ingestion.edge_replay_failed", "error": replayed.get("error")})
                         safe_close_connection(conn)
                         conn = None
+                        _emit_edge_connectivity_notification(settings, edge_buffer)
                         next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
 
                 if conn is None:
                     queued = edge_buffer.buffer_event(evt, error="Central store unavailable")
+                    _emit_edge_connectivity_notification(settings, edge_buffer, org_id=_as_text(evt.get("org_id")))
                     logger.warning({"event": "ingestion.buffered", "id": evt.get("event_id"), "buffer_id": queued})
                     continue
 
@@ -141,6 +187,7 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                     conn = None
                     edge_buffer.buffer_event(evt, error=str(e))
                     edge_buffer.mark_connectivity("degraded", last_error=str(e))
+                    _emit_edge_connectivity_notification(settings, edge_buffer, org_id=_as_text(evt.get("org_id")))
                     next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
 
     except Exception as e:

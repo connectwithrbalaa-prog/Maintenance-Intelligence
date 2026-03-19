@@ -211,7 +211,7 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     assert payload["last_error"] == "central store unavailable"
 
 
-def test_portal_edge_status_emits_notification_and_lists_recent_deliveries(tmp_path, monkeypatch):
+def test_portal_notifications_list_recent_deliveries_without_triggering_new_send(tmp_path, monkeypatch):
     buffer_path = tmp_path / "edge" / "edge.sqlite3"
     command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
     monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
@@ -229,7 +229,6 @@ def test_portal_edge_status_emits_notification_and_lists_recent_deliveries(tmp_p
         return True, 202, ""
 
     monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
-    monkeypatch.setattr(portal_mod, "emit_notification", notifications_mod.emit_notification)
 
     buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
     command_buffer = EdgeCommandBuffer(str(command_buffer_path))
@@ -255,6 +254,19 @@ def test_portal_edge_status_emits_notification_and_lists_recent_deliveries(tmp_p
             "recommendation": {"id": "REC-1", "asset_id": "PUMP-101"},
         },
         error="cmms offline",
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="critical",
+        summary="Edge connectivity is offline; buffered events=1, queued handoffs=1",
+        org_id="demo-org",
+        dedupe_key="edge:demo-org:offline:central store unavailable",
+        payload={
+            "connectivity_status": "offline",
+            "buffered_event_count": 1,
+            "queued_command_count": 1,
+            "last_error": "central store unavailable",
+        },
     )
 
     client = TestClient(app)

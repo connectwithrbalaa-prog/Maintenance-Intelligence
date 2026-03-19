@@ -96,6 +96,7 @@ class EdgeEventBuffer:
     def buffer_event(self, event: Dict[str, Any], *, error: str | None = None) -> int:
         payload_json = json.dumps(event)
         created_at = _utcnow_iso()
+        org_id = event.get("org_id") if isinstance(event, dict) else None
         with self._connect() as conn:
             self._prune_if_needed(conn)
             cursor = conn.execute(
@@ -103,7 +104,7 @@ class EdgeEventBuffer:
                 (str(event.get("event_id") or ""), payload_json, created_at, error),
             )
             self._increment_state(conn, "total_buffered_events")
-            self._update_state(conn, connectivity_status="offline", last_error=error)
+            self._update_state(conn, connectivity_status="offline", last_error=error, last_buffered_org_id=org_id)
             conn.commit()
             return int(cursor.lastrowid or 0)
 
@@ -181,4 +182,5 @@ class EdgeEventBuffer:
                 "last_successful_central_write_at": state.get("last_successful_central_write_at"),
                 "last_replay_attempt_at": state.get("last_replay_attempt_at"),
                 "last_error": state.get("last_error"),
+                "last_buffered_org_id": state.get("last_buffered_org_id"),
             }
