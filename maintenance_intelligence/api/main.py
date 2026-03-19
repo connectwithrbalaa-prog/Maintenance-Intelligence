@@ -2,7 +2,13 @@ from maintenance_intelligence.api.reports import router as reports_router
 from maintenance_intelligence.api.repair_plan import router as repair_plan_router
 from maintenance_intelligence.api.health import router as health_router
 from maintenance_intelligence.api.identity import router as identity_router
-from maintenance_intelligence.api.middleware.identity import APPROVAL_ROLES, get_identity_role, get_identity_subject, install_identity_middleware, require_scoped_identity
+from maintenance_intelligence.api.middleware.identity import (
+    APPROVAL_ROLES,
+    get_identity_role,
+    get_identity_subject,
+    install_identity_middleware,
+    require_scoped_identity,
+)
 from maintenance_intelligence.api.signals import router as signals_router
 from maintenance_intelligence.api.metrics import router as metrics_router
 from maintenance_intelligence.api.feedback import router as feedback_router
@@ -41,6 +47,7 @@ settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")
 
+
 class TriggerPayload(BaseModel):
     event_id: str
 
@@ -55,8 +62,11 @@ def _require_trigger_access(request: Request) -> str:
     actor_id = get_identity_subject(identity)
     actor_role = get_identity_role(identity)
     if actor_id is None or actor_role is None:
-        raise HTTPException(status_code=403, detail="RCA trigger requires an authenticated identity")
+        raise HTTPException(
+            status_code=403, detail="RCA trigger requires an authenticated identity"
+        )
     return actor_id
+
 
 @app.post("/api/v1/agents/rca/trigger")
 def trigger_rca(p: TriggerPayload, request: Request):
