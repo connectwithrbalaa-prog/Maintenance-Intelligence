@@ -148,6 +148,57 @@ def _severity_value(value: str) -> int:
     return SEVERITY_ORDER.get(value.lower(), SEVERITY_ORDER["warning"])
 
 
+def _normalize_route_summary(route: Dict[str, Any]) -> Dict[str, Any]:
+    webhook_url = _as_text(route.get("webhook_url"))
+    return {
+        "route_id": _as_text(route.get("route_id")) or "",
+        "destination": _destination_label(webhook_url),
+        "minimum_severity": _normalize_severity(route.get("minimum_severity")),
+        "org_ids": list(route.get("org_ids") or []),
+        "site_ids": list(route.get("site_ids") or []),
+        "event_types": list(route.get("event_types") or []),
+        "severities": list(route.get("severities") or []),
+        "priority": int(route.get("priority", 0) or 0),
+        "specificity": _route_specificity(route),
+    }
+
+
+def _route_evaluation(
+    route: Dict[str, Any],
+    *,
+    org_id: Optional[str],
+    site_id: Optional[str],
+    event_type: str,
+    severity: str,
+) -> Dict[str, Any]:
+    normalized_route = _normalize_route_summary(route)
+    reasons: List[str] = []
+    normalized_severity = _normalize_severity(severity)
+    minimum_severity = normalized_route["minimum_severity"]
+    explicit_severities = normalized_route["severities"]
+    org_key = _as_text(org_id)
+    site_key = _as_text(site_id)
+    event_key = _as_text(event_type)
+
+    if _severity_value(normalized_severity) < _severity_value(minimum_severity):
+        reasons.append("severity_below_minimum")
+    if explicit_severities and normalized_severity not in explicit_severities:
+        reasons.append("severity_not_allowed")
+    if normalized_route["org_ids"] and org_key not in normalized_route["org_ids"]:
+        reasons.append("org_mismatch")
+    if normalized_route["site_ids"] and site_key not in normalized_route["site_ids"]:
+        reasons.append("site_mismatch")
+    if normalized_route["event_types"] and event_key not in normalized_route["event_types"]:
+        reasons.append("event_type_mismatch")
+
+    return {
+        **normalized_route,
+        "matched": not reasons,
+        "selected": False,
+        "reasons": reasons,
+    }
+
+
 def _route_matches(
     route: Dict[str, Any],
     *,
@@ -212,6 +263,69 @@ def _resolve_routes(
     best_priority = max(int(route.get("priority", 0)) for route in most_specific)
     selected = [route for route in most_specific if int(route.get("priority", 0)) == best_priority]
     return sorted(selected, key=lambda route: _as_text(route.get("route_id")) or "")
+
+
+def list_notification_routes(*, settings: Optional[Settings] = None) -> List[Dict[str, Any]]:
+    settings = settings or Settings()
+    routes = [_normalize_route_summary(route) for route in _parse_routes(settings)]
+    return sorted(routes, key=lambda route: (-(int(route.get("specificity") or 0)), -(int(route.get("priority") or 0)), route.get("route_id") or ""))
+
+
+def preview_notification_routes(
+    *,
+    event_type: str,
+    severity: str,
+    org_id: Optional[str] = None,
+    site_id: Optional[str] = None,
+    settings: Optional[Settings] = None,
+) -> Dict[str, Any]:
+    settings = settings or Settings()
+    normalized_event_type = _as_text(event_type) or "unknown"
+    normalized_severity = _normalize_severity(severity)
+    routes = _parse_routes(settings)
+    evaluations = [
+        _route_evaluation(
+            route,
+            org_id=org_id,
+            site_id=site_id,
+            event_type=normalized_event_type,
+            severity=normalized_severity,
+        )
+        for route in routes
+    ]
+    matched = [evaluation for evaluation in evaluations if evaluation["matched"]]
+    if matched:
+        best_specificity = max(int(evaluation.get("specificity") or 0) for evaluation in matched)
+        best_priority = max(int(evaluation.get("priority") or 0) for evaluation in matched if int(evaluation.get("specificity") or 0) == best_specificity)
+    else:
+        best_specificity = None
+        best_priority = None
+
+    selected_routes: List[Dict[str, Any]] = []
+    for evaluation in evaluations:
+        if not evaluation["matched"]:
+            continue
+        specificity = int(evaluation.get("specificity") or 0)
+        priority = int(evaluation.get("priority") or 0)
+        if specificity == best_specificity and priority == best_priority:
+            evaluation["selected"] = True
+            selected_routes.append(evaluation)
+            continue
+        if best_specificity is not None and specificity < best_specificity:
+            evaluation["reasons"].append("lower_specificity_than_selected")
+        elif best_priority is not None and priority < best_priority:
+            evaluation["reasons"].append("lower_priority_than_selected")
+
+    return {
+        "request": {
+            "org_id": _as_text(org_id) or "",
+            "site_id": _as_text(site_id) or "",
+            "event_type": normalized_event_type,
+            "severity": normalized_severity,
+        },
+        "selected_routes": selected_routes,
+        "evaluated_routes": evaluations,
+    }
 
 
 def _load_records(settings: Settings) -> List[Dict[str, Any]]:

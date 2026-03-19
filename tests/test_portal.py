@@ -92,12 +92,14 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Retryable" in page.text
     assert "Terminal" in page.text
     assert "Notification delivery" in page.text
+    assert "Notification routes" in page.text
     assert "All statuses" in page.text
     assert "Response code" in page.text
     assert "Error detail" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
     assert "/api/v1/portal/notifications" in page.text
+    assert "/api/v1/portal/notification-routes" in page.text
     assert "/api/v1/agents/pm/connectors" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
@@ -358,6 +360,52 @@ def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, 
     destination_payload = destination_response.json()
     assert len(destination_payload) == 2
     assert all(item["destination"] == "hooks.example.test" for item in destination_payload)
+
+
+def test_portal_notification_routes_and_preview_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            [
+                {"route_id": "default", "webhook_url": "https://hooks.example.test/default", "minimum_severity": "warning"},
+                {
+                    "route_id": "org-terminal",
+                    "webhook_url": "https://hooks.example.test/org-terminal",
+                    "org_ids": ["demo-org"],
+                    "event_types": ["cmms.terminal_failure"],
+                    "priority": 1,
+                },
+                {
+                    "route_id": "site-critical",
+                    "webhook_url": "https://hooks.example.test/site-critical",
+                    "org_ids": ["demo-org"],
+                    "site_ids": ["site-a"],
+                    "event_types": ["cmms.terminal_failure"],
+                    "severities": ["critical"],
+                    "priority": 2,
+                },
+            ]
+        ),
+    )
+
+    client = TestClient(app)
+
+    routes_response = client.get("/api/v1/portal/notification-routes", headers=READ_HEADERS)
+    preview_response = client.get(
+        "/api/v1/portal/notification-routes/preview?org_id=demo-org&site_id=site-a&event_type=cmms.terminal_failure&severity=critical",
+        headers=READ_HEADERS,
+    )
+
+    assert routes_response.status_code == 200
+    routes_payload = routes_response.json()
+    assert routes_payload[0]["route_id"] == "site-critical"
+    assert routes_payload[0]["specificity"] == 4
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["selected_routes"][0]["route_id"] == "site-critical"
+    evaluated = {item["route_id"]: item for item in preview_payload["evaluated_routes"]}
+    assert "lower_specificity_than_selected" in evaluated["org-terminal"]["reasons"]
 
 
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):

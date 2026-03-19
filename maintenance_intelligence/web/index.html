@@ -182,6 +182,16 @@
 			gap: 10px;
 		}
 
+		.route-catalog-card {
+			margin-top: 14px;
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(24, 34, 38, 0.1);
+			background: rgba(255, 255, 255, 0.72);
+			display: grid;
+			gap: 10px;
+		}
+
 		.edge-status-body {
 			font-size: 13px;
 			line-height: 1.5;
@@ -355,6 +365,10 @@
 		.notification-error-cell {
 			min-width: 220px;
 			color: var(--muted);
+		}
+
+		.route-match-badge {
+			font-weight: 600;
 		}
 
 		.run-list {
@@ -1896,6 +1910,18 @@
 						</div>
 						<div class="edge-status-body">Recent webhook delivery attempts load when the portal connects.</div>
 					</div>
+							<div id="routeCatalogCard" class="route-catalog-card">
+								<div class="identity-row">
+									<div>
+										<div class="meta-label">Notification routes</div>
+										<div class="identity-badge">
+											<strong>Route catalog pending</strong>
+											<span class="status-pill unknown">unknown</span>
+										</div>
+									</div>
+								</div>
+								<div class="edge-status-body">Loaded notification routes and current route preview load when the portal connects.</div>
+							</div>
 				</div>
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
@@ -2029,6 +2055,12 @@
 					destination: "",
 				},
 			},
+			routeCatalog: {
+				items: [],
+				preview: null,
+				loading: false,
+				error: "",
+			},
 			session: {
 				subject: "portal.user",
 				role: "planner",
@@ -2055,6 +2087,7 @@
 			identityHint: document.getElementById("identityHint"),
 			edgeStatusCard: document.getElementById("edgeStatusCard"),
 			notificationStatusCard: document.getElementById("notificationStatusCard"),
+			routeCatalogCard: document.getElementById("routeCatalogCard"),
 			identityControls: document.getElementById("identityControls"),
 			identitySubjectInput: document.getElementById("identitySubjectInput"),
 			identityRoleSelect: document.getElementById("identityRoleSelect"),
@@ -2477,6 +2510,121 @@
 			bindNotificationStatusControls();
 		}
 
+		function renderRouteCatalogCard() {
+			if (!elements.routeCatalogCard) {
+				return;
+			}
+
+			if (state.routeCatalog.loading) {
+				elements.routeCatalogCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification routes</div>
+							<div class="identity-badge">
+								<strong>Loading route catalog</strong>
+								<span class="status-pill unknown">loading</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">Fetching normalized route rules and current match preview.</div>
+				`;
+				return;
+			}
+
+			if (state.routeCatalog.error) {
+				elements.routeCatalogCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification routes</div>
+							<div class="identity-badge">
+								<strong>Route catalog unavailable</strong>
+								<span class="status-pill warn">warn</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">${escapeHtml(state.routeCatalog.error)}</div>
+				`;
+				return;
+			}
+
+			const routes = Array.isArray(state.routeCatalog.items) ? state.routeCatalog.items : [];
+			const preview = asObject(state.routeCatalog.preview);
+			const selectedRoutes = Array.isArray(preview.selected_routes) ? preview.selected_routes : [];
+			const previewSummary = selectedRoutes.length
+				? `Preview for ${escapeHtml(asString(preview.request?.event_type, "unknown"))} selects ${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} for org ${escapeHtml(asString(preview.request?.org_id, "default") || "default")}.`
+				: "Preview found no matching route for the current org/event/severity combination.";
+
+			if (!routes.length) {
+				elements.routeCatalogCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification routes</div>
+							<div class="identity-badge">
+								<strong>No routes loaded</strong>
+								<span class="status-pill unknown">idle</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">No normalized notification routes are configured.</div>
+				`;
+				return;
+			}
+
+			const routeRows = routes.map((item) => {
+				const route = asObject(item);
+				const routeId = asString(route.route_id, "unlabeled");
+				const destination = asString(route.destination, "webhook");
+				const minimumSeverity = asString(route.minimum_severity, "warning");
+				const priority = asString(route.priority, "0");
+				const orgIds = Array.isArray(route.org_ids) && route.org_ids.length ? route.org_ids.join(", ") : "all orgs";
+				const siteIds = Array.isArray(route.site_ids) && route.site_ids.length ? route.site_ids.join(", ") : "all sites";
+				const eventTypes = Array.isArray(route.event_types) && route.event_types.length ? route.event_types.join(", ") : "all events";
+				const selected = selectedRoutes.some((selectedRoute) => asString(selectedRoute.route_id) === routeId);
+				return `
+					<tr>
+						<td class="route-match-badge">${escapeHtml(selected ? "selected" : "loaded")}</td>
+						<td>${escapeHtml(routeId)}</td>
+						<td>${escapeHtml(destination)}</td>
+						<td>${escapeHtml(orgIds)}</td>
+						<td>${escapeHtml(siteIds)}</td>
+						<td>${escapeHtml(eventTypes)}</td>
+						<td>${escapeHtml(minimumSeverity)}</td>
+						<td>${escapeHtml(priority)}</td>
+					</tr>
+				`;
+			}).join("");
+
+			elements.routeCatalogCard.innerHTML = `
+				<div class="identity-row">
+					<div>
+						<div class="meta-label">Notification routes</div>
+						<div class="identity-badge">
+							<strong>${escapeHtml(`${routes.length} loaded route${routes.length === 1 ? "" : "s"}`)}</strong>
+							<span class="status-pill ok">loaded</span>
+						</div>
+					</div>
+				</div>
+				<div class="edge-status-body">${previewSummary}</div>
+				<div class="notification-history-table-wrap">
+					<table class="notification-history-table">
+						<thead>
+							<tr>
+								<th>State</th>
+								<th>Route ID</th>
+								<th>Destination</th>
+								<th>Org scope</th>
+								<th>Site scope</th>
+								<th>Event scope</th>
+								<th>Min severity</th>
+								<th>Priority</th>
+							</tr>
+						</thead>
+						<tbody>${routeRows}</tbody>
+					</table>
+				</div>
+			`;
+		}
+
 		function bindNotificationStatusControls() {
 			const statusSelect = document.getElementById("notificationStatusFilter");
 			const severitySelect = document.getElementById("notificationSeverityFilter");
@@ -2543,6 +2691,33 @@
 			}
 		}
 
+		async function loadRouteCatalog(force = false) {
+			if (state.routeCatalog.loading || (!force && state.routeCatalog.items.length && !state.routeCatalog.error)) {
+				return;
+			}
+			state.routeCatalog.loading = true;
+			state.routeCatalog.error = "";
+			renderRouteCatalogCard();
+			try {
+				const orgId = state.session?.orgId || "";
+				const [routes, preview] = await Promise.all([
+					fetchJson("/api/v1/portal/notification-routes", { headers: portalIdentityHeaders() }),
+					fetchJson(`/api/v1/portal/notification-routes/preview?${new URLSearchParams({
+						org_id: orgId,
+						event_type: "cmms.terminal_failure",
+						severity: "critical",
+					}).toString()}`, { headers: portalIdentityHeaders() }),
+				]);
+				state.routeCatalog.items = Array.isArray(routes) ? routes : [];
+				state.routeCatalog.preview = preview;
+			} catch (error) {
+				state.routeCatalog.error = error instanceof Error ? error.message : "Unknown notification route error";
+			} finally {
+				state.routeCatalog.loading = false;
+				renderRouteCatalogCard();
+			}
+		}
+
 		async function refreshIdentity() {
 			const localIdentity = readPortalIdentity();
 			state.session = localIdentity;
@@ -2573,6 +2748,7 @@
 			}
 			void loadEdgeStatus(true);
 			void loadNotificationStatus(true);
+			void loadRouteCatalog(true);
 		}
 
 		function escapeHtml(value) {

@@ -9,7 +9,7 @@ from maintenance_intelligence.api.middleware.identity import require_authenticat
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-from maintenance_intelligence.services.notifications import recent_notification_deliveries
+from maintenance_intelligence.services.notifications import list_notification_routes, preview_notification_routes, recent_notification_deliveries
 from maintenance_intelligence.services.repair_plan_service import get_repair_plan, list_parts_for_plan
 
 router = APIRouter(tags=["portal"])
@@ -442,6 +442,29 @@ def portal_notifications(
         event_type=event_type,
         destination=destination,
         prioritize_failures=True,
+    )
+
+
+@router.get("/api/v1/portal/notification-routes")
+def portal_notification_routes(request: Request) -> List[Dict[str, Any]]:
+    _require_read_access(request)
+    return list_notification_routes()
+
+
+@router.get("/api/v1/portal/notification-routes/preview")
+def portal_notification_route_preview(
+    request: Request,
+    event_type: str = Query(..., min_length=1),
+    severity: str = Query("warning"),
+    org_id: str = Query(""),
+    site_id: str = Query(""),
+) -> Dict[str, Any]:
+    _require_read_access(request)
+    return preview_notification_routes(
+        event_type=event_type,
+        severity=severity,
+        org_id=org_id or None,
+        site_id=site_id or None,
     )
 
 
