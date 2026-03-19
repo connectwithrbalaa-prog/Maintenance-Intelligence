@@ -32,8 +32,7 @@ class EdgeEventBuffer:
         return conn
 
     def _ensure_schema(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS buffered_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id TEXT,
@@ -42,16 +41,13 @@ class EdgeEventBuffer:
                 replay_attempts INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT
             )
-            """
-        )
-        conn.execute(
-            """
+            """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS runtime_state (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
-            """
-        )
+            """)
         conn.commit()
 
     def _set_state(self, conn: sqlite3.Connection, key: str, value: Any) -> None:
@@ -104,7 +100,9 @@ class EdgeEventBuffer:
                 (str(event.get("event_id") or ""), payload_json, created_at, error),
             )
             self._increment_state(conn, "total_buffered_events")
-            self._update_state(conn, connectivity_status="offline", last_error=error, last_buffered_org_id=org_id)
+            self._update_state(
+                conn, connectivity_status="offline", last_error=error, last_buffered_org_id=org_id
+            )
             conn.commit()
             return int(cursor.lastrowid or 0)
 
@@ -124,7 +122,13 @@ class EdgeEventBuffer:
             )
             conn.commit()
 
-    def replay(self, conn: Any, store_event: Callable[[Any, Dict[str, Any]], None], *, batch_size: int = 100) -> Dict[str, Any]:
+    def replay(
+        self,
+        conn: Any,
+        store_event: Callable[[Any, Dict[str, Any]], None],
+        *,
+        batch_size: int = 100,
+    ) -> Dict[str, Any]:
         replayed = 0
         last_attempt_at = _utcnow_iso()
         with self._connect() as sqlite_conn:
@@ -143,7 +147,9 @@ class EdgeEventBuffer:
                         "UPDATE buffered_events SET replay_attempts = replay_attempts + 1, last_error = ? WHERE id = ?",
                         (str(exc), row["id"]),
                     )
-                    self._update_state(sqlite_conn, connectivity_status="degraded", last_error=str(exc))
+                    self._update_state(
+                        sqlite_conn, connectivity_status="degraded", last_error=str(exc)
+                    )
                     sqlite_conn.commit()
                     return {
                         "replayed": replayed,

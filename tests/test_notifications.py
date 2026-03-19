@@ -10,7 +10,11 @@ def test_emit_notification_matches_most_specific_routes_and_supports_fanout(tmp_
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
         json.dumps(
             [
-                {"route_id": "default", "webhook_url": "https://hooks.example.test/default", "minimum_severity": "warning"},
+                {
+                    "route_id": "default",
+                    "webhook_url": "https://hooks.example.test/default",
+                    "minimum_severity": "warning",
+                },
                 {
                     "route_id": "org-failure-a",
                     "webhook_url": "https://hooks.example.test/ops-a",
@@ -80,17 +84,29 @@ def test_emit_notification_matches_most_specific_routes_and_supports_fanout(tmp_
     assert deliveries[-1]["url"] == "https://hooks.example.test/site-a"
 
     records = notifications_mod.recent_notification_deliveries(limit=10, settings=Settings())
-    assert [record["route_id"] for record in records[:3]] == ["site-critical", "org-failure-a", "org-failure-b"]
+    assert [record["route_id"] for record in records[:3]] == [
+        "site-critical",
+        "org-failure-a",
+        "org-failure-b",
+    ]
 
 
-def test_emit_notification_falls_back_to_default_route_when_no_specific_rule_matches(tmp_path, monkeypatch):
+def test_emit_notification_falls_back_to_default_route_when_no_specific_rule_matches(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
     monkeypatch.setenv(
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
         json.dumps(
             {
-                "default": {"webhook_url": "https://hooks.example.test/default", "minimum_severity": "warning"},
-                "demo-org": {"webhook_url": "https://hooks.example.test/demo-org", "minimum_severity": "warning"},
+                "default": {
+                    "webhook_url": "https://hooks.example.test/default",
+                    "minimum_severity": "warning",
+                },
+                "demo-org": {
+                    "webhook_url": "https://hooks.example.test/demo-org",
+                    "minimum_severity": "warning",
+                },
             }
         ),
     )
@@ -124,7 +140,11 @@ def test_list_notification_routes_and_preview_match_explanations(tmp_path, monke
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
         json.dumps(
             [
-                {"route_id": "default", "webhook_url": "https://hooks.example.test/default", "minimum_severity": "warning"},
+                {
+                    "route_id": "default",
+                    "webhook_url": "https://hooks.example.test/default",
+                    "minimum_severity": "warning",
+                },
                 {
                     "route_id": "org-terminal",
                     "webhook_url": "https://hooks.example.test/org-terminal",

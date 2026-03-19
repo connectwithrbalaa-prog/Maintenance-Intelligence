@@ -28,7 +28,14 @@ def test_connect_edge_central_failure_emits_runtime_notification(tmp_path, monke
     monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
     monkeypatch.setenv(
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
-        json.dumps({"default": {"webhook_url": "https://hooks.example.test/edge", "minimum_severity": "warning"}}),
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/edge",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
     )
     monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
     deliveries = []
@@ -39,7 +46,11 @@ def test_connect_edge_central_failure_emits_runtime_notification(tmp_path, monke
 
     monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
     monkeypatch.setattr(ingestion_mod, "emit_notification", notifications_mod.emit_notification)
-    monkeypatch.setattr(ingestion_mod, "open_central_connection", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("central store unavailable")))
+    monkeypatch.setattr(
+        ingestion_mod,
+        "open_central_connection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("central store unavailable")),
+    )
 
     buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
     buffer.buffer_event(_event("EV-1"), error="central store unavailable")
@@ -61,7 +72,14 @@ def test_emit_edge_connectivity_notification_uses_buffered_org_context(tmp_path,
     monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
     monkeypatch.setenv(
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
-        json.dumps({"demo-org": {"webhook_url": "https://hooks.example.test/demo-org", "minimum_severity": "warning"}}),
+        json.dumps(
+            {
+                "demo-org": {
+                    "webhook_url": "https://hooks.example.test/demo-org",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
     )
     monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
     deliveries = []

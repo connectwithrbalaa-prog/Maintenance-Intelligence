@@ -9,8 +9,15 @@ from maintenance_intelligence.api.middleware.identity import require_authenticat
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-from maintenance_intelligence.services.notifications import list_notification_routes, preview_notification_routes, recent_notification_deliveries
-from maintenance_intelligence.services.repair_plan_service import get_repair_plan, list_parts_for_plan
+from maintenance_intelligence.services.notifications import (
+    list_notification_routes,
+    preview_notification_routes,
+    recent_notification_deliveries,
+)
+from maintenance_intelligence.services.repair_plan_service import (
+    get_repair_plan,
+    list_parts_for_plan,
+)
 
 router = APIRouter(tags=["portal"])
 
@@ -64,7 +71,11 @@ def _sanitize_meta_value(value: Any) -> Any:
         return cleaned
 
     if isinstance(value, (list, tuple, set)):
-        items = [item for item in (_sanitize_meta_value(item) for item in value) if item not in (None, "", [], {})]
+        items = [
+            item
+            for item in (_sanitize_meta_value(item) for item in value)
+            if item not in (None, "", [], {})
+        ]
         return items
 
     text = _as_text(value)
@@ -109,7 +120,11 @@ def _sanitize_context_item(value: Any) -> Dict[str, Any]:
 
 def _sanitize_context_items(value: Any) -> Dict[str, Any]:
     items = _as_dict(value)
-    doc_chunks = [_sanitize_context_item(item) for item in items.get("doc_chunks") or [] if isinstance(item, dict)]
+    doc_chunks = [
+        _sanitize_context_item(item)
+        for item in items.get("doc_chunks") or []
+        if isinstance(item, dict)
+    ]
     return {"doc_chunks": doc_chunks}
 
 
@@ -185,8 +200,15 @@ def _sanitize_structured_procedure_step(value: Any) -> Dict[str, Any]:
 
 def _sanitize_structured_repair_plan(value: Any) -> Dict[str, Any]:
     repair_plan = _as_dict(value)
-    parts_list = [_sanitize_structured_part(item) for item in repair_plan.get("parts_list") or [] if isinstance(item, dict)]
-    procedure_steps = [_sanitize_structured_procedure_step(item) for item in repair_plan.get("procedure_steps") or []]
+    parts_list = [
+        _sanitize_structured_part(item)
+        for item in repair_plan.get("parts_list") or []
+        if isinstance(item, dict)
+    ]
+    procedure_steps = [
+        _sanitize_structured_procedure_step(item)
+        for item in repair_plan.get("procedure_steps") or []
+    ]
     return {
         "plan_id": _as_safe_text(repair_plan.get("plan_id")),
         "summary": _as_safe_text(repair_plan.get("summary")),
@@ -253,12 +275,21 @@ def _extract_repair_plan(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "org_id": _as_safe_text(persisted_plan.get("org_id")),
         "asset_id": _as_safe_text(persisted_plan.get("asset_id")),
         "summary": structured_plan.get("summary") or _as_safe_text(persisted_plan.get("summary")),
-        "rationale": structured_plan.get("rationale") or _as_safe_text(persisted_plan.get("rationale")),
-        "confidence": structured_plan.get("confidence") if structured_plan.get("confidence") is not None else _as_number(persisted_plan.get("confidence")),
+        "rationale": structured_plan.get("rationale")
+        or _as_safe_text(persisted_plan.get("rationale")),
+        "confidence": (
+            structured_plan.get("confidence")
+            if structured_plan.get("confidence") is not None
+            else _as_number(persisted_plan.get("confidence"))
+        ),
         "status": structured_plan.get("status") or _as_safe_text(persisted_plan.get("status")),
         "created_at": _as_safe_text(persisted_plan.get("created_at")),
         "updated_at": _as_safe_text(persisted_plan.get("updated_at")),
-        "parts": [_sanitize_repair_part(item) for item in persisted_plan.get("parts") or [] if isinstance(item, dict)],
+        "parts": [
+            _sanitize_repair_part(item)
+            for item in persisted_plan.get("parts") or []
+            if isinstance(item, dict)
+        ],
         "parts_list": structured_plan.get("parts_list") or [],
         "tools_required": structured_plan.get("tools_required") or [],
         "procedure_steps": structured_plan.get("procedure_steps") or [],
@@ -273,20 +304,32 @@ def _extract_repair_plan(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def _validate_run_id(run_id: str) -> str:
     candidate = run_id.strip()
-    if not candidate or candidate != run_id or len(candidate) > 255 or any(ord(char) < 32 for char in candidate):
+    if (
+        not candidate
+        or candidate != run_id
+        or len(candidate) > 255
+        or any(ord(char) < 32 for char in candidate)
+    ):
         raise HTTPException(status_code=400, detail="Invalid run id")
     return candidate
 
 
 def _validate_asset_id(asset_id: str) -> str:
     candidate = asset_id.strip()
-    if not candidate or candidate != asset_id or len(candidate) > 255 or any(ord(char) < 32 for char in candidate):
+    if (
+        not candidate
+        or candidate != asset_id
+        or len(candidate) > 255
+        or any(ord(char) < 32 for char in candidate)
+    ):
         raise HTTPException(status_code=400, detail="Invalid asset id")
     return candidate
 
 
 def _require_read_access(request: Request) -> None:
-    require_authenticated_identity(request, detail="Portal run data requires an authenticated identity")
+    require_authenticated_identity(
+        request, detail="Portal run data requires an authenticated identity"
+    )
 
 
 def _portal_index_path() -> Path:
@@ -323,13 +366,16 @@ def _edge_status_payload() -> Dict[str, Any]:
     queue_snapshot = command_queue.snapshot()
     return {
         "edge_mode_enabled": True,
-        "connectivity_status": _as_safe_text(snapshot.get("connectivity_status"), "unknown") or "unknown",
+        "connectivity_status": _as_safe_text(snapshot.get("connectivity_status"), "unknown")
+        or "unknown",
         "buffered_event_count": int(snapshot.get("buffered_event_count") or 0),
         "queued_command_count": int(queue_snapshot.get("queued_command_count") or 0),
         "total_queued_commands": int(queue_snapshot.get("total_queued_commands") or 0),
         "total_replayed_commands": int(queue_snapshot.get("total_replayed_commands") or 0),
         "total_command_replay_failures": int(queue_snapshot.get("total_replay_failures") or 0),
-        "last_successful_central_write_at": _as_text(snapshot.get("last_successful_central_write_at")),
+        "last_successful_central_write_at": _as_text(
+            snapshot.get("last_successful_central_write_at")
+        ),
         "last_replay_attempt_at": _as_text(snapshot.get("last_replay_attempt_at")),
         "last_command_replay_attempt_at": _as_text(queue_snapshot.get("last_replay_attempt_at")),
         "last_command_replay_at": _as_text(queue_snapshot.get("last_successful_replay_at")),
@@ -342,7 +388,9 @@ def _edge_status_payload() -> Dict[str, Any]:
 def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = _sanitize_structured(payload.get("structured"))
     model = _sanitize_model(payload.get("model"))
-    structured_repair_plan = structured.get("repair_plan") if isinstance(structured.get("repair_plan"), dict) else {}
+    structured_repair_plan = (
+        structured.get("repair_plan") if isinstance(structured.get("repair_plan"), dict) else {}
+    )
     return {
         "run_id": _as_text(payload.get("run_id")) or source_path.stem,
         "status": _as_safe_text(payload.get("status"), "unknown"),
@@ -354,11 +402,14 @@ def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str
         "hypothesis": structured["hypothesis"],
         "immediate_actions": structured["immediate_actions"],
         "pm_suggestions": structured["pm_suggestions"],
-        "repair_plan_id": _as_safe_text(payload.get("repair_plan_id")) or _as_safe_text(structured_repair_plan.get("plan_id")),
+        "repair_plan_id": _as_safe_text(payload.get("repair_plan_id"))
+        or _as_safe_text(structured_repair_plan.get("plan_id")),
         "model": model,
         "context_meta": _sanitize_context_meta(payload.get("context_meta")),
         "context_scope": _as_safe_text(payload.get("context_scope"), "local") or "local",
-        "fleet_context_summary": _sanitize_fleet_context_summary(payload.get("fleet_context_summary")),
+        "fleet_context_summary": _sanitize_fleet_context_summary(
+            payload.get("fleet_context_summary")
+        ),
         "date": source_path.parent.name,
         "source_file": source_path.name,
         "updated_at": source_path.stat().st_mtime,
@@ -469,7 +520,12 @@ def portal_notification_route_preview(
 
 
 @router.get("/api/v1/portal/runs/latest")
-def latest_run_for_asset(request: Request, asset_id: str = Query(..., min_length=1, description="Asset ID to resolve to the freshest run summary")) -> Dict[str, Any]:
+def latest_run_for_asset(
+    request: Request,
+    asset_id: str = Query(
+        ..., min_length=1, description="Asset ID to resolve to the freshest run summary"
+    ),
+) -> Dict[str, Any]:
     _require_read_access(request)
     resolved_asset_id = _validate_asset_id(asset_id)
     latest_run = _find_latest_run_by_asset(_run_summary_root(), resolved_asset_id)

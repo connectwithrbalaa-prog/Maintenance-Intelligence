@@ -9,7 +9,6 @@ from maintenance_intelligence.services import notifications as notifications_mod
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
-
 READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
 
 
@@ -114,7 +113,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["structured"]["hypothesis"] == ["Bearing wear is increasing vibration"]
-    assert detail_payload["structured"]["root_causes"] == ["Bearing degradation from lubrication loss"]
+    assert detail_payload["structured"]["root_causes"] == [
+        "Bearing degradation from lubrication loss"
+    ]
     assert detail_payload["structured"]["contributing_factors"] == ["High ambient temperature"]
     assert detail_payload["structured"]["evidence_ids"] == ["EV-9", "DOC-1", "SIG-1"]
     assert detail_payload["model"]["latency_ms"] == 812
@@ -123,7 +124,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail_payload["fleet_context_summary"]["external_ref_count"] == 1
     assert detail_payload["context_items"]["doc_chunks"][0]["source_scope"] == "fleet"
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 200
     latest_payload = latest.json()
     assert latest_payload["run_id"] == "RUN-123"
@@ -164,7 +167,12 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
     assert payload[0]["summary"] == ""
     assert payload[0]["hypothesis"] == []
     assert payload[0]["context_meta"] == {}
-    assert payload[0]["model"] == {"name": "", "version": "", "latency_ms": None, "confidence": None}
+    assert payload[0]["model"] == {
+        "name": "",
+        "version": "",
+        "latency_ms": None,
+        "confidence": None,
+    }
 
 
 def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
@@ -216,7 +224,9 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     assert payload["last_error"] == "central store unavailable"
 
 
-def test_portal_notifications_list_recent_deliveries_without_triggering_new_send(tmp_path, monkeypatch):
+def test_portal_notifications_list_recent_deliveries_without_triggering_new_send(
+    tmp_path, monkeypatch
+):
     buffer_path = tmp_path / "edge" / "edge.sqlite3"
     command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
     monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
@@ -224,7 +234,14 @@ def test_portal_notifications_list_recent_deliveries_without_triggering_new_send
     monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
     monkeypatch.setenv(
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
-        json.dumps({"demo-org": {"webhook_url": "https://hooks.example.test/edge", "minimum_severity": "warning"}}),
+        json.dumps(
+            {
+                "demo-org": {
+                    "webhook_url": "https://hooks.example.test/edge",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
     )
     monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
     deliveries = []
@@ -275,7 +292,9 @@ def test_portal_notifications_list_recent_deliveries_without_triggering_new_send
     )
 
     client = TestClient(app)
-    edge_response = client.get("/api/v1/portal/edge-status", headers={**READ_HEADERS, "x-user-org": "demo-org"})
+    edge_response = client.get(
+        "/api/v1/portal/edge-status", headers={**READ_HEADERS, "x-user-org": "demo-org"}
+    )
     notifications_response = client.get("/api/v1/portal/notifications", headers=READ_HEADERS)
 
     assert edge_response.status_code == 200
@@ -292,7 +311,14 @@ def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, 
     monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
     monkeypatch.setenv(
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
-        json.dumps({"default": {"webhook_url": "https://hooks.example.test/notify", "minimum_severity": "warning"}}),
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
     )
 
     def fake_send(url, payload, timeout_s):
@@ -330,10 +356,18 @@ def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, 
     client = TestClient(app)
 
     all_response = client.get("/api/v1/portal/notifications?limit=10", headers=READ_HEADERS)
-    failed_response = client.get("/api/v1/portal/notifications?limit=10&status=failed", headers=READ_HEADERS)
-    critical_response = client.get("/api/v1/portal/notifications?limit=10&severity=critical", headers=READ_HEADERS)
-    event_response = client.get("/api/v1/portal/notifications?limit=10&event_type=edge.degraded", headers=READ_HEADERS)
-    destination_response = client.get("/api/v1/portal/notifications?limit=10&destination=hooks.example.test", headers=READ_HEADERS)
+    failed_response = client.get(
+        "/api/v1/portal/notifications?limit=10&status=failed", headers=READ_HEADERS
+    )
+    critical_response = client.get(
+        "/api/v1/portal/notifications?limit=10&severity=critical", headers=READ_HEADERS
+    )
+    event_response = client.get(
+        "/api/v1/portal/notifications?limit=10&event_type=edge.degraded", headers=READ_HEADERS
+    )
+    destination_response = client.get(
+        "/api/v1/portal/notifications?limit=10&destination=hooks.example.test", headers=READ_HEADERS
+    )
 
     assert all_response.status_code == 200
     all_payload = all_response.json()
@@ -367,7 +401,11 @@ def test_portal_notification_routes_and_preview_endpoints(tmp_path, monkeypatch)
         "MI_NOTIFICATION_WEBHOOK_ROUTES",
         json.dumps(
             [
-                {"route_id": "default", "webhook_url": "https://hooks.example.test/default", "minimum_severity": "warning"},
+                {
+                    "route_id": "default",
+                    "webhook_url": "https://hooks.example.test/default",
+                    "minimum_severity": "warning",
+                },
                 {
                     "route_id": "org-terminal",
                     "webhook_url": "https://hooks.example.test/org-terminal",
@@ -421,7 +459,9 @@ def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monk
     assert detail.json()["detail"] == "Run summary is malformed"
 
 
-def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(tmp_path, monkeypatch):
+def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(
+    tmp_path, monkeypatch
+):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
     (run_dir / "RUN-PARTIAL.json").write_text(
@@ -507,7 +547,9 @@ def test_portal_latest_run_lookup_rejects_invalid_asset_id(tmp_path, monkeypatch
 
     client = TestClient(app)
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": " PUMP-101"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": " PUMP-101"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 400
     assert latest.json()["detail"] == "Invalid asset id"
 
@@ -530,7 +572,9 @@ def test_portal_latest_run_lookup_returns_404_when_asset_is_missing(tmp_path, mo
 
     client = TestClient(app)
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-999"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": "PUMP-999"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 404
     assert latest.json()["detail"] == "Run summary not found for asset"
 
@@ -551,8 +595,18 @@ def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, mon
                     "repair_plan": {
                         "plan_id": "RP-123",
                         "procedure_steps": [
-                            {"seq": 1, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15},
-                            {"seq": 2, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90},
+                            {
+                                "seq": 1,
+                                "action": "Isolate the pump",
+                                "safety_note": "Apply LOTO",
+                                "estimated_mins": 15,
+                            },
+                            {
+                                "seq": 2,
+                                "action": "Replace the bearing",
+                                "safety_note": "Verify lift points",
+                                "estimated_mins": 90,
+                            },
                         ],
                         "tools_required": ["Torque wrench", "Laser alignment kit"],
                         "safety_requirements": ["LOTO required"],
@@ -616,10 +670,22 @@ def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, mon
     payload = detail.json()
     assert payload["repair_plan_id"] == "RP-123"
     assert payload["repair_plan"]["plan_id"] == "RP-123"
-    assert payload["repair_plan"]["summary"] == "Replace the inboard bearing and re-align the shaft."
+    assert (
+        payload["repair_plan"]["summary"] == "Replace the inboard bearing and re-align the shaft."
+    )
     assert payload["repair_plan"]["procedure_steps"] == [
-        {"seq": 1.0, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15.0},
-        {"seq": 2.0, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90.0},
+        {
+            "seq": 1.0,
+            "action": "Isolate the pump",
+            "safety_note": "Apply LOTO",
+            "estimated_mins": 15.0,
+        },
+        {
+            "seq": 2.0,
+            "action": "Replace the bearing",
+            "safety_note": "Verify lift points",
+            "estimated_mins": 90.0,
+        },
     ]
     assert payload["repair_plan"]["tools_required"] == ["Torque wrench", "Laser alignment kit"]
     assert payload["repair_plan"]["parts"][0]["name"] == "Bearing kit"
@@ -639,7 +705,12 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
                     "repair_plan": {
                         "plan_id": "RP-FAIL",
                         "procedure_steps": [
-                            {"seq": 1, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30}
+                            {
+                                "seq": 1,
+                                "action": "Verify coupling alignment",
+                                "safety_note": "Check guards",
+                                "estimated_mins": 30,
+                            }
                         ],
                         "parts_list": [
                             {
@@ -655,7 +726,11 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
         encoding="utf-8",
     )
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
-    monkeypatch.setattr(portal_mod, "get_repair_plan", lambda dsn, plan_id: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(
+        portal_mod,
+        "get_repair_plan",
+        lambda dsn, plan_id: (_ for _ in ()).throw(RuntimeError("db down")),
+    )
 
     client = TestClient(app)
 
@@ -667,14 +742,21 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
     assert payload["repair_plan"]["plan_id"] == "RP-FAIL"
     assert payload["repair_plan"]["load_error"] == "Repair plan lookup unavailable"
     assert payload["repair_plan"]["procedure_steps"] == [
-        {"seq": 1.0, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30.0}
+        {
+            "seq": 1.0,
+            "action": "Verify coupling alignment",
+            "safety_note": "Check guards",
+            "estimated_mins": 30.0,
+        }
     ]
 
 
 def test_portal_run_endpoints_require_authenticated_identity(tmp_path, monkeypatch):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
-    (run_dir / "RUN-123.json").write_text(json.dumps({"run_id": "RUN-123", "structured": {}}), encoding="utf-8")
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps({"run_id": "RUN-123", "structured": {}}), encoding="utf-8"
+    )
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
     monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
 
@@ -734,7 +816,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Run comparison" in page.text
     assert "Compare against" in page.text
     assert "Confidence drift" in page.text
-    assert "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run." in page.text
+    assert (
+        "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run."
+        in page.text
+    )
     assert "Repair plan drift" in page.text
     assert "Repair procedure drift" in page.text
     assert "Repair parts drift" in page.text
@@ -756,26 +841,35 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "data-compare-evidence-ref-type" in page.text
     assert "data-compare-evidence-side" in page.text
     assert "data-compare-evidence-run-id" in page.text
-    assert '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.' in page.text
+    assert (
+        '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.'
+        in page.text
+    )
     assert "Retry limit reached" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text
     assert "Approval history" in page.text
     assert "No approval attempts recorded yet." in page.text
     assert "Audit history stays in the current run view." in page.text
-    assert "Showing the in-app audit trail for ${escapeHtml(proposalId || \"this proposal\")}." in page.text
+    assert (
+        'Showing the in-app audit trail for ${escapeHtml(proposalId || "this proposal")}.'
+        in page.text
+    )
     assert "audit-item" in page.text
     assert "admin-origin" in page.text
     assert "audit-head" in page.text
     assert "audit-badge actor" in page.text
-    assert "Origin ${escapeHtml(attempt.origin || \"approval\")}" in page.text
-    assert "Actor ${escapeHtml(attempt.approved_by || \"Unknown approver\")}" in page.text
+    assert 'Origin ${escapeHtml(attempt.origin || "approval")}' in page.text
+    assert 'Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}' in page.text
     assert "origin-admin" in page.text
     assert "origin-approval" in page.text
     assert "Load more" in page.text
     assert "Loading more audit..." in page.text
     assert "All recorded audit attempts are visible." in page.text
-    assert "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts" in page.text
+    assert (
+        "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts"
+        in page.text
+    )
     assert "appendApprovalHistoryPage" in page.text
     assert "existingAttempts.concat" in page.text
     assert "history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}" in page.text
@@ -789,12 +883,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Latest connector outcome" in page.text
     assert "Trace every approval and retry attempt without leaving the run view." in page.text
     assert "Handoff exceptions queue" in page.text
-    assert "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish." in page.text
+    assert (
+        "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish."
+        in page.text
+    )
     assert "Current proposal exception state" in page.text
     assert "Loading handoff exceptions" in page.text
     assert "Handoff exceptions unavailable" in page.text
     assert "No handoff exceptions right now" in page.text
-    assert "There are no PM proposals waiting on retry, escalation, or connector cleanup right now." in page.text
+    assert (
+        "There are no PM proposals waiting on retry, escalation, or connector cleanup right now."
+        in page.text
+    )
     assert "Current proposal needs attention first" in page.text
     assert "More urgent handoffs exist" in page.text
     assert "Current proposal is clear" in page.text
@@ -808,7 +908,7 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "submitHandoffQueueRetry" in page.text
     assert "Run admin retry" in page.text
     assert "Open follow-through" in page.text
-    assert 'data-handoff-open-audit-run-id' in page.text
+    assert "data-handoff-open-audit-run-id" in page.text
     assert "Open audit trail" in page.text
     assert "Audit history stays in the current run view." in page.text
     assert "Queue view" in page.text
@@ -849,7 +949,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "handoffRowMatchesAgeBucket" in page.text
     assert "Handoff queue age filters" in page.text
     assert "data-handoff-age-bucket" in page.text
-    assert "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}" in page.text
+    assert (
+        "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}"
+        in page.text
+    )
     assert "Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}" in page.text
     assert "Retries remaining ${escapeHtml(retriesRemaining)}" in page.text
     assert "Longest wait ${escapeHtml(longestWait)}" in page.text
@@ -880,7 +983,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Admin role required for retry." in page.text
     assert "data-handoff-retry-proposal-id" in page.text
     assert "data-handoff-focus-run-id" in page.text
-    assert 'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {' in page.text
+    assert (
+        'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {'
+        in page.text
+    )
     assert "headers: portalIdentityHeaders()" in page.text
     assert "Live evidence" in page.text
     assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
@@ -904,7 +1010,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "latestEvidenceTrend" in page.text
     assert "rollupEvidenceTrend" in page.text
     assert "renderEvidenceTrendChip" in page.text
-    assert "Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
+    assert (
+        "Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6"
+        in page.text
+    )
     assert "renderEvidencePanel" in page.text
     assert "loadEvidenceSummary" in page.text
     assert "evidenceByAssetId" in page.text
@@ -912,12 +1021,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "evidenceErrorByAssetId" in page.text
     assert "/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
     assert "Asset triage queue" in page.text
-    assert "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first." in page.text
+    assert (
+        "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first."
+        in page.text
+    )
     assert "Current asset queue rank" in page.text
     assert "Loading triage queue" in page.text
     assert "Triage queue unavailable" in page.text
     assert "No triage pressure yet" in page.text
-    assert "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate." in page.text
+    assert (
+        "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate."
+        in page.text
+    )
     assert "Current asset leads the queue" in page.text
     assert "Higher-pressure assets exist" in page.text
     assert "Current asset is outside the top queue" in page.text
@@ -962,10 +1077,19 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "data-triage-run-id" in page.text
     assert "data-triage-evidence-asset-id" in page.text
     assert "triageReportUrl" in page.text
-    assert 'return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;' in page.text
-    assert 'const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {' in page.text
+    assert (
+        'return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;'
+        in page.text
+    )
+    assert (
+        "const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {"
+        in page.text
+    )
     assert "headers: portalIdentityHeaders()" in page.text
-    assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? \"true\" : \"false\"}" in page.text
+    assert (
+        '/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}'
+        in page.text
+    )
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
     assert "outcomesScopeSelect" in page.text
@@ -997,13 +1121,30 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "renderOutcomesPanel" in page.text
     assert "ensureOutcomesReport" in page.text
     assert "resetOutcomesReport" in page.text
-    assert 'state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {' in page.text
-    assert "Switch between asset, operator, and org lenses without leaving the run view." in page.text
-    assert "Start with the asset tied to this run, or compare another asset that already has live trend data." in page.text
-    assert "Follow the signed-in operator first, or switch to another operator with recorded feedback activity." in page.text
-    assert "Start with the current organization, or compare another org that already has live feedback activity." in page.text
+    assert (
+        "state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {"
+        in page.text
+    )
+    assert (
+        "Switch between asset, operator, and org lenses without leaving the run view." in page.text
+    )
+    assert (
+        "Start with the asset tied to this run, or compare another asset that already has live trend data."
+        in page.text
+    )
+    assert (
+        "Follow the signed-in operator first, or switch to another operator with recorded feedback activity."
+        in page.text
+    )
+    assert (
+        "Start with the current organization, or compare another org that already has live feedback activity."
+        in page.text
+    )
     assert "No live trends yet" in page.text
-    assert "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive." in page.text
+    assert (
+        "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive."
+        in page.text
+    )
     assert "No operator trends yet" in page.text
     assert "No organization trends yet" in page.text
     assert "Loading outcomes" in page.text
@@ -1012,29 +1153,53 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "We could not load outcomes trends right now:" in page.text
     assert "Partial report" in page.text
     assert "Showing the nearest live series" in page.text
-    assert 'renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))' in page.text
-    assert "This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead." in page.text
-    assert "This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead." in page.text
+    assert (
+        'renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))'
+        in page.text
+    )
+    assert (
+        "This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead."
+        in page.text
+    )
+    assert (
+        "This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead."
+        in page.text
+    )
     assert "Workorder volume" in page.text
     assert "Feedback volume" in page.text
     assert "Acceptance rate" in page.text
     assert "Decision quality across the last ${outcomesWindow} days." in page.text
     assert "Waiting" in page.text
     assert "Peak daily volume" in page.text
-    assert "Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window." in page.text
-    assert "No accept or reject feedback was recorded for this asset in the current window." in page.text
+    assert (
+        "Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window."
+        in page.text
+    )
+    assert (
+        "No accept or reject feedback was recorded for this asset in the current window."
+        in page.text
+    )
     assert "No work orders were recorded for this asset in the current window." in page.text
     assert "No feedback was recorded for this operator in the current window." in page.text
-    assert "No accept or reject decisions were recorded for this operator in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this operator in the current window."
+        in page.text
+    )
     assert "No feedback was recorded for this organization in the current window." in page.text
-    assert "No accept or reject decisions were recorded for this organization in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this organization in the current window."
+        in page.text
+    )
     assert "No acceptance decisions yet" in page.text
     assert "No work order volume yet" in page.text
     assert "No feedback yet" in page.text
     assert "chart-line" in page.text
     assert "chart-dot" in page.text
     assert "buildTrendSegments" in page.text
-    assert "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}" in page.text
+    assert (
+        "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}"
+        in page.text
+    )
 
 
 def test_portal_index_includes_feedback_loop_controls():
@@ -1054,9 +1219,9 @@ def test_portal_index_includes_feedback_loop_controls():
     assert "No operator feedback recorded yet for this run." in page.text
     assert "Loading feedback history..." in page.text
     assert "Unable to load feedback history:" in page.text
-    assert 'Accept ${escapeHtml(counts.accept || 0)}' in page.text
-    assert 'Reject ${escapeHtml(counts.reject || 0)}' in page.text
-    assert 'Edited ${escapeHtml(counts.edited || 0)}' in page.text
+    assert "Accept ${escapeHtml(counts.accept || 0)}" in page.text
+    assert "Reject ${escapeHtml(counts.reject || 0)}" in page.text
+    assert "Edited ${escapeHtml(counts.edited || 0)}" in page.text
     assert "loadFeedbackHistory" in page.text
     assert "submitFeedback" in page.text
     assert "feedbackByRunId" in page.text

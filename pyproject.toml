@@ -26,5 +26,6 @@ observability = ["opentelemetry-distro>=0.45b0", "opentelemetry-exporter-otlp-pr
 mi-runner = "maintenance_intelligence.runner.cli:app"
 [tool.black]
 line-length = 100
+target-version = ["py311"]
 [tool.setuptools.packages.find]
 exclude = ["logs*", "configs*", "outputs*", "scripts*"]

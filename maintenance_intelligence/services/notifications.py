@@ -10,7 +10,6 @@ import httpx
 
 from maintenance_intelligence.runner.config import Settings
 
-
 SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 
 
@@ -63,7 +62,9 @@ def _normalize_severity_list(value: Any) -> List[str]:
     return items
 
 
-def _coerce_route(route_id_hint: Optional[str], route_value: Any, *, index: int) -> Optional[Dict[str, Any]]:
+def _coerce_route(
+    route_id_hint: Optional[str], route_value: Any, *, index: int
+) -> Optional[Dict[str, Any]]:
     if isinstance(route_value, str):
         route = {"webhook_url": route_value}
     elif isinstance(route_value, dict):
@@ -208,7 +209,9 @@ def _route_matches(
     severity: str,
 ) -> bool:
     normalized_severity = _normalize_severity(severity)
-    if _severity_value(normalized_severity) < _severity_value(route.get("minimum_severity", "warning")):
+    if _severity_value(normalized_severity) < _severity_value(
+        route.get("minimum_severity", "warning")
+    ):
         return False
 
     explicit_severities = route.get("severities") or []
@@ -253,7 +256,9 @@ def _resolve_routes(
     matching = [
         route
         for route in routes
-        if _route_matches(route, org_id=org_id, site_id=site_id, event_type=event_type, severity=severity)
+        if _route_matches(
+            route, org_id=org_id, site_id=site_id, event_type=event_type, severity=severity
+        )
     ]
     if not matching:
         return []
@@ -268,7 +273,14 @@ def _resolve_routes(
 def list_notification_routes(*, settings: Optional[Settings] = None) -> List[Dict[str, Any]]:
     settings = settings or Settings()
     routes = [_normalize_route_summary(route) for route in _parse_routes(settings)]
-    return sorted(routes, key=lambda route: (-(int(route.get("specificity") or 0)), -(int(route.get("priority") or 0)), route.get("route_id") or ""))
+    return sorted(
+        routes,
+        key=lambda route: (
+            -(int(route.get("specificity") or 0)),
+            -(int(route.get("priority") or 0)),
+            route.get("route_id") or "",
+        ),
+    )
 
 
 def preview_notification_routes(
@@ -296,7 +308,11 @@ def preview_notification_routes(
     matched = [evaluation for evaluation in evaluations if evaluation["matched"]]
     if matched:
         best_specificity = max(int(evaluation.get("specificity") or 0) for evaluation in matched)
-        best_priority = max(int(evaluation.get("priority") or 0) for evaluation in matched if int(evaluation.get("specificity") or 0) == best_specificity)
+        best_priority = max(
+            int(evaluation.get("priority") or 0)
+            for evaluation in matched
+            if int(evaluation.get("specificity") or 0) == best_specificity
+        )
     else:
         best_specificity = None
         best_priority = None
@@ -402,7 +418,9 @@ def _matches_contains_filter(record_value: Any, filter_value: Optional[str]) -> 
     return normalized_filter in normalized_record
 
 
-def _send_webhook(url: str, payload: Dict[str, Any], timeout_s: float) -> tuple[bool, Optional[int], str]:
+def _send_webhook(
+    url: str, payload: Dict[str, Any], timeout_s: float
+) -> tuple[bool, Optional[int], str]:
     try:
         with httpx.Client(timeout=timeout_s) as client:
             response = client.post(url, json=payload)
@@ -551,11 +569,21 @@ def recent_notification_deliveries(
         and _matches_contains_filter(record.get("destination"), destination)
     ]
 
-    ordered_by_time = sorted(filtered, key=lambda record: _as_text(record.get("attempted_at")) or "", reverse=True)
+    ordered_by_time = sorted(
+        filtered, key=lambda record: _as_text(record.get("attempted_at")) or "", reverse=True
+    )
     if prioritize_failures:
-        failed = [record for record in ordered_by_time if (_as_text(record.get("status")) or "").lower() == "failed"]
-        non_failed = [record for record in ordered_by_time if (_as_text(record.get("status")) or "").lower() != "failed"]
+        failed = [
+            record
+            for record in ordered_by_time
+            if (_as_text(record.get("status")) or "").lower() == "failed"
+        ]
+        non_failed = [
+            record
+            for record in ordered_by_time
+            if (_as_text(record.get("status")) or "").lower() != "failed"
+        ]
         ordered = failed + non_failed
     else:
         ordered = ordered_by_time
-    return ordered[:max(1, int(limit))]
+    return ordered[: max(1, int(limit))]

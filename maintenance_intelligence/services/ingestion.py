@@ -1,15 +1,23 @@
-import json, signal, sys, time
+import backoff
+import json
+import signal
+import sys
+import time
+
+import psycopg2
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
-import psycopg2
 from loguru import logger
-import backoff
+
 from maintenance_intelligence.api.metrics import events_ingested_total
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
+from maintenance_intelligence.services.connectivity import (
+    open_central_connection,
+    safe_close_connection,
+)
 from maintenance_intelligence.services.notifications import emit_notification
-from maintenance_intelligence.services.connectivity import open_central_connection, safe_close_connection
 
 
 def _as_text(value):
@@ -22,10 +30,12 @@ def _as_text(value):
         return str(value)
     return None
 
+
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
 def create_db_connection(dsn: str):
     """Create database connection with retry logic."""
     return psycopg2.connect(dsn)
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str):
@@ -41,6 +51,7 @@ def create_kafka_consumer(kafka_bootstrap: str):
         auto_commit_interval_ms=5000,  # Commit every 5 seconds
     )
 
+
 @backoff.on_exception(backoff.expo, (psycopg2.Error, Exception), max_tries=3, max_time=30)
 def store_event(conn, evt):
     """Store event in database with retry logic."""
@@ -51,9 +62,15 @@ def store_event(conn, evt):
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb) "
                 "ON CONFLICT (event_id) DO NOTHING",
                 (
-                    evt.get("event_id"), evt.get("occurred_at"), evt.get("org_id"),
-                    evt.get("asset_id"), evt.get("kind"), evt.get("severity"),
-                    evt.get("summary"), json.dumps(evt.get("details")), json.dumps(evt.get("lineage")),
+                    evt.get("event_id"),
+                    evt.get("occurred_at"),
+                    evt.get("org_id"),
+                    evt.get("asset_id"),
+                    evt.get("kind"),
+                    evt.get("severity"),
+                    evt.get("summary"),
+                    json.dumps(evt.get("details")),
+                    json.dumps(evt.get("lineage")),
                 ),
             )
 
@@ -70,7 +87,9 @@ def _replay_buffered_events(conn, edge_buffer: EdgeEventBuffer, batch_size: int)
     return {"replayed": replayed_total, "error": None}
 
 
-def _emit_edge_connectivity_notification(settings: Settings, edge_buffer: EdgeEventBuffer, *, org_id: str | None = None) -> None:
+def _emit_edge_connectivity_notification(
+    settings: Settings, edge_buffer: EdgeEventBuffer, *, org_id: str | None = None
+) -> None:
     snapshot = edge_buffer.snapshot()
     connectivity_status = _as_text(snapshot.get("connectivity_status")) or "unknown"
     if connectivity_status not in {"offline", "degraded"}:
@@ -110,10 +129,15 @@ def _connect_edge_central(pg_dsn: str, settings: Settings, edge_buffer: EdgeEven
         _emit_edge_connectivity_notification(settings, edge_buffer)
         return None
 
+
 def ingestion(kafka_bootstrap: str, pg_dsn: str):
     logger.info({"event": "ingestion.start", "kafka_bootstrap": kafka_bootstrap})
     settings = Settings()
-    edge_buffer = EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events) if settings.edge_mode_enabled else None
+    edge_buffer = (
+        EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events)
+        if settings.edge_mode_enabled
+        else None
+    )
 
     # Graceful shutdown handling
     shutdown_requested = False
@@ -150,30 +174,57 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                         logger.info({"event": "ingestion.stored", "id": evt.get("event_id")})
                         events_ingested_total.labels(service="ingestion").inc()
                     except Exception as e:
-                        logger.error({"event": "ingestion.store_failed", "id": evt.get("event_id"), "error": str(e)})
+                        logger.error(
+                            {
+                                "event": "ingestion.store_failed",
+                                "id": evt.get("event_id"),
+                                "error": str(e),
+                            }
+                        )
                     continue
 
                 now = time.time()
                 if conn is None and now >= next_connectivity_probe_at:
                     conn = _connect_edge_central(pg_dsn, settings, edge_buffer)
                     if conn is None:
-                        next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
+                        next_connectivity_probe_at = (
+                            now + settings.edge_connectivity_check_interval_s
+                        )
 
                 if conn is not None and edge_buffer.buffered_event_count() > 0:
-                    replayed = _replay_buffered_events(conn, edge_buffer, settings.edge_replay_batch_size)
+                    replayed = _replay_buffered_events(
+                        conn, edge_buffer, settings.edge_replay_batch_size
+                    )
                     if replayed.get("replayed"):
-                        logger.info({"event": "ingestion.edge_replayed", "count": replayed.get("replayed")})
+                        logger.info(
+                            {"event": "ingestion.edge_replayed", "count": replayed.get("replayed")}
+                        )
                     if replayed.get("error"):
-                        logger.error({"event": "ingestion.edge_replay_failed", "error": replayed.get("error")})
+                        logger.error(
+                            {
+                                "event": "ingestion.edge_replay_failed",
+                                "error": replayed.get("error"),
+                            }
+                        )
                         safe_close_connection(conn)
                         conn = None
                         _emit_edge_connectivity_notification(settings, edge_buffer)
-                        next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
+                        next_connectivity_probe_at = (
+                            now + settings.edge_connectivity_check_interval_s
+                        )
 
                 if conn is None:
                     queued = edge_buffer.buffer_event(evt, error="Central store unavailable")
-                    _emit_edge_connectivity_notification(settings, edge_buffer, org_id=_as_text(evt.get("org_id")))
-                    logger.warning({"event": "ingestion.buffered", "id": evt.get("event_id"), "buffer_id": queued})
+                    _emit_edge_connectivity_notification(
+                        settings, edge_buffer, org_id=_as_text(evt.get("org_id"))
+                    )
+                    logger.warning(
+                        {
+                            "event": "ingestion.buffered",
+                            "id": evt.get("event_id"),
+                            "buffer_id": queued,
+                        }
+                    )
                     continue
 
                 try:
@@ -182,12 +233,20 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                     logger.info({"event": "ingestion.stored", "id": evt.get("event_id")})
                     events_ingested_total.labels(service="ingestion").inc()
                 except Exception as e:
-                    logger.error({"event": "ingestion.store_failed", "id": evt.get("event_id"), "error": str(e)})
+                    logger.error(
+                        {
+                            "event": "ingestion.store_failed",
+                            "id": evt.get("event_id"),
+                            "error": str(e),
+                        }
+                    )
                     safe_close_connection(conn)
                     conn = None
                     edge_buffer.buffer_event(evt, error=str(e))
                     edge_buffer.mark_connectivity("degraded", last_error=str(e))
-                    _emit_edge_connectivity_notification(settings, edge_buffer, org_id=_as_text(evt.get("org_id")))
+                    _emit_edge_connectivity_notification(
+                        settings, edge_buffer, org_id=_as_text(evt.get("org_id"))
+                    )
                     next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
 
     except Exception as e:
