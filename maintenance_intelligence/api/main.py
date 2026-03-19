@@ -17,6 +17,13 @@ from maintenance_intelligence.runner.core import run
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.logging import setup_logger
 
+
+def _mount_portal_assets(application: FastAPI) -> None:
+    assets_dir = WEB_DIR / "assets"
+    if assets_dir.is_dir():
+        application.mount("/portal/assets", StaticFiles(directory=assets_dir), name="portal-assets")
+
+
 app = FastAPI(title="Maintenance Intelligence API", version="0.1.0")
 install_identity_middleware(app)
 app.include_router(health_router)
@@ -29,7 +36,7 @@ app.include_router(outcomes_router)
 app.include_router(pm_advisor_router)
 app.include_router(metrics_router)
 app.include_router(portal_router)
-app.mount("/portal/assets", StaticFiles(directory=WEB_DIR / "assets"), name="portal-assets")
+_mount_portal_assets(app)
 settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")
