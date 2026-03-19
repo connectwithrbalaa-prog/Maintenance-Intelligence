@@ -33,6 +33,7 @@ _load_local_module("maintenance_intelligence.cmms.mock", Path("maintenance_intel
 _load_local_module("maintenance_intelligence.cmms.maximo", Path("maintenance_intelligence/cmms/maximo.py"))
 sap_pm_mod = _load_local_module("maintenance_intelligence.cmms.sap_pm", Path("maintenance_intelligence/cmms/sap_pm.py"))
 servicenow_mod = _load_local_module("maintenance_intelligence.cmms.servicenow", Path("maintenance_intelligence/cmms/servicenow.py"))
+notifications_mod = _load_local_module("maintenance_intelligence.services.notifications", Path("maintenance_intelligence/services/notifications.py"))
 _load_local_module("maintenance_intelligence.services.wo_bridge", Path("maintenance_intelligence/services/wo_bridge.py"))
 pm_mod = _load_local_module("maintenance_intelligence.api.pm_advisor", Path("maintenance_intelligence/api/pm_advisor.py"))
 app = FastAPI()
@@ -993,6 +994,51 @@ def test_approve_proposal_blocks_retry_after_terminal_failure(monkeypatch, tmp_p
     assert first.status_code == 502
     assert second.status_code == 409
     assert second.json()["detail"] == "Latest connector failure is terminal (payload); retry is not allowed"
+
+
+def test_approve_proposal_terminal_failure_emits_webhook_notification(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries, org_id="demo-org", site_id="site-a")
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps({"demo-org": {"webhook_url": "https://hooks.example.test/cmms", "minimum_severity": "warning"}}),
+    )
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    deliveries = []
+
+    def fake_send(url, payload, timeout_s):
+        deliveries.append({"url": url, "payload": payload, "timeout_s": timeout_s})
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+    monkeypatch.setattr(pm_mod, "emit_notification", notifications_mod.emit_notification)
+    fake_connection = FakeConnection()
+
+    class BadAdapter:
+        backend_name = "bad"
+
+        def create_work_order(self, recommendation):
+            return "bad-payload"
+
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: BadAdapter())
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        headers={"x-user-id": "planner-1", "x-user-org": "demo-org", "x-user-site": "site-a"},
+    )
+
+    assert response.status_code == 502
+    assert len(deliveries) == 1
+    assert deliveries[0]["url"] == "https://hooks.example.test/cmms"
+    assert deliveries[0]["payload"]["event_type"] == "cmms.terminal_failure"
+    assert deliveries[0]["payload"]["payload"]["proposal_id"] == "REC-1"
+    records = notifications_mod.recent_notification_deliveries(limit=3, settings=pm_mod.Settings())
+    assert records[0]["status"] == "sent"
+    assert records[0]["event_type"] == "cmms.terminal_failure"
 
 
 def test_approve_proposal_retry_appends_history_and_creates_single_workorder(monkeypatch, tmp_path):

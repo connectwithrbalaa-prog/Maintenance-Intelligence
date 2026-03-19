@@ -172,6 +172,16 @@
 			gap: 10px;
 		}
 
+		.notification-status-card {
+			margin-top: 14px;
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(24, 34, 38, 0.1);
+			background: rgba(255, 255, 255, 0.72);
+			display: grid;
+			gap: 10px;
+		}
+
 		.edge-status-body {
 			font-size: 13px;
 			line-height: 1.5;
@@ -1830,6 +1840,18 @@
 						</div>
 						<div class="edge-status-body">Edge diagnostics load when the portal connects.</div>
 					</div>
+					<div id="notificationStatusCard" class="notification-status-card">
+						<div class="identity-row">
+							<div>
+								<div class="meta-label">Notification delivery</div>
+								<div class="identity-badge">
+									<strong>Delivery status pending</strong>
+									<span class="status-pill unknown">unknown</span>
+								</div>
+							</div>
+						</div>
+						<div class="edge-status-body">Recent webhook delivery attempts load when the portal connects.</div>
+					</div>
 				</div>
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
@@ -1951,6 +1973,11 @@
 				loading: false,
 				error: "",
 			},
+			notificationStatus: {
+				items: [],
+				loading: false,
+				error: "",
+			},
 			session: {
 				subject: "portal.user",
 				role: "planner",
@@ -1976,6 +2003,7 @@
 			identityBadge: document.getElementById("identityBadge"),
 			identityHint: document.getElementById("identityHint"),
 			edgeStatusCard: document.getElementById("edgeStatusCard"),
+			notificationStatusCard: document.getElementById("notificationStatusCard"),
 			identityControls: document.getElementById("identityControls"),
 			identitySubjectInput: document.getElementById("identitySubjectInput"),
 			identityRoleSelect: document.getElementById("identityRoleSelect"),
@@ -2227,6 +2255,101 @@
 			`;
 		}
 
+		function renderNotificationStatusCard() {
+			if (!elements.notificationStatusCard) {
+				return;
+			}
+
+			if (state.notificationStatus.loading) {
+				elements.notificationStatusCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification delivery</div>
+							<div class="identity-badge">
+								<strong>Loading delivery status</strong>
+								<span class="status-pill unknown">loading</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">Fetching recent webhook delivery attempts.</div>
+				`;
+				return;
+			}
+
+			if (state.notificationStatus.error) {
+				elements.notificationStatusCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification delivery</div>
+							<div class="identity-badge">
+								<strong>Delivery status unavailable</strong>
+								<span class="status-pill warn">warn</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">${escapeHtml(state.notificationStatus.error)}</div>
+				`;
+				return;
+			}
+
+			const items = Array.isArray(state.notificationStatus.items) ? state.notificationStatus.items : [];
+			if (!items.length) {
+				elements.notificationStatusCard.innerHTML = `
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Notification delivery</div>
+							<div class="identity-badge">
+								<strong>No recent delivery attempts</strong>
+								<span class="status-pill unknown">idle</span>
+							</div>
+						</div>
+					</div>
+					<div class="edge-status-body">Webhook delivery appears idle for the current log window.</div>
+				`;
+				return;
+			}
+
+			const latest = asObject(items[0]);
+			const latestStatus = asString(latest.status, "unknown").toLowerCase();
+			const badgeClass = latestStatus === "sent" ? "ok" : (latestStatus === "failed" ? "error" : "warn");
+			const attemptsMarkup = items.slice(0, 4).map((item) => {
+				const record = asObject(item);
+				const status = asString(record.status, "unknown");
+				const severity = asString(record.severity, "warning");
+				const eventType = asString(record.event_type, "unknown");
+				const destination = asString(record.destination, "webhook");
+				const attemptedAt = formatDate(record.attempted_at) || "Unknown time";
+				const summary = asString(record.summary, "");
+				const detail = asString(record.delivery_error, "");
+				return `
+					<div class="compare-card">
+						<strong>${escapeHtml(eventType)}</strong>
+						<div class="outcomes-chip-row">
+							<span class="chip">Status ${escapeHtml(status)}</span>
+							<span class="chip">Severity ${escapeHtml(severity)}</span>
+							<span class="chip">Route ${escapeHtml(destination)}</span>
+							<span class="chip">Attempt ${escapeHtml(attemptedAt)}</span>
+						</div>
+						<div class="muted">${escapeHtml(summary || detail || "No delivery detail recorded.")}</div>
+					</div>
+				`;
+			}).join("");
+
+			elements.notificationStatusCard.innerHTML = `
+				<div class="identity-row">
+					<div>
+						<div class="meta-label">Notification delivery</div>
+						<div class="identity-badge">
+							<strong>Latest webhook attempt</strong>
+							<span class="status-pill ${escapeHtml(badgeClass)}">${escapeHtml(latestStatus)}</span>
+						</div>
+					</div>
+				</div>
+				<div class="edge-status-body">Recent routed notifications for terminal CMMS failures and edge degraded states.</div>
+				<div class="compare-summary-grid">${attemptsMarkup}</div>
+			`;
+		}
+
 		async function loadEdgeStatus(force = false) {
 			if (state.edgeStatus.loading || (!force && state.edgeStatus.data && !state.edgeStatus.error)) {
 				return;
@@ -2241,6 +2364,23 @@
 			} finally {
 				state.edgeStatus.loading = false;
 				renderEdgeStatusCard();
+			}
+		}
+
+		async function loadNotificationStatus(force = false) {
+			if (state.notificationStatus.loading || (!force && state.notificationStatus.items.length && !state.notificationStatus.error)) {
+				return;
+			}
+			state.notificationStatus.loading = true;
+			state.notificationStatus.error = "";
+			renderNotificationStatusCard();
+			try {
+				state.notificationStatus.items = await fetchJson("/api/v1/portal/notifications?limit=4", { headers: portalIdentityHeaders() });
+			} catch (error) {
+				state.notificationStatus.error = error instanceof Error ? error.message : "Unknown notification status error";
+			} finally {
+				state.notificationStatus.loading = false;
+				renderNotificationStatusCard();
 			}
 		}
 
@@ -2273,6 +2413,7 @@
 				void error;
 			}
 			void loadEdgeStatus(true);
+			void loadNotificationStatus(true);
 		}
 
 		function escapeHtml(value) {
@@ -7143,7 +7284,10 @@
 			resetTriageReport();
 			state.edgeStatus.data = null;
 			state.edgeStatus.error = "";
+			state.notificationStatus.items = [];
+			state.notificationStatus.error = "";
 			void loadEdgeStatus(true);
+			void loadNotificationStatus(true);
 			await loadRuns();
 		});
 		elements.identityControls.addEventListener("submit", async (event) => {
@@ -7166,6 +7310,7 @@
 		applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 		renderIdentityPanel();
 		renderEdgeStatusCard();
+		renderNotificationStatusCard();
 		refreshIdentity();
 		loadRuns();
 	</script>

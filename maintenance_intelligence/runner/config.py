@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     edge_connectivity_check_interval_s: float = Field(default=5.0)
     edge_connectivity_timeout_s: int = Field(default=2)
     edge_buffer_max_events: int = Field(default=5000)
+    notification_webhook_routes: str | None = Field(default=None)
+    notification_log_path: str = Field(default="outputs/notifications/delivery_log.jsonl")
+    notification_webhook_timeout_s: float = Field(default=5.0)
+    notification_dedupe_window_s: int = Field(default=900)
 
     @property
     def pg_dsn(self) -> str:

@@ -33,6 +33,7 @@ from maintenance_intelligence.api.middleware.identity import (
 )
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
+from maintenance_intelligence.services.notifications import emit_notification
 from maintenance_intelligence.services.wo_bridge import process_recommendation, with_pg
 
 router = APIRouter(prefix="/api/v1/agents/pm", tags=["pm"])
@@ -506,6 +507,35 @@ def _proposal_scope(existing: Optional[Dict[str, Any]], payload: Optional[Dict[s
         if org_id is not None and site_id is not None:
             break
     return org_id, site_id
+
+
+def _emit_terminal_cmms_failure_notification(
+    *,
+    proposal_id: str,
+    recommendation: Dict[str, Any],
+    detail: str,
+    failure_summary: Dict[str, Any],
+    org_id: Optional[str],
+    site_id: Optional[str],
+) -> None:
+    if not failure_summary or failure_summary.get("retryable"):
+        return
+    asset_id = _as_text(recommendation.get("asset_id")) or ""
+    emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary=f"Terminal CMMS failure for proposal {proposal_id} on asset {asset_id or 'unknown'}",
+        org_id=org_id,
+        site_id=site_id,
+        dedupe_key=f"cmms-terminal:{proposal_id}:{failure_summary.get('failure_class')}:{detail}",
+        payload={
+            "proposal_id": proposal_id,
+            "recommendation_id": _as_text(recommendation.get("id")) or "",
+            "asset_id": asset_id,
+            "failure_summary": failure_summary,
+            "detail": detail,
+        },
+    )
 
 
 def _require_approval_actor(request: Request, *, org_id: Optional[str] = None, site_id: Optional[str] = None) -> tuple[str, str]:
@@ -1009,6 +1039,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
         detail = str(exc)
         persisted: Dict[str, Any] = {}
         attempts = getattr(exc, "attempts", [])
+        failure_summary = cmms_failure_summary_from_error(exc)
         try:
             conn = connection_factory(settings.pg_dsn)
             try:
@@ -1024,6 +1055,14 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 conn.close()
         except Exception:
             pass
+        _emit_terminal_cmms_failure_notification(
+            proposal_id=proposal_id,
+            recommendation=recommendation,
+            detail=detail,
+            failure_summary=failure_summary,
+            org_id=proposal_org_id,
+            site_id=proposal_site_id,
+        )
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
             None,
@@ -1120,6 +1159,14 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 conn.close()
         except Exception:
             pass
+        _emit_terminal_cmms_failure_notification(
+            proposal_id=proposal_id,
+            recommendation=recommendation,
+            detail=detail,
+            failure_summary=failure_summary,
+            org_id=proposal_org_id,
+            site_id=proposal_site_id,
+        )
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
             None,

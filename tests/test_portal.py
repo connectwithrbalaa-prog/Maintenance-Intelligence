@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import portal as portal_mod
+from maintenance_intelligence.services import notifications as notifications_mod
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
@@ -90,8 +91,10 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "CMMS failure split" in page.text
     assert "Retryable" in page.text
     assert "Terminal" in page.text
+    assert "Notification delivery" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
+    assert "/api/v1/portal/notifications" in page.text
     assert "/api/v1/agents/pm/connectors" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
@@ -206,6 +209,66 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     assert payload["last_successful_central_write_at"] is None
     assert payload["last_command_queued_at"] is not None
     assert payload["last_error"] == "central store unavailable"
+
+
+def test_portal_edge_status_emits_notification_and_lists_recent_deliveries(tmp_path, monkeypatch):
+    buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps({"demo-org": {"webhook_url": "https://hooks.example.test/edge", "minimum_severity": "warning"}}),
+    )
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    deliveries = []
+
+    def fake_send(url, payload, timeout_s):
+        deliveries.append({"url": url, "payload": payload, "timeout_s": timeout_s})
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+    monkeypatch.setattr(portal_mod, "emit_notification", notifications_mod.emit_notification)
+
+    buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
+    command_buffer = EdgeCommandBuffer(str(command_buffer_path))
+    buffer.buffer_event(
+        {
+            "event_id": "EV-OFFLINE",
+            "occurred_at": "2026-03-15T10:00:00Z",
+            "org_id": "demo-org",
+            "asset_id": "PUMP-101",
+            "kind": "anomaly",
+            "severity": "high",
+            "summary": "Offline buffered event",
+            "details": {"source": "edge"},
+            "lineage": {"channel": "kafka"},
+        },
+        error="central store unavailable",
+    )
+    command_buffer.enqueue_command(
+        "REC-1",
+        {
+            "proposal_id": "REC-1",
+            "recommendation_id": "REC-1",
+            "recommendation": {"id": "REC-1", "asset_id": "PUMP-101"},
+        },
+        error="cmms offline",
+    )
+
+    client = TestClient(app)
+    edge_response = client.get("/api/v1/portal/edge-status", headers={**READ_HEADERS, "x-user-org": "demo-org"})
+    notifications_response = client.get("/api/v1/portal/notifications", headers=READ_HEADERS)
+
+    assert edge_response.status_code == 200
+    assert notifications_response.status_code == 200
+    assert len(deliveries) == 1
+    assert deliveries[0]["payload"]["event_type"] == "edge.degraded"
+    payload = notifications_response.json()
+    assert payload[0]["status"] == "sent"
+    assert payload[0]["event_type"] == "edge.degraded"
+    assert payload[0]["destination"] == "hooks.example.test"
 
 
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):
