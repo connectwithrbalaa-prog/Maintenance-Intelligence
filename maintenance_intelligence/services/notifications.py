@@ -152,6 +152,14 @@ def _destination_label(url: Optional[str]) -> str:
     return parsed.netloc or parsed.path or "webhook"
 
 
+def _matches_filter(record_value: Any, filter_value: Optional[str]) -> bool:
+    normalized_filter = (_as_text(filter_value) or "").strip().lower()
+    if not normalized_filter or normalized_filter == "all":
+        return True
+    normalized_record = (_as_text(record_value) or "").strip().lower()
+    return normalized_record == normalized_filter
+
+
 def _send_webhook(url: str, payload: Dict[str, Any], timeout_s: float) -> tuple[bool, Optional[int], str]:
     try:
         with httpx.Client(timeout=timeout_s) as client:
@@ -232,7 +240,33 @@ def emit_notification(
     return record
 
 
-def recent_notification_deliveries(*, limit: int = 6, settings: Optional[Settings] = None) -> List[Dict[str, Any]]:
+def recent_notification_deliveries(
+    *,
+    limit: int = 6,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    event_type: Optional[str] = None,
+    destination: Optional[str] = None,
+    prioritize_failures: bool = True,
+    settings: Optional[Settings] = None,
+) -> List[Dict[str, Any]]:
     settings = settings or Settings()
     records = _load_records(settings)
-    return [record for record in reversed(records[-max(1, int(limit)):]) if isinstance(record, dict)]
+    filtered = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and _matches_filter(record.get("status"), status)
+        and _matches_filter(record.get("severity"), severity)
+        and _matches_filter(record.get("event_type"), event_type)
+        and _matches_filter(record.get("destination"), destination)
+    ]
+
+    ordered_by_time = sorted(filtered, key=lambda record: _as_text(record.get("attempted_at")) or "", reverse=True)
+    if prioritize_failures:
+        failed = [record for record in ordered_by_time if (_as_text(record.get("status")) or "").lower() == "failed"]
+        non_failed = [record for record in ordered_by_time if (_as_text(record.get("status")) or "").lower() != "failed"]
+        ordered = failed + non_failed
+    else:
+        ordered = ordered_by_time
+    return ordered[:max(1, int(limit))]

@@ -92,6 +92,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Retryable" in page.text
     assert "Terminal" in page.text
     assert "Notification delivery" in page.text
+    assert "All statuses" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
     assert "/api/v1/portal/notifications" in page.text
@@ -281,6 +282,79 @@ def test_portal_notifications_list_recent_deliveries_without_triggering_new_send
     assert payload[0]["status"] == "sent"
     assert payload[0]["event_type"] == "edge.degraded"
     assert payload[0]["destination"] == "hooks.example.test"
+
+
+def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps({"default": {"webhook_url": "https://hooks.example.test/notify", "minimum_severity": "warning"}}),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        dedupe_key="cmms-terminal-filter-test",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        dedupe_key="edge-filter-test",
+        payload={"connectivity_status": "degraded"},
+    )
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="info",
+        summary="Info-only notification",
+        org_id="demo-org",
+        dedupe_key="cmms-info-filter-test",
+        payload={"proposal_id": "REC-2"},
+    )
+
+    client = TestClient(app)
+
+    all_response = client.get("/api/v1/portal/notifications?limit=10", headers=READ_HEADERS)
+    failed_response = client.get("/api/v1/portal/notifications?limit=10&status=failed", headers=READ_HEADERS)
+    critical_response = client.get("/api/v1/portal/notifications?limit=10&severity=critical", headers=READ_HEADERS)
+    event_response = client.get("/api/v1/portal/notifications?limit=10&event_type=edge.degraded", headers=READ_HEADERS)
+    destination_response = client.get("/api/v1/portal/notifications?limit=10&destination=hooks.example.test", headers=READ_HEADERS)
+
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert all_payload[0]["status"] == "failed"
+    assert all_payload[0]["event_type"] == "edge.degraded"
+
+    assert failed_response.status_code == 200
+    failed_payload = failed_response.json()
+    assert len(failed_payload) == 1
+    assert failed_payload[0]["delivery_error"] == "gateway down"
+
+    assert critical_response.status_code == 200
+    critical_payload = critical_response.json()
+    assert len(critical_payload) == 1
+    assert critical_payload[0]["event_type"] == "cmms.terminal_failure"
+
+    assert event_response.status_code == 200
+    event_payload = event_response.json()
+    assert len(event_payload) == 1
+    assert event_payload[0]["status"] == "failed"
+
+    assert destination_response.status_code == 200
+    destination_payload = destination_response.json()
+    assert len(destination_payload) == 2
+    assert all(item["destination"] == "hooks.example.test" for item in destination_payload)
 
 
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):

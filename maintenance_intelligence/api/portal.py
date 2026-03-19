@@ -426,9 +426,23 @@ def edge_status(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/api/v1/portal/notifications")
-def portal_notifications(request: Request, limit: int = Query(6, ge=1, le=20)) -> List[Dict[str, Any]]:
+def portal_notifications(
+    request: Request,
+    limit: int = Query(6, ge=1, le=20),
+    status: str = Query("all"),
+    severity: str = Query("all"),
+    event_type: str = Query("all"),
+    destination: str = Query("all"),
+) -> List[Dict[str, Any]]:
     _require_read_access(request)
-    return recent_notification_deliveries(limit=limit)
+    return recent_notification_deliveries(
+        limit=limit,
+        status=status,
+        severity=severity,
+        event_type=event_type,
+        destination=destination,
+        prioritize_failures=True,
+    )
 
 
 @router.get("/api/v1/portal/runs/latest")
