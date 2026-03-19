@@ -43,6 +43,8 @@ function buildOutcomesReport(feedbackHistory) {
       success_total: 2,
       pending_total: 1,
       failure_total: 1,
+      retryable_failure_total: 1,
+      terminal_failure_total: 0,
       admin_retry_required_total: 2,
       limit_reached_total: 1,
       approval_to_handoff_seconds_avg: 450,

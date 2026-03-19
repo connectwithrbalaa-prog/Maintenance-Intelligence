@@ -5325,6 +5325,8 @@
 				successTotal: asNumber(source.success_total) || 0,
 				pendingTotal: asNumber(source.pending_total) || 0,
 				failureTotal: asNumber(source.failure_total) || 0,
+				retryableFailureTotal: asNumber(source.retryable_failure_total) || 0,
+				terminalFailureTotal: asNumber(source.terminal_failure_total) || 0,
 				adminRetryRequiredTotal: asNumber(source.admin_retry_required_total) || 0,
 				limitReachedTotal: asNumber(source.limit_reached_total) || 0,
 				approvalToHandoffSecondsAvg: asNumber(source.approval_to_handoff_seconds_avg),
@@ -5436,6 +5438,7 @@
 			const backlogTotal = summary.pendingTotal + summary.failureTotal;
 			const toneLabel = backlogTotal > 0 || summary.adminRetryRequiredTotal > 0 ? "Active" : "Clear";
 			const toneClass = backlogTotal > 0 || summary.adminRetryRequiredTotal > 0 ? "trend-rising" : "trend-falling";
+			const failureSplitTone = summary.terminalFailureTotal > 0 ? "trend-rising" : (summary.retryableFailureTotal > 0 ? "trend-steady" : "trend-falling");
 			const leadTimeLabel = summary.approvalToHandoffSecondsAvg !== null
 				? formatSecondsAsDuration(summary.approvalToHandoffSecondsAvg)
 				: "Not recorded";
@@ -5445,6 +5448,9 @@
 			const pressureDetail = summary.adminRetryRequiredTotal > 0 || summary.limitReachedTotal > 0
 				? `${summary.adminRetryRequiredTotal} proposal${summary.adminRetryRequiredTotal === 1 ? " needs" : "s need"} admin retry review and ${summary.limitReachedTotal} ${summary.limitReachedTotal === 1 ? "has" : "have"} already hit the configured retry ceiling.`
 				: "Retry pressure is currently low and no proposals have hit the configured retry ceiling in this outcomes window.";
+			const failureSplitDetail = summary.failureTotal > 0
+				? `${summary.retryableFailureTotal} failure${summary.retryableFailureTotal === 1 ? " is" : "s are"} still retryable while ${summary.terminalFailureTotal} ${summary.terminalFailureTotal === 1 ? "is" : "are"} terminal and need connector or payload cleanup instead of another retry.`
+				: "No CMMS failures are currently recorded in this outcomes window, so retryable and terminal failure pressure are both clear.";
 			return `
 				<div class="compare-summary-grid">
 					<div class="compare-card">
@@ -5466,6 +5472,16 @@
 							<span class="chip">Source outcomes.cmms_summary</span>
 						</div>
 						<div class="muted">${escapeHtml(pressureDetail)}</div>
+					</div>
+					<div class="compare-card">
+						<strong>CMMS failure split</strong>
+						<div class="outcomes-chip-row">
+							<span class="chip ${escapeHtml(failureSplitTone)}">Failure ${escapeHtml(summary.failureTotal)}</span>
+							<span class="chip">Retryable ${escapeHtml(summary.retryableFailureTotal)}</span>
+							<span class="chip">Terminal ${escapeHtml(summary.terminalFailureTotal)}</span>
+							<span class="chip">Source outcomes.cmms_summary</span>
+						</div>
+						<div class="muted">${escapeHtml(failureSplitDetail)}</div>
 					</div>
 				</div>
 			`;
