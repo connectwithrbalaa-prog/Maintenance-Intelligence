@@ -330,3 +330,10 @@ Signals improve RCA evidence quality by providing measurement trends and anomaly
   - `pytest -k maximo_smoke`
   - `pytest -k servicenow_smoke`
   - Uses `pytest-httpserver` to stand up local connector-like endpoints and exercises the real HTTP adapter path without external credentials.
+
+## Stakeholder and BRD Notes
+
+- Stakeholder overview: `docs/STAKEHOLDER_OVERVIEW.md`
+- One-page BRD progress note: `docs/BRD_PROGRESS_NOTE.md`
+- Paste-ready issue checklists for `#39` to `#44`: `docs/BRD_ISSUE_CHECKLISTS.md`
+- Stakeholder-ready GitHub status comment draft: `docs/GITHUB_STATUS_UPDATE_COMMENT.md`
