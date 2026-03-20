@@ -1,4 +1,10 @@
-import os, json, uuid, datetime as dt, signal, sys, time
+import datetime as dt
+import json
+import os
+import signal
+import sys
+import time
+import uuid
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
@@ -9,7 +15,11 @@ from maintenance_intelligence.context.assembler import get_event_context
 from maintenance_intelligence.services.notifications import emit_notification
 from maintenance_intelligence.services.repair_plan_service import create_repair_plan, add_part_to_plan
 import backoff
-from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
+from maintenance_intelligence.api.metrics import (
+    recommendations_created_total,
+    rca_duration_seconds,
+    rca_runs_total,
+)
 
 
 EDGE_LOCAL_FALLBACK_VERSION = "edge-fallback-v1"

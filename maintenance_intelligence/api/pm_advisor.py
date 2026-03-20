@@ -3,8 +3,6 @@ import datetime as dt
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psycopg2
-
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -14,7 +12,6 @@ from maintenance_intelligence.cmms.adapter import (
     CMMSConfigurationError,
     CMMSPayloadError,
     CMMSRetryExhaustedError,
-    CMMSUnavailableError,
     UnsupportedBackendError,
     cmms_failure_summary_from_error,
     create_cmms_adapter,
