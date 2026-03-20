@@ -9,7 +9,7 @@ for name in list(sys.modules):
     if name == "maintenance_intelligence" or name.startswith("maintenance_intelligence."):
         del sys.modules[name]
 
-from maintenance_intelligence.cmms.adapter import (
+from maintenance_intelligence.cmms.adapter import (  # noqa: E402
     CMMSConfigurationError,
     CMMSPayloadError,
     CMMSUnavailableError,
@@ -24,12 +24,12 @@ from maintenance_intelligence.cmms.adapter import (
     submit_work_order_with_retry,
     supported_cmms_backends,
 )
-from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
-from maintenance_intelligence.cmms.mock import MockCMMSAdapter
-from maintenance_intelligence.cmms.sap_pm import SAPPMCMMSAdapter
-from maintenance_intelligence.cmms.servicenow import ServiceNowCMMSAdapter
-from maintenance_intelligence.cmms.translators import translate_connector_response
-from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter  # noqa: E402
+from maintenance_intelligence.cmms.mock import MockCMMSAdapter  # noqa: E402
+from maintenance_intelligence.cmms.sap_pm import SAPPMCMMSAdapter  # noqa: E402
+from maintenance_intelligence.cmms.servicenow import ServiceNowCMMSAdapter  # noqa: E402
+from maintenance_intelligence.cmms.translators import translate_connector_response  # noqa: E402
+from maintenance_intelligence.runner.config import Settings  # noqa: E402
 
 
 def test_factory_selects_mock_backend(monkeypatch):
