@@ -1,0 +1,86 @@
+flowchart LR
+    subgraph EventSources[Event and Data Sources]
+        Sensors[Equipment sensors and alarms]
+        Simulator[Simulator and synthetic test events]
+        Docs[Maintenance docs and knowledge content]
+        WorkHistory[Work order history and CMMS snapshots]
+    end
+
+    subgraph Runtime[Platform Runtime]
+        Ingestion[Ingestion service]
+        Kafka[(Kafka topics)]
+        Signals[Signals processor]
+        RCA[RCA agent]
+        Context[Context assembler]
+        Cache[Governed context cache and prefetch]
+        RAG[Hybrid RAG retrieval]
+        GenAI[GenAI gateway or local fallback]
+        Runs[(Run summaries and outputs)]
+        PM[PM advisor APIs]
+        Bridge[Work order bridge]
+        Notify[Notification service]
+        API[FastAPI and portal APIs]
+        Portal[Portal UI]
+        Edge[Edge buffer and runtime state]
+        Metrics[Metrics health and outcomes]
+    end
+
+    subgraph DataStores[State and Persistence]
+        PG[(Postgres and pgvector)]
+        Files[(Output and notification logs)]
+    end
+
+    subgraph ExternalSystems[External Systems]
+        CMMS[CMMS backends: mock, Maximo, SAP PM, ServiceNow]
+        Webhooks[Webhook destinations]
+        Alerting[Prometheus Grafana Alertmanager]
+    end
+
+    Sensors --> Ingestion
+    Simulator --> Ingestion
+    Ingestion --> Kafka
+    Kafka --> Signals
+    Kafka --> RCA
+    Docs --> RAG
+    WorkHistory --> Context
+    Signals --> Context
+    RAG --> Context
+    Cache --> Context
+    PG --> Context
+    Context --> RCA
+    Context --> Cache
+    RCA --> GenAI
+    GenAI --> RCA
+    RCA --> Runs
+    RCA --> PG
+    Runs --> Files
+    Runs --> API
+    PG --> API
+    API --> Portal
+    Portal --> PM
+    PM --> Bridge
+    Bridge --> CMMS
+    Bridge --> PG
+    CMMS --> Bridge
+    PM --> Notify
+    RCA --> Notify
+    Edge --> Notify
+    Notify --> Files
+    Notify --> API
+    Notify --> Webhooks
+    Edge --> Bridge
+    Edge --> Metrics
+    API --> Metrics
+    PG --> Metrics
+    Metrics --> Alerting
+    API --> Portal
+
+    classDef source fill:#d8f0ff,stroke:#1d4ed8,color:#0f172a,stroke-width:1.5px;
+    classDef runtime fill:#ecfccb,stroke:#3f6212,color:#1f2937,stroke-width:1.5px;
+    classDef storage fill:#ede9fe,stroke:#6d28d9,color:#1f2937,stroke-width:1.5px;
+    classDef external fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class Sensors,Simulator,Docs,WorkHistory source;
+    class Ingestion,Kafka,Signals,RCA,Context,Cache,RAG,GenAI,Runs,PM,Bridge,Notify,API,Portal,Edge,Metrics runtime;
+    class PG,Files storage;
+    class CMMS,Webhooks,Alerting external;

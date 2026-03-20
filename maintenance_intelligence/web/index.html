@@ -2052,7 +2052,12 @@
 					status: "all",
 					severity: "all",
 					eventType: "all",
+					orgId: "",
+					siteId: "",
 					destination: "",
+					routeId: "",
+					edgeState: "all",
+					sort: "failures_first",
 				},
 			},
 			routeCatalog: {
@@ -2205,6 +2210,127 @@
 			window.localStorage.setItem(handoffQueuePreferencesStorageKey(identity), JSON.stringify(payload));
 		}
 
+		function notificationPreferencesStorageKey(identity = state.session) {
+			const subject = asString(identity?.subject || "portal.user").trim().toLowerCase() || "portal.user";
+			const role = asString(identity?.role || "planner").trim().toLowerCase() || "planner";
+			const orgId = asString(identity?.orgId || "demo-org").trim().toLowerCase() || "demo-org";
+			return `miPortalNotificationPrefs:${subject}:${role}:${orgId}`;
+		}
+
+		function normalizeNotificationFilterStatus(value) {
+			const nextValue = asString(value || "").toLowerCase();
+			if (["all", "failed", "sent", "skipped"].includes(nextValue)) {
+				return nextValue;
+			}
+			return "all";
+		}
+
+		function normalizeNotificationFilterSeverity(value) {
+			const nextValue = asString(value || "").toLowerCase();
+			if (["all", "critical", "warning", "info"].includes(nextValue)) {
+				return nextValue;
+			}
+			return "all";
+		}
+
+		function normalizeNotificationFilterEventType(value) {
+			const nextValue = asString(value || "");
+			if (["all", "cmms.terminal_failure", "edge.degraded"].includes(nextValue)) {
+				return nextValue;
+			}
+			return "all";
+		}
+
+		function normalizeNotificationFilterEdgeState(value) {
+			const nextValue = asString(value || "").toLowerCase();
+			if (["all", "offline", "degraded", "online", "unknown"].includes(nextValue)) {
+				return nextValue;
+			}
+			return "all";
+		}
+
+		function normalizeNotificationFilterSort(value) {
+			const nextValue = asString(value || "").toLowerCase();
+			if (["failures_first", "recent", "oldest"].includes(nextValue)) {
+				return nextValue;
+			}
+			return "failures_first";
+		}
+
+		function normalizeNotificationFilterText(value) {
+			return asString(value || "").trim();
+		}
+
+		function defaultNotificationPreferences() {
+			return {
+				status: "all",
+				severity: "all",
+				eventType: "all",
+				orgId: "",
+				siteId: "",
+				edgeState: "all",
+				sort: "failures_first",
+				destination: "",
+				routeId: "",
+			};
+		}
+
+		function applyNotificationPreferences(preferences) {
+			const nextPreferences = asObject(preferences);
+			state.notificationStatus.filters = {
+				status: normalizeNotificationFilterStatus(nextPreferences.status || state.notificationStatus.filters?.status),
+				severity: normalizeNotificationFilterSeverity(nextPreferences.severity || state.notificationStatus.filters?.severity),
+				eventType: normalizeNotificationFilterEventType(nextPreferences.eventType || state.notificationStatus.filters?.eventType),
+				orgId: normalizeNotificationFilterText(nextPreferences.orgId ?? state.notificationStatus.filters?.orgId),
+				siteId: normalizeNotificationFilterText(nextPreferences.siteId ?? state.notificationStatus.filters?.siteId),
+				edgeState: normalizeNotificationFilterEdgeState(nextPreferences.edgeState || state.notificationStatus.filters?.edgeState),
+				sort: normalizeNotificationFilterSort(nextPreferences.sort || state.notificationStatus.filters?.sort),
+				destination: normalizeNotificationFilterText(nextPreferences.destination ?? state.notificationStatus.filters?.destination),
+				routeId: normalizeNotificationFilterText(nextPreferences.routeId ?? state.notificationStatus.filters?.routeId),
+			};
+		}
+
+		function readNotificationPreferences(identity = state.session) {
+			const fallback = defaultNotificationPreferences();
+			try {
+				const raw = window.localStorage.getItem(notificationPreferencesStorageKey(identity));
+				if (!raw) {
+					return fallback;
+				}
+				const parsed = asObject(JSON.parse(raw));
+				return {
+					status: normalizeNotificationFilterStatus(parsed.status),
+					severity: normalizeNotificationFilterSeverity(parsed.severity),
+					eventType: normalizeNotificationFilterEventType(parsed.eventType),
+					orgId: normalizeNotificationFilterText(parsed.orgId),
+					siteId: normalizeNotificationFilterText(parsed.siteId),
+					edgeState: normalizeNotificationFilterEdgeState(parsed.edgeState),
+					sort: normalizeNotificationFilterSort(parsed.sort),
+					destination: normalizeNotificationFilterText(parsed.destination),
+					routeId: normalizeNotificationFilterText(parsed.routeId),
+				};
+			} catch (error) {
+				void error;
+				return fallback;
+			}
+		}
+
+		function writeNotificationPreferences(identity = state.session) {
+			const filters = asObject(state.notificationStatus.filters);
+			const payload = {
+				status: normalizeNotificationFilterStatus(filters.status),
+				severity: normalizeNotificationFilterSeverity(filters.severity),
+				eventType: normalizeNotificationFilterEventType(filters.eventType),
+				orgId: normalizeNotificationFilterText(filters.orgId),
+				siteId: normalizeNotificationFilterText(filters.siteId),
+				edgeState: normalizeNotificationFilterEdgeState(filters.edgeState),
+				sort: normalizeNotificationFilterSort(filters.sort),
+				destination: normalizeNotificationFilterText(filters.destination),
+				routeId: normalizeNotificationFilterText(filters.routeId),
+			};
+			window.localStorage.setItem(notificationPreferencesStorageKey(identity), JSON.stringify(payload));
+		}
+
 		function syncIdentityInputs(identity = state.session) {
 			elements.identitySubjectInput.value = identity.subject || "portal.user";
 			elements.identityRoleSelect.value = identity.role || "planner";
@@ -2344,7 +2470,17 @@
 				return;
 			}
 
-			const filters = state.notificationStatus.filters || { status: "all", severity: "all", eventType: "all", destination: "" };
+			const filters = state.notificationStatus.filters || {
+				status: "all",
+				severity: "all",
+				eventType: "all",
+				orgId: "",
+				siteId: "",
+				destination: "",
+				routeId: "",
+				edgeState: "all",
+				sort: "failures_first",
+			};
 			const controlsMarkup = `
 				<div class="toolbar">
 					<select id="notificationStatusFilter" aria-label="Filter notification status">
@@ -2364,8 +2500,24 @@
 						<option value="cmms.terminal_failure" ${filters.eventType === "cmms.terminal_failure" ? "selected" : ""}>Terminal CMMS failure</option>
 						<option value="edge.degraded" ${filters.eventType === "edge.degraded" ? "selected" : ""}>Edge degraded</option>
 					</select>
+					<input id="notificationOrgIdFilter" type="search" placeholder="Filter org id" value="${escapeHtml(filters.orgId || "")}" aria-label="Filter notification org id">
+					<input id="notificationSiteIdFilter" type="search" placeholder="Filter site id" value="${escapeHtml(filters.siteId || "")}" aria-label="Filter notification site id">
+					<select id="notificationEdgeStateFilter" aria-label="Filter edge connectivity state">
+						<option value="all" ${filters.edgeState === "all" ? "selected" : ""}>All edge states</option>
+						<option value="offline" ${filters.edgeState === "offline" ? "selected" : ""}>Offline</option>
+						<option value="degraded" ${filters.edgeState === "degraded" ? "selected" : ""}>Degraded</option>
+						<option value="online" ${filters.edgeState === "online" ? "selected" : ""}>Online</option>
+						<option value="unknown" ${filters.edgeState === "unknown" ? "selected" : ""}>Unknown</option>
+					</select>
+					<select id="notificationSortFilter" aria-label="Sort notification history">
+						<option value="failures_first" ${filters.sort === "failures_first" ? "selected" : ""}>Failures first</option>
+						<option value="recent" ${filters.sort === "recent" ? "selected" : ""}>Most recent</option>
+						<option value="oldest" ${filters.sort === "oldest" ? "selected" : ""}>Oldest first</option>
+					</select>
 					<input id="notificationDestinationFilter" type="search" placeholder="Filter route host" value="${escapeHtml(filters.destination || "")}" aria-label="Filter notification destination">
+					<input id="notificationRouteIdFilter" type="search" placeholder="Filter route id" value="${escapeHtml(filters.routeId || "")}" aria-label="Filter notification route id">
 					<button id="notificationRefreshButton" type="button">Apply</button>
+					<button id="notificationResetButton" type="button">Reset</button>
 				</div>
 			`;
 
@@ -2435,6 +2587,7 @@
 				const destination = asString(record.destination, "webhook");
 				const attemptedAt = formatDate(record.attempted_at) || "Unknown time";
 				const responseCode = record.response_status_code == null ? "n/a" : String(record.response_status_code);
+				const edgeConnectivityState = asString(record.edge_connectivity_status, "") || "n/a";
 				const summary = asString(record.summary, "");
 				const detail = asString(record.delivery_error, "");
 				return `
@@ -2444,6 +2597,7 @@
 							<span class="chip">Status ${escapeHtml(status)}</span>
 							<span class="chip">Severity ${escapeHtml(severity)}</span>
 							<span class="chip">Route ${escapeHtml(destination)}</span>
+							<span class="chip">Edge ${escapeHtml(edgeConnectivityState)}</span>
 							<span class="chip">Response ${escapeHtml(responseCode)}</span>
 							<span class="chip">Attempt ${escapeHtml(attemptedAt)}</span>
 						</div>
@@ -2462,6 +2616,10 @@
 				const responseCode = record.response_status_code == null ? "n/a" : String(record.response_status_code);
 				const errorDetail = asString(record.delivery_error, "") || "none";
 				const attemptedAt = formatDate(record.attempted_at) || "Unknown time";
+				const edgeConnectivityState = asString(record.edge_connectivity_status, "") || "-";
+				const edgeBufferedCount = record.edge_buffered_event_count == null ? "-" : String(record.edge_buffered_event_count);
+				const edgeQueuedCount = record.edge_queued_command_count == null ? "-" : String(record.edge_queued_command_count);
+				const edgeTransitionCount = record.edge_transition_count == null ? "-" : String(record.edge_transition_count);
 				return `
 					<tr>
 						<td>${escapeHtml(eventType)}</td>
@@ -2469,6 +2627,10 @@
 						<td>${escapeHtml(severity)}</td>
 						<td>${escapeHtml(routeId)}</td>
 						<td>${escapeHtml(destination)}</td>
+						<td>${escapeHtml(edgeConnectivityState)}</td>
+						<td>${escapeHtml(edgeBufferedCount)}</td>
+						<td>${escapeHtml(edgeQueuedCount)}</td>
+						<td>${escapeHtml(edgeTransitionCount)}</td>
 						<td>${escapeHtml(responseCode)}</td>
 						<td class="notification-error-cell">${escapeHtml(errorDetail)}</td>
 						<td>${escapeHtml(attemptedAt)}</td>
@@ -2498,6 +2660,10 @@
 								<th>Severity</th>
 								<th>Route ID</th>
 								<th>Destination</th>
+								<th>Edge state</th>
+								<th>Buffered</th>
+								<th>Queued</th>
+								<th>Transition</th>
 								<th>Response code</th>
 								<th>Error detail</th>
 								<th>Attempted at</th>
@@ -2629,9 +2795,15 @@
 			const statusSelect = document.getElementById("notificationStatusFilter");
 			const severitySelect = document.getElementById("notificationSeverityFilter");
 			const eventTypeSelect = document.getElementById("notificationEventTypeFilter");
+			const orgIdInput = document.getElementById("notificationOrgIdFilter");
+			const siteIdInput = document.getElementById("notificationSiteIdFilter");
+			const edgeStateSelect = document.getElementById("notificationEdgeStateFilter");
+			const sortSelect = document.getElementById("notificationSortFilter");
 			const destinationInput = document.getElementById("notificationDestinationFilter");
+			const routeIdInput = document.getElementById("notificationRouteIdFilter");
 			const refreshButton = document.getElementById("notificationRefreshButton");
-			if (!statusSelect || !severitySelect || !eventTypeSelect || !destinationInput || !refreshButton) {
+			const resetButton = document.getElementById("notificationResetButton");
+			if (!statusSelect || !severitySelect || !eventTypeSelect || !orgIdInput || !siteIdInput || !edgeStateSelect || !sortSelect || !destinationInput || !routeIdInput || !refreshButton || !resetButton) {
 				return;
 			}
 			const applyFilters = () => {
@@ -2639,15 +2811,43 @@
 					status: statusSelect.value || "all",
 					severity: severitySelect.value || "all",
 					eventType: eventTypeSelect.value || "all",
+					orgId: orgIdInput.value.trim(),
+					siteId: siteIdInput.value.trim(),
+					edgeState: edgeStateSelect.value || "all",
+					sort: sortSelect.value || "failures_first",
 					destination: destinationInput.value.trim(),
+					routeId: routeIdInput.value.trim(),
 				};
+				writeNotificationPreferences();
 				void loadNotificationStatus(true);
+			};
+			const resetFilters = () => {
+				state.notificationStatus.filters = defaultNotificationPreferences();
+				writeNotificationPreferences();
+				void loadNotificationStatus(true);
+			};
+			const submitOnEnter = (event) => {
+				if (event.key !== "Enter") {
+					return;
+				}
+				event.preventDefault();
+				applyFilters();
 			};
 			statusSelect.onchange = applyFilters;
 			severitySelect.onchange = applyFilters;
 			eventTypeSelect.onchange = applyFilters;
+			orgIdInput.onchange = applyFilters;
+			orgIdInput.onkeydown = submitOnEnter;
+			siteIdInput.onchange = applyFilters;
+			siteIdInput.onkeydown = submitOnEnter;
+			edgeStateSelect.onchange = applyFilters;
+			sortSelect.onchange = applyFilters;
 			refreshButton.onclick = applyFilters;
 			destinationInput.onchange = applyFilters;
+			destinationInput.onkeydown = submitOnEnter;
+			routeIdInput.onchange = applyFilters;
+			routeIdInput.onkeydown = submitOnEnter;
+			resetButton.onclick = resetFilters;
 		}
 
 		async function loadEdgeStatus(force = false) {
@@ -2680,7 +2880,12 @@
 					status: state.notificationStatus.filters?.status || "all",
 					severity: state.notificationStatus.filters?.severity || "all",
 					event_type: state.notificationStatus.filters?.eventType || "all",
+					org_id: state.notificationStatus.filters?.orgId || "all",
+					site_id: state.notificationStatus.filters?.siteId || "all",
+					edge_state: state.notificationStatus.filters?.edgeState || "all",
+					sort: state.notificationStatus.filters?.sort || "failures_first",
 					destination: state.notificationStatus.filters?.destination || "all",
+					route_id: state.notificationStatus.filters?.routeId || "all",
 				});
 				state.notificationStatus.items = await fetchJson(`/api/v1/portal/notifications?${params.toString()}`, { headers: portalIdentityHeaders() });
 			} catch (error) {
@@ -2722,6 +2927,7 @@
 			const localIdentity = readPortalIdentity();
 			state.session = localIdentity;
 			applyHandoffQueuePreferences(readHandoffQueuePreferences(localIdentity));
+			applyNotificationPreferences(readNotificationPreferences(localIdentity));
 			renderIdentityPanel();
 			try {
 				const whoami = await fetchJson("/api/v1/whoami", { headers: portalIdentityHeaders() });
@@ -2736,6 +2942,7 @@
 				};
 				writePortalIdentity(state.session);
 				applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
+				applyNotificationPreferences(readNotificationPreferences(state.session));
 				renderIdentityPanel();
 				if (state.selectedRunId) {
 					const selected = state.detailsById.get(state.selectedRunId);

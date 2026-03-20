@@ -94,6 +94,9 @@ def _emit_edge_connectivity_notification(
     connectivity_status = _as_text(snapshot.get("connectivity_status")) or "unknown"
     if connectivity_status not in {"offline", "degraded"}:
         return
+    last_notified_status = _as_text(snapshot.get("last_notified_connectivity_status"))
+    if last_notified_status == connectivity_status:
+        return
     resolved_org_id = _as_text(org_id) or _as_text(snapshot.get("last_buffered_org_id"))
     queued_command_count = 0
     try:
@@ -102,6 +105,7 @@ def _emit_edge_connectivity_notification(
     except Exception:
         queued_command_count = 0
     buffered_event_count = int(snapshot.get("buffered_event_count") or 0)
+    transition_count = int(snapshot.get("connectivity_transition_count") or 0)
     last_error = _as_text(snapshot.get("last_error")) or "edge connectivity degraded"
     severity = "critical" if connectivity_status == "offline" else "warning"
     emit_notification(
@@ -109,14 +113,16 @@ def _emit_edge_connectivity_notification(
         severity=severity,
         summary=f"Edge connectivity is {connectivity_status}; buffered events={buffered_event_count}, queued handoffs={queued_command_count}",
         org_id=resolved_org_id,
-        dedupe_key=f"edge:{resolved_org_id or 'default'}:{connectivity_status}:{last_error}",
+        dedupe_key=f"edge:{resolved_org_id or 'default'}:{connectivity_status}:{transition_count}",
         payload={
             "connectivity_status": connectivity_status,
             "buffered_event_count": buffered_event_count,
             "queued_command_count": queued_command_count,
+            "transition_count": transition_count,
             "last_error": last_error,
         },
     )
+    edge_buffer.mark_connectivity_notification_emitted(connectivity_status, org_id=resolved_org_id)
 
 
 def _connect_edge_central(pg_dsn: str, settings: Settings, edge_buffer: EdgeEventBuffer):

@@ -1032,13 +1032,62 @@ def test_approve_proposal_terminal_failure_emits_webhook_notification(monkeypatc
     )
 
     assert response.status_code == 502
-    assert len(deliveries) == 1
-    assert deliveries[0]["url"] == "https://hooks.example.test/cmms"
-    assert deliveries[0]["payload"]["event_type"] == "cmms.terminal_failure"
+    assert len(deliveries) == 2
+    assert all(item["url"] == "https://hooks.example.test/cmms" for item in deliveries)
+    assert {item["payload"]["event_type"] for item in deliveries} == {
+        "cmms.exception",
+        "cmms.terminal_failure",
+    }
     assert deliveries[0]["payload"]["payload"]["proposal_id"] == "REC-1"
     records = notifications_mod.recent_notification_deliveries(limit=3, settings=pm_mod.Settings())
     assert records[0]["status"] == "sent"
-    assert records[0]["event_type"] == "cmms.terminal_failure"
+    assert {item["event_type"] for item in records[:2]} == {
+        "cmms.exception",
+        "cmms.terminal_failure",
+    }
+
+
+def test_approve_proposal_retryable_failure_queued_emits_exception_notification(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries, org_id="demo-org", site_id="site-a")
+    queue_path = tmp_path / "edge" / "command-buffer.sqlite3"
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(queue_path))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps({"demo-org": {"webhook_url": "https://hooks.example.test/cmms", "minimum_severity": "warning"}}),
+    )
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    fake_connection = FakeConnection()
+    deliveries = []
+
+    class RetryableAdapter:
+        backend_name = "retryable"
+
+        def create_work_order(self, recommendation):
+            raise pm_mod.CMMSUnavailableError("temporary outage")
+
+    def fake_send(url, payload, timeout_s):
+        deliveries.append(payload)
+        return True, 202, ""
+
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: RetryableAdapter())
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+    monkeypatch.setattr(pm_mod, "emit_notification", notifications_mod.emit_notification)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        headers={"x-user-id": "planner-1", "x-user-org": "demo-org", "x-user-site": "site-a"},
+    )
+
+    assert response.status_code == 202
+    assert len(deliveries) == 1
+    assert deliveries[0]["event_type"] == "cmms.exception"
+    assert deliveries[0]["payload"]["queued_offline"] is True
 
 
 def test_approve_proposal_retry_appends_history_and_creates_single_workorder(monkeypatch, tmp_path):

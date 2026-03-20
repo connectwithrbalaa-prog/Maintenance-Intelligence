@@ -68,6 +68,16 @@ class EdgeEventBuffer:
             return default
         return _as_int(row["value"], default)
 
+    def _state_text(self, conn: sqlite3.Connection, key: str) -> str | None:
+        row = conn.execute("SELECT value FROM runtime_state WHERE key = ?", (key,)).fetchone()
+        if not row:
+            return None
+        value = row["value"]
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
     def _increment_state(self, conn: sqlite3.Connection, key: str, amount: int = 1) -> int:
         next_value = self._state_value(conn, key, 0) + int(amount)
         self._set_state(conn, key, next_value)
@@ -95,11 +105,14 @@ class EdgeEventBuffer:
         org_id = event.get("org_id") if isinstance(event, dict) else None
         with self._connect() as conn:
             self._prune_if_needed(conn)
+            previous_status = self._state_text(conn, "connectivity_status")
             cursor = conn.execute(
                 "INSERT INTO buffered_events(event_id, payload_json, created_at, last_error) VALUES(?, ?, ?, ?)",
                 (str(event.get("event_id") or ""), payload_json, created_at, error),
             )
             self._increment_state(conn, "total_buffered_events")
+            if previous_status != "offline":
+                self._increment_state(conn, "connectivity_transition_count")
             self._update_state(
                 conn, connectivity_status="offline", last_error=error, last_buffered_org_id=org_id
             )
@@ -108,17 +121,39 @@ class EdgeEventBuffer:
 
     def mark_connectivity(self, status: str, *, last_error: str | None = None) -> None:
         with self._connect() as conn:
-            self._update_state(conn, connectivity_status=status, last_error=last_error)
+            previous_status = self._state_text(conn, "connectivity_status")
+            if previous_status != status:
+                self._increment_state(conn, "connectivity_transition_count")
+            fields: Dict[str, Any] = {"connectivity_status": status, "last_error": last_error}
+            if status == "online":
+                fields["last_notified_connectivity_status"] = "online"
+            self._update_state(conn, **fields)
             conn.commit()
 
     def mark_central_write_succeeded(self) -> None:
         now = _utcnow_iso()
         with self._connect() as conn:
+            previous_status = self._state_text(conn, "connectivity_status")
+            if previous_status != "online":
+                self._increment_state(conn, "connectivity_transition_count")
             self._update_state(
                 conn,
                 connectivity_status="online",
                 last_successful_central_write_at=now,
                 last_error=None,
+                last_notified_connectivity_status="online",
+            )
+            conn.commit()
+
+    def mark_connectivity_notification_emitted(
+        self, status: str, *, org_id: str | None = None
+    ) -> None:
+        with self._connect() as conn:
+            self._update_state(
+                conn,
+                last_notified_connectivity_status=status,
+                last_notified_connectivity_at=_utcnow_iso(),
+                last_notified_org_id=org_id,
             )
             conn.commit()
 
@@ -185,8 +220,14 @@ class EdgeEventBuffer:
                 "total_buffered_events": _as_int(state.get("total_buffered_events"), 0),
                 "total_replayed_events": _as_int(state.get("total_replayed_events"), 0),
                 "total_replay_failures": _as_int(state.get("total_replay_failures"), 0),
+                "connectivity_transition_count": _as_int(
+                    state.get("connectivity_transition_count"), 0
+                ),
                 "last_successful_central_write_at": state.get("last_successful_central_write_at"),
                 "last_replay_attempt_at": state.get("last_replay_attempt_at"),
                 "last_error": state.get("last_error"),
                 "last_buffered_org_id": state.get("last_buffered_org_id"),
+                "last_notified_connectivity_status": state.get("last_notified_connectivity_status"),
+                "last_notified_connectivity_at": state.get("last_notified_connectivity_at"),
+                "last_notified_org_id": state.get("last_notified_org_id"),
             }

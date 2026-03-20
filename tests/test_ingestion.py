@@ -99,3 +99,48 @@ def test_emit_edge_connectivity_notification_uses_buffered_org_context(tmp_path,
     assert len(deliveries) == 1
     assert deliveries[0]["url"] == "https://hooks.example.test/demo-org"
     assert deliveries[0]["payload"]["org_id"] == "demo-org"
+
+
+def test_emit_edge_connectivity_notification_dedupes_repeated_status_until_transition(
+    tmp_path, monkeypatch
+):
+    buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
+    monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/edge",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    deliveries = []
+
+    def fake_send(url, payload, timeout_s):
+        deliveries.append({"url": url, "payload": payload, "timeout_s": timeout_s})
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+    monkeypatch.setattr(ingestion_mod, "emit_notification", notifications_mod.emit_notification)
+
+    buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
+
+    buffer.mark_connectivity("offline", last_error="connection refused")
+    ingestion_mod._emit_edge_connectivity_notification(Settings(), buffer, org_id="demo-org")
+    ingestion_mod._emit_edge_connectivity_notification(Settings(), buffer, org_id="demo-org")
+
+    assert len(deliveries) == 1
+    assert deliveries[0]["payload"]["payload"]["connectivity_status"] == "offline"
+
+    buffer.mark_connectivity("online", last_error=None)
+    buffer.mark_connectivity("offline", last_error="connection refused again")
+    ingestion_mod._emit_edge_connectivity_notification(Settings(), buffer, org_id="demo-org")
+
+    assert len(deliveries) == 2
+    assert deliveries[1]["payload"]["payload"]["connectivity_status"] == "offline"

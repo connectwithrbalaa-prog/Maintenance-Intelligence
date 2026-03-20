@@ -6,6 +6,7 @@ from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
+from maintenance_intelligence.services.notifications import emit_notification
 from maintenance_intelligence.services.repair_plan_service import create_repair_plan, add_part_to_plan
 import backoff
 from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
@@ -357,6 +358,27 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
     if persisted_plan is not None:
         summary_payload["repair_plan_id"] = persisted_plan["plan_id"]
     write_run_summary(getattr(settings, "run_summary_dir", "outputs"), run_id, summary_payload)
+
+    try:
+        emit_notification(
+            event_type="rca.completed",
+            severity="info",
+            summary=f"RCA run completed for asset {evt.get('asset_id') or 'unknown'}",
+            org_id=evt.get("org_id"),
+            site_id=evt.get("site_id"),
+            dedupe_key=f"rca-completed:{run_id}",
+            payload={
+                "run_id": run_id,
+                "recommendation_id": rec_id,
+                "event_id": evt.get("event_id"),
+                "asset_id": evt.get("asset_id"),
+                "inference_mode": inference_mode,
+                "context_scope": ctx.get("context_scope", "local"),
+            },
+            settings=settings,
+        )
+    except Exception:
+        pass
 
     logger.info({"event": "rca.recommendation.created", "id": rec_id, "model": model_meta, "ctx": out.get("context_meta")})
     try:

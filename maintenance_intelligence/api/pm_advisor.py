@@ -538,6 +538,37 @@ def _emit_terminal_cmms_failure_notification(
     )
 
 
+def _emit_cmms_exception_notification(
+    *,
+    proposal_id: str,
+    recommendation: Dict[str, Any],
+    detail: str,
+    failure_summary: Dict[str, Any],
+    org_id: Optional[str],
+    site_id: Optional[str],
+    queued_offline: bool = False,
+) -> None:
+    asset_id = _as_text(recommendation.get("asset_id")) or ""
+    severity = "critical" if not failure_summary.get("retryable") else "warning"
+    state = "queued-offline" if queued_offline else "pending"
+    emit_notification(
+        event_type="cmms.exception",
+        severity=severity,
+        summary=f"CMMS exception for proposal {proposal_id} on asset {asset_id or 'unknown'} ({state})",
+        org_id=org_id,
+        site_id=site_id,
+        dedupe_key=f"cmms-exception:{proposal_id}:{failure_summary.get('failure_class')}:{state}:{detail}",
+        payload={
+            "proposal_id": proposal_id,
+            "recommendation_id": _as_text(recommendation.get("id")) or "",
+            "asset_id": asset_id,
+            "failure_summary": failure_summary,
+            "detail": detail,
+            "queued_offline": queued_offline,
+        },
+    )
+
+
 def _require_approval_actor(request: Request, *, org_id: Optional[str] = None, site_id: Optional[str] = None) -> tuple[str, str]:
     identity = require_scoped_identity(
         request,
@@ -1063,6 +1094,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             org_id=proposal_org_id,
             site_id=proposal_site_id,
         )
+        _emit_cmms_exception_notification(
+            proposal_id=proposal_id,
+            recommendation=recommendation,
+            detail=detail,
+            failure_summary=failure_summary,
+            org_id=proposal_org_id,
+            site_id=proposal_site_id,
+            queued_offline=False,
+        )
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
             None,
@@ -1072,6 +1112,7 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
         )
     except CMMSRetryExhaustedError as exc:
         detail = str(exc)
+        failure_summary = normalize_cmms_failure_summary(detail=detail, handoff_state="failure")
         if settings.edge_mode_enabled:
             try:
                 persisted, queued_result = _queue_offline_handoff(
@@ -1083,6 +1124,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     detail,
                     proposal,
                     list(exc.attempts or []),
+                )
+                _emit_cmms_exception_notification(
+                    proposal_id=proposal_id,
+                    recommendation=recommendation,
+                    detail=detail,
+                    failure_summary=failure_summary,
+                    org_id=proposal_org_id,
+                    site_id=proposal_site_id,
+                    queued_offline=True,
                 )
                 return _approval_response(
                     persisted,
@@ -1110,6 +1160,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 conn.close()
         except Exception:
             pass
+        _emit_cmms_exception_notification(
+            proposal_id=proposal_id,
+            recommendation=recommendation,
+            detail=detail,
+            failure_summary=failure_summary,
+            org_id=proposal_org_id,
+            site_id=proposal_site_id,
+            queued_offline=False,
+        )
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
             None,
@@ -1133,6 +1192,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     detail,
                     proposal,
                     list(attempts or []),
+                )
+                _emit_cmms_exception_notification(
+                    proposal_id=proposal_id,
+                    recommendation=recommendation,
+                    detail=detail,
+                    failure_summary=failure_summary,
+                    org_id=proposal_org_id,
+                    site_id=proposal_site_id,
+                    queued_offline=True,
                 )
                 return _approval_response(
                     persisted,
@@ -1166,6 +1234,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             failure_summary=failure_summary,
             org_id=proposal_org_id,
             site_id=proposal_site_id,
+        )
+        _emit_cmms_exception_notification(
+            proposal_id=proposal_id,
+            recommendation=recommendation,
+            detail=detail,
+            failure_summary=failure_summary,
+            org_id=proposal_org_id,
+            site_id=proposal_site_id,
+            queued_offline=False,
         )
         return _approval_response(
             persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},

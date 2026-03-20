@@ -484,6 +484,11 @@ def portal_notifications(
     severity: str = Query("all"),
     event_type: str = Query("all"),
     destination: str = Query("all"),
+    route_id: str = Query("all"),
+    org_id: str = Query("all"),
+    site_id: str = Query("all"),
+    edge_state: str = Query("all"),
+    sort: str = Query("failures_first"),
 ) -> List[Dict[str, Any]]:
     _require_read_access(request)
     return recent_notification_deliveries(
@@ -492,7 +497,11 @@ def portal_notifications(
         severity=severity,
         event_type=event_type,
         destination=destination,
-        prioritize_failures=True,
+        route_id=route_id,
+        org_id=org_id,
+        site_id=site_id,
+        edge_state=edge_state,
+        sort=sort,
     )
 
 

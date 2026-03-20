@@ -1,0 +1,17 @@
+flowchart LR
+    Event[Operational event or asset anomaly] --> Intelligence[Maintenance Intelligence platform]
+    Intelligence --> RCA[Structured RCA and evidence review]
+    RCA --> Decision[Operator triage and maintenance decision]
+    Decision --> PM[PM proposal and approval]
+    PM --> CMMS[CMMS handoff and lifecycle tracking]
+    CMMS --> Notify[Notifications analytics and monitoring]
+
+    classDef intake fill:#d8f0ff,stroke:#1d4ed8,color:#0f172a,stroke-width:1.5px;
+    classDef platform fill:#ecfccb,stroke:#3f6212,color:#1f2937,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#b45309,color:#1f2937,stroke-width:1.5px;
+    classDef downstream fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class Event intake;
+    class Intelligence,RCA platform;
+    class Decision,PM decision;
+    class CMMS,Notify downstream;
