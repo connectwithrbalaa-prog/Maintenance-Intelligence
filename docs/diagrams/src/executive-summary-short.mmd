@@ -1,0 +1,17 @@
+flowchart LR
+    Event[Asset event] --> Platform[MI platform]
+    Platform --> RCA[Structured RCA]
+    RCA --> Decision[Operator decision]
+    Decision --> PM[PM approval]
+    PM --> CMMS[CMMS handoff]
+    CMMS --> Ops[Ops alerts and analytics]
+
+    classDef intake fill:#d8f0ff,stroke:#1d4ed8,color:#0f172a,stroke-width:1.5px;
+    classDef platform fill:#ecfccb,stroke:#3f6212,color:#1f2937,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#b45309,color:#1f2937,stroke-width:1.5px;
+    classDef downstream fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class Event intake;
+    class Platform,RCA platform;
+    class Decision,PM decision;
+    class CMMS,Ops downstream;
