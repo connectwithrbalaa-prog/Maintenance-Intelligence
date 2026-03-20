@@ -4,6 +4,7 @@ from maintenance_intelligence.api import metrics as metrics_module
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 
+
 def test_metrics_endpoint(tmp_path, monkeypatch):
     buffer_path = tmp_path / "edge-metrics.sqlite3"
     command_buffer_path = tmp_path / "edge-command-metrics.sqlite3"

@@ -10,7 +10,6 @@ from loguru import logger
 
 from maintenance_intelligence.runner.config import Settings
 
-
 TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
 REGRESSIVE_WORK_ORDER_STATUSES = {"PENDING", "QUEUED", "DRAFT", "NEW"}
 VALID_LIFECYCLE_PHASES = {"pending", "created", "handoff-complete", "active", "completed"}
@@ -22,7 +21,13 @@ class CMMSAdapterError(RuntimeError):
     retryable = False
     terminal = True
 
-    def __init__(self, message: str, *, failure_summary: Optional[Dict[str, Any]] = None, attempts: Optional[list[dict[str, Any]]] = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_summary: Optional[Dict[str, Any]] = None,
+        attempts: Optional[list[dict[str, Any]]] = None,
+    ):
         super().__init__(message)
         self.failure_summary = normalize_cmms_failure_summary(
             failure_summary,
@@ -59,7 +64,13 @@ class CMMSPayloadError(CMMSAdapterError):
 
 
 class CMMSRetryExhaustedError(CMMSUnavailableError):
-    def __init__(self, message: str, *, attempts: list[dict[str, Any]], failure_summary: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempts: list[dict[str, Any]],
+        failure_summary: Optional[Dict[str, Any]] = None,
+    ):
         super().__init__(message, failure_summary=failure_summary, attempts=attempts)
 
 
@@ -110,19 +121,44 @@ def normalize_cmms_failure_summary(
 ) -> Dict[str, Any]:
     raw_value = value if isinstance(value, dict) else {}
     message = _as_text(raw_value.get("message")) or _as_text(detail)
-    normalized_handoff_state = (_as_text(raw_value.get("handoff_state")) or _as_text(handoff_state) or "").lower()
-    inferred_class = (_as_text(raw_value.get("failure_class")) or _as_text(failure_class) or "").lower()
+    normalized_handoff_state = (
+        _as_text(raw_value.get("handoff_state")) or _as_text(handoff_state) or ""
+    ).lower()
+    inferred_class = (
+        _as_text(raw_value.get("failure_class")) or _as_text(failure_class) or ""
+    ).lower()
     if inferred_class not in VALID_FAILURE_CLASSES:
         message_lower = (message or "").lower()
         if normalized_handoff_state == "queued-offline":
             inferred_class = "transient"
         elif "unsupported cmms backend" in message_lower or "unsupported backend" in message_lower:
             inferred_class = "unsupported"
-        elif "not configured" in message_lower or "set mi_" in message_lower or "missing config" in message_lower:
+        elif (
+            "not configured" in message_lower
+            or "set mi_" in message_lower
+            or "missing config" in message_lower
+        ):
             inferred_class = "configuration"
-        elif "malformed payload" in message_lower or "invalid json" in message_lower or "bad payload" in message_lower:
+        elif (
+            "malformed payload" in message_lower
+            or "invalid json" in message_lower
+            or "bad payload" in message_lower
+        ):
             inferred_class = "payload"
-        elif any(token in message_lower for token in ("outage", "offline", "timeout", "timed out", "temporar", "unavailable", "request failed", "connection", "refused")):
+        elif any(
+            token in message_lower
+            for token in (
+                "outage",
+                "offline",
+                "timeout",
+                "timed out",
+                "temporar",
+                "unavailable",
+                "request failed",
+                "connection",
+                "refused",
+            )
+        ):
             inferred_class = "transient"
         elif message:
             inferred_class = "unknown"
@@ -256,7 +292,9 @@ def normalize_work_order_lifecycle(
         raw_response.get("workorder_created_at"),
         raw_response.get("created_at"),
     )
-    normalized_status = _as_text(status if status is not None else payload.get("status")) or "PENDING"
+    normalized_status = (
+        _as_text(status if status is not None else payload.get("status")) or "PENDING"
+    )
     explicit_completed_at = _first_timestamp(
         payload.get("workorder_completed_at"),
         response_payload.get("workorder_completed_at"),
@@ -270,8 +308,12 @@ def normalize_work_order_lifecycle(
         raw_response.get("closed_at"),
         raw_response.get("finishdate"),
     )
-    normalized_status_map = normalize_lifecycle_status_map(lifecycle_status_map or existing_lifecycle.get("status_map"))
-    if explicit_completed_at is None and is_terminal_work_order_status(normalized_status, normalized_status_map):
+    normalized_status_map = normalize_lifecycle_status_map(
+        lifecycle_status_map or existing_lifecycle.get("status_map")
+    )
+    if explicit_completed_at is None and is_terminal_work_order_status(
+        normalized_status, normalized_status_map
+    ):
         explicit_completed_at = _first_timestamp(
             response_payload.get("statusdate"),
             response_payload.get("changedate"),
@@ -311,7 +353,10 @@ def normalize_work_order_lifecycle(
         "workorder_created_at": workorder_created_at,
         "handoff_completed_at": handoff_completed_at,
         "workorder_completed_at": explicit_completed_at,
-        "terminal": bool(explicit_completed_at or is_terminal_work_order_status(normalized_status, normalized_status_map)),
+        "terminal": bool(
+            explicit_completed_at
+            or is_terminal_work_order_status(normalized_status, normalized_status_map)
+        ),
         "phase": phase,
         "phase_hint": lifecycle_phase_for_status(normalized_status, normalized_status_map),
         "status_map": normalized_status_map,
@@ -483,7 +528,9 @@ def supported_cmms_backends() -> list[str]:
 
 def discover_cmms_backends(settings: Optional[Settings] = None) -> Dict[str, Any]:
     active_settings = settings or Settings()
-    current_backend = _resolve_backend_name(getattr(active_settings, "pm_connector_backend", "mock"))
+    current_backend = _resolve_backend_name(
+        getattr(active_settings, "pm_connector_backend", "mock")
+    )
     adapters = registered_cmms_adapters()
     return {
         "current_backend": current_backend,
@@ -514,7 +561,9 @@ def _attempt_entry(
         "attempt_number": attempt_number,
         "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "handoff_state": handoff_state,
-        "result": "failure" if error_message else ("success" if handoff_state == "success" else "pending"),
+        "result": (
+            "failure" if error_message else ("success" if handoff_state == "success" else "pending")
+        ),
         "connector_result": connector_result or {},
         "error_message": error_message or "",
         "failure_summary": normalize_cmms_failure_summary(
@@ -579,7 +628,9 @@ def submit_work_order_with_retry(
             exc.attempts = attempts
             exc.failure_summary = failure_summary
             if attempt_number >= max_attempts or not failure_summary.get("retryable", False):
-                raise CMMSRetryExhaustedError(str(exc), attempts=attempts, failure_summary=failure_summary) from exc
+                raise CMMSRetryExhaustedError(
+                    str(exc), attempts=attempts, failure_summary=failure_summary
+                ) from exc
             sleep_fn(max(0.0, float(retry_interval_s)))
 
     raise CMMSRetryExhaustedError("CMMS handoff retries exhausted", attempts=attempts)

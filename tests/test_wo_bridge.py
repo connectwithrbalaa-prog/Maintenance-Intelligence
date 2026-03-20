@@ -32,28 +32,40 @@ class FakeCursor:
     def execute(self, query, params):
         self.executed.append((query, params))
         normalized = " ".join(query.split())
-        if normalized.startswith("SELECT status, workorder_created_at, handoff_completed_at, workorder_completed_at, metadata FROM workorders"):
+        if normalized.startswith(
+            "SELECT status, workorder_created_at, handoff_completed_at, workorder_completed_at, metadata FROM workorders"
+        ):
             record = self.connection.workorders.get(params[0])
-            self.rows = [
-                (
-                    record["status"],
-                    record["workorder_created_at"],
-                    record["handoff_completed_at"],
-                    record["workorder_completed_at"],
-                    record["metadata"],
-                )
-            ] if record else []
+            self.rows = (
+                [
+                    (
+                        record["status"],
+                        record["workorder_created_at"],
+                        record["handoff_completed_at"],
+                        record["workorder_completed_at"],
+                        record["metadata"],
+                    )
+                ]
+                if record
+                else []
+            )
             return
-        if normalized.startswith("SELECT status, approved_by, work_order_id, metadata FROM pm_proposals"):
+        if normalized.startswith(
+            "SELECT status, approved_by, work_order_id, metadata FROM pm_proposals"
+        ):
             record = self.connection.proposals.get(params[0])
-            self.rows = [
-                (
-                    record["status"],
-                    record["approved_by"],
-                    record["work_order_id"],
-                    record["metadata"],
-                )
-            ] if record else []
+            self.rows = (
+                [
+                    (
+                        record["status"],
+                        record["approved_by"],
+                        record["work_order_id"],
+                        record["metadata"],
+                    )
+                ]
+                if record
+                else []
+            )
             return
         if normalized.startswith("INSERT INTO workorders"):
             self.connection.workorders[params[0]] = {
@@ -69,7 +81,9 @@ class FakeCursor:
                 "workorder_completed_at": params[9],
             }
             return
-        if normalized.startswith("UPDATE pm_proposals SET status = %s, approved_by = %s, work_order_id = %s, metadata = %s::jsonb WHERE proposal_id = %s"):
+        if normalized.startswith(
+            "UPDATE pm_proposals SET status = %s, approved_by = %s, work_order_id = %s, metadata = %s::jsonb WHERE proposal_id = %s"
+        ):
             record = self.connection.proposals.get(params[4]) or {
                 "proposal_id": params[4],
                 "status": None,
@@ -163,7 +177,9 @@ def test_wo_bridge_loop_invokes_adapter_and_persists_result():
 
     assert len(fake_adapter.calls) == 1
     assert fake_adapter.calls[0]["asset_id"] == "PUMP-101"
-    workorder_calls = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]]
+    workorder_calls = [
+        entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]
+    ]
     assert len(workorder_calls) == 1
     _query, params = workorder_calls[0]
     assert params[0] == "WO-REC-1234"
@@ -202,15 +218,29 @@ def test_persist_work_order_uses_guarded_upsert_for_canonical_timestamps():
             "created_at": "2026-03-15T12:00:00Z",
             "handoff_complete": True,
             "response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
-            "raw_response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
+            "raw_response": {
+                "statusdate": "2026-03-15T12:05:00Z",
+                "actfinish": "2026-03-15T13:00:00Z",
+            },
         },
     )
 
-    query, params = [entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]][0]
+    query, params = [
+        entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]
+    ][0]
     assert "ON CONFLICT (wo_id) DO UPDATE SET" in query
-    assert "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at)" in query
-    assert "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at)" in query
-    assert "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)" in query
+    assert (
+        "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at)"
+        in query
+    )
+    assert (
+        "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at)"
+        in query
+    )
+    assert (
+        "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)"
+        in query
+    )
     metadata = json.loads(params[6])
     assert metadata["handoff"]["handoff_state"] == "success"
     assert metadata["handoff"]["backend"] == "mock"
@@ -237,8 +267,19 @@ def test_persist_work_order_preserves_terminal_state_on_regressive_update():
 
     wo_bridge_mod.persist_work_order(
         fake_connection,
-        {"asset_id": "PUMP-101", "title": "Inspect seal", "rationale": "Elevated vibration", "priority": "HIGH"},
-        {"wo_id": "WO-REC-1234", "status": "DRAFT", "backend": "mock", "handoff_complete": True, "response": {"status": "DRAFT"}},
+        {
+            "asset_id": "PUMP-101",
+            "title": "Inspect seal",
+            "rationale": "Elevated vibration",
+            "priority": "HIGH",
+        },
+        {
+            "wo_id": "WO-REC-1234",
+            "status": "DRAFT",
+            "backend": "mock",
+            "handoff_complete": True,
+            "response": {"status": "DRAFT"},
+        },
     )
 
     record = fake_connection.workorders["WO-REC-1234"]
@@ -267,7 +308,12 @@ def test_persist_work_order_promotes_terminal_transition_when_completion_arrives
 
     wo_bridge_mod.persist_work_order(
         fake_connection,
-        {"asset_id": "PUMP-101", "title": "Inspect seal", "rationale": "Elevated vibration", "priority": "HIGH"},
+        {
+            "asset_id": "PUMP-101",
+            "title": "Inspect seal",
+            "rationale": "Elevated vibration",
+            "priority": "HIGH",
+        },
         {
             "wo_id": "WO-REC-1234",
             "status": "COMP",
@@ -366,7 +412,10 @@ def test_wo_bridge_replays_queued_edge_commands_before_live_messages(tmp_path):
     assert command_queue.snapshot()["total_replayed_commands"] == 1
     assert fake_connection.proposals["REC-QUEUED"]["status"] == "approved"
     assert fake_connection.proposals["REC-QUEUED"]["work_order_id"] == "WO-REC-1234"
-    assert fake_connection.proposals["REC-QUEUED"]["metadata"]["approval"]["handoff_state"] == "success"
+    assert (
+        fake_connection.proposals["REC-QUEUED"]["metadata"]["approval"]["handoff_state"]
+        == "success"
+    )
 
 
 def test_replay_failure_records_normalized_failure_summary(tmp_path):
@@ -408,7 +457,9 @@ def test_replay_failure_records_normalized_failure_summary(tmp_path):
         def create_work_order(self, recommendation):
             raise CMMSUnavailableError("temporary outage")
 
-    outcome = wo_bridge_mod._replay_edge_command_queue(fake_connection, DownAdapter(), command_queue)
+    outcome = wo_bridge_mod._replay_edge_command_queue(
+        fake_connection, DownAdapter(), command_queue
+    )
 
     assert outcome == {"replayed": 0, "error": "temporary outage"}
     attempt = fake_connection.proposals["REC-FAIL"]["metadata"]["approval_attempts"][0]
