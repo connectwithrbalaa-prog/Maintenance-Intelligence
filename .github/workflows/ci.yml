@@ -5,11 +5,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - uses: actions/setup-python@v5
       with: { python-version: "3.11" }
     - run: pip install --upgrade pip && pip install .[dev]
-    - run: ruff check .
-    - run: black --check .
+    - name: Collect changed Python files
+      id: python-files
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          base_ref="${{ github.event.pull_request.base.ref }}"
+          git fetch origin "$base_ref" --depth=50
+          git diff --name-only --diff-filter=ACMR "origin/$base_ref"...HEAD -- '*.py' > python_files.txt
+        elif [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+          git diff --name-only --diff-filter=ACMR "${{ github.event.before }}"...HEAD -- '*.py' > python_files.txt
+        else
+          git ls-files '*.py' > python_files.txt
+        fi
+
+        sed -i '/^$/d' python_files.txt
+        echo "count=$(wc -l < python_files.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+    - name: Ruff changed Python files
+      if: steps.python-files.outputs.count != '0'
+      run: xargs -a python_files.txt ruff check
+    - name: Black changed Python files
+      if: steps.python-files.outputs.count != '0'
+      run: xargs -a python_files.txt black --check
     - run: pytest --ignore=tests/test_migration_smoke.py
 
   portal-browser-smoke:

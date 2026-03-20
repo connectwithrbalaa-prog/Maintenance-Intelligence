@@ -19,6 +19,8 @@ The product has moved well beyond the initial RCA prototype and now delivers a w
 
 The BRD is not fully closed yet. The remaining work is concentrated in security hardening, workflow delivery, and governance.
 
+For current system and user-flow visuals, see [docs/ARCHITECTURE_AND_USER_WORKFLOWS.md](docs/ARCHITECTURE_AND_USER_WORKFLOWS.md).
+
 ## What Is Substantially Implemented
 
 ### Core workflow foundation
@@ -101,11 +103,31 @@ Still needed:
 
 ### [#42](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/42) Notification routing
 
-Status: largely outstanding
+Status: active progress, meaningful slice delivered
+
+Delivered:
+
+- thin webhook notification baseline with file-backed delivery history
+- multi-destination route matching by event, severity, org, and optional site
+- default-route fallback behavior and route preview visibility in the portal
+- delivery history filters and sort options (status, severity, event, route, destination, org, site, edge state)
+- API and service regression coverage for invalid notification filter fallbacks (unknown sort, edge state, status, and severity)
+- portal API regression coverage for org-filter query behavior alongside identity headers
+- portal API regression coverage for site-filter query behavior alongside identity headers
+- runtime edge degraded/offline emission with transition-aware deduplication
+- edge-event correlation fields in delivery history
+- persisted per-identity portal filter preferences and keyboard-submit behavior for search inputs
+- focused Playwright coverage for notification preference persistence (including destination, route-id, combined org/site, and edge-state/sort across reload), identity/org scoping, reset behavior (including route-id, combined org/site, and edge-state/sort default resets across reload), and Enter-submit paths (destination, route id, org id, site id)
 
 Still needed:
 
-- routed notifications for RCA, PM exceptions, connector failures, and degraded states
+- final acceptance review and closure checklist against issue scope
+
+Newly delivered in this slice:
+
+- broader trigger coverage across RCA completion and PM exception pathways
+- additional channel support beyond webhooks through SMTP email routing
+- policy-level suppression and escalation semantics (config-driven)
 
 ### [#43](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/43) Domain packs and asset taxonomy
 
@@ -128,7 +150,7 @@ Still needed:
 1. Finish acceptance review and closure path for [#40](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/40)
 2. Finish the remaining close-out work for [#41](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/41)
 3. Return to [#39](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/39) for full production-grade auth and tenant isolation
-4. Implement [#42](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/42) notification routing
+4. Continue [#42](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/42) with broader triggers and additional channels
 5. Implement [#44](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/44) governance and explainability controls
 6. Implement [#43](https://github.com/connectwithrbalaa-prog/Maintenance-Intelligence/issues/43) domain packs and taxonomy expansion
 

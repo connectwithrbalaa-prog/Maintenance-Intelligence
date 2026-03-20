@@ -71,10 +71,10 @@ def test_retrieve_ranking_is_stable_across_input_permutations():
             self._vector_results = vector_results
             self._bm25_results = bm25_results
 
-        def _vector_search(self, query, asset_id, limit):
+        def _vector_search(self, query, asset_id, limit, fleet_wide=False):
             return list(self._vector_results)
 
-        def _bm25_search(self, query, asset_id, limit):
+        def _bm25_search(self, query, asset_id, limit, fleet_wide=False):
             return list(self._bm25_results)
 
     first = StubRetriever(

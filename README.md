@@ -24,6 +24,8 @@ Next:
 
 The current RCA path in this branch is centered on the Kafka-driven `rca_agent` flow, with a thin single-run trigger for smoke and demo use.
 
+For architecture and end-user flow diagrams, see [docs/ARCHITECTURE_AND_USER_WORKFLOWS.md](docs/ARCHITECTURE_AND_USER_WORKFLOWS.md).
+
 ### Implemented Now
 
 1. Event ingestion publishes canonical events to `canonical.event.raised`.

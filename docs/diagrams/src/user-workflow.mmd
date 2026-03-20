@@ -1,0 +1,37 @@
+flowchart TD
+    Start([Asset issue or abnormal event detected]) --> Detect[Event ingested and RCA run created]
+    Detect --> Review[Operator opens portal and reviews RCA summary]
+    Review --> Evidence[Inspect evidence context signals history and recommendations]
+    Evidence --> Decision{Is action needed now?}
+    Decision -->|No immediate action| Monitor[Keep under observation and track status in portal]
+    Decision -->|Yes| Triage[Triage issue and assess urgency]
+    Triage --> PMDecision{Needs preventive or corrective work order?}
+    PMDecision -->|No| LocalAction[Execute local mitigation or continue monitoring]
+    PMDecision -->|Yes| Proposal[Create or review PM proposal]
+    Proposal --> Approval{Approve proposal?}
+    Approval -->|No| Rework[Revise recommendation add notes or defer]
+    Approval -->|Yes| Handoff[Submit handoff to CMMS connector]
+    Handoff --> HandoffResult{Handoff successful?}
+    HandoffResult -->|Yes| Track[Track work order status lifecycle and provenance in portal]
+    HandoffResult -->|Retryable failure| Retry[Retry queue or admin retry flow]
+    HandoffResult -->|Offline or degraded| EdgeQueue[Queue through edge buffer and replay later]
+    HandoffResult -->|Terminal failure| Exception[Operator investigates connector failure]
+    Retry --> Handoff
+    EdgeQueue --> Replay[Replay when connectivity returns]
+    Replay --> Handoff
+    Exception --> Handoff
+    Track --> NotifyOps[Operators receive routed notifications for key events and degraded states]
+    Monitor --> NotifyOps
+    LocalAction --> NotifyOps
+    NotifyOps --> Analytics[Review outcomes dashboards delivery history and operational alerts]
+    Analytics --> End([Workflow closed or kept under continuous monitoring])
+
+    classDef startend fill:#d8f0ff,stroke:#1d4ed8,color:#0f172a,stroke-width:1.5px;
+    classDef action fill:#ecfccb,stroke:#3f6212,color:#1f2937,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#b45309,color:#1f2937,stroke-width:1.5px;
+    classDef exception fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class Start,End startend;
+    class Detect,Review,Evidence,Monitor,Triage,Proposal,Handoff,Track,NotifyOps,Analytics,LocalAction,Rework,Retry,EdgeQueue,Replay action;
+    class Decision,PMDecision,Approval,HandoffResult decision;
+    class Exception exception;

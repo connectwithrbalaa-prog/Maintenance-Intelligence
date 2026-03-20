@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    participant Edge as Edge Runtime
+    participant Portal as Portal API
+    participant Notify as Notification Service
+    participant Routes as Route Matcher
+    participant Log as Delivery History
+    participant Webhook as Webhook Destinations
+    actor Operator
+
+    Edge->>Edge: Detect connectivity degraded or offline transition
+    Edge->>Notify: Emit edge state event
+    Notify->>Routes: Match by event type severity org and site
+    Routes-->>Notify: Return destinations and fallback route
+    Notify->>Webhook: Fan out webhook deliveries
+    Webhook-->>Notify: Success or failure response
+    Notify->>Log: Persist attempt route edge-state and correlation data
+
+    Operator->>Portal: Open notification history
+    Portal->>Log: Query filtered recent deliveries
+    Log-->>Portal: Return delivery history and edge event metadata
+    Portal-->>Operator: Show delivery status failures and route context
+
+    Note over Portal,Notify: Portal history reads are read-only and do not emit new notifications

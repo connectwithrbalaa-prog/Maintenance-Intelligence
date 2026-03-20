@@ -1,0 +1,31 @@
+flowchart LR
+    subgraph Live[Implemented]
+        A1[RCA pipeline]
+        A2[Context and RAG]
+        A3[PM workflow]
+        A4[Connector layer]
+        A5[Portal and alerts]
+    end
+
+    subgraph Next[Pending BRD]
+        B1[Auth and RBAC]
+        B2[Cache closeout]
+        B3[Connector hardening]
+        B4[Notification expansion]
+        B5[Domain packs]
+        B6[Lineage and redaction]
+    end
+
+    A1 --> A2 --> A3 --> A4 --> A5
+    A3 -.-> B1
+    A2 -.-> B2
+    A4 -.-> B3
+    A5 -.-> B4
+    A2 -.-> B5
+    A1 -.-> B6
+
+    classDef implemented fill:#dcfce7,stroke:#166534,color:#1f2937,stroke-width:1.5px;
+    classDef pending fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class A1,A2,A3,A4,A5 implemented;
+    class B1,B2,B3,B4,B5,B6 pending;

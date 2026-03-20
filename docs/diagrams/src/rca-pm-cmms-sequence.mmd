@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    actor Operator
+    participant Portal as Portal UI or API
+    participant RCA as RCA Agent
+    participant Context as Context Assembler
+    participant PM as PM Advisor API
+    participant Bridge as Work Order Bridge
+    participant CMMS as CMMS Adapter
+    participant Notify as Notification Service
+    participant Edge as Edge Buffer
+
+    Operator->>Portal: Open RCA run and inspect recommendation
+    Portal->>RCA: Request run summary and structured RCA
+    RCA->>Context: Load evidence context for asset and event
+    Context-->>RCA: Signals history work orders RAG context cache metadata
+    RCA-->>Portal: RCA summary actions confidence and PM suggestions
+
+    Operator->>Portal: Request PM proposal from run
+    Portal->>PM: Analyze RCA and create proposal
+    PM-->>Portal: Proposal with approval decision data
+
+    Operator->>Portal: Approve proposal
+    Portal->>PM: Approve proposal request
+    PM->>Bridge: Create or update work order handoff
+
+    alt CMMS available
+        Bridge->>CMMS: Submit normalized work order payload
+        CMMS-->>Bridge: Work order id lifecycle state provenance
+        Bridge-->>PM: Handoff success state
+        PM->>Notify: Emit approval or handoff notification
+        PM-->>Portal: Approved with connector status
+        Notify-->>Portal: Delivery history available to operator
+    else Retryable connector failure
+        Bridge-->>PM: Retry required or admin retry state
+        PM->>Notify: Emit PM exception notification
+        PM-->>Portal: Proposal remains visible with retry status
+    else Offline or edge degraded
+        Bridge->>Edge: Queue command for replay
+        Edge-->>Bridge: Stored for later replay
+        Bridge-->>PM: queued-offline status
+        PM->>Notify: Emit degraded or offline notification
+        PM-->>Portal: Show queued offline handoff state
+        Edge->>CMMS: Replay when connectivity returns
+        CMMS-->>Edge: Replayed work order accepted
+    end
