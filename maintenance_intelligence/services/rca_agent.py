@@ -13,7 +13,10 @@ from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
 from maintenance_intelligence.services.notifications import emit_notification
-from maintenance_intelligence.services.repair_plan_service import create_repair_plan, add_part_to_plan
+from maintenance_intelligence.services.repair_plan_service import (
+    create_repair_plan,
+    add_part_to_plan,
+)
 import backoff
 from maintenance_intelligence.api.metrics import (
     recommendations_created_total,
@@ -21,8 +24,8 @@ from maintenance_intelligence.api.metrics import (
     rca_runs_total,
 )
 
-
 EDGE_LOCAL_FALLBACK_VERSION = "edge-fallback-v1"
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str):
@@ -37,16 +40,18 @@ def create_kafka_consumer(kafka_bootstrap: str):
         auto_commit_interval_ms=5000,
     )
 
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_producer(kafka_bootstrap: str):
     """Create Kafka producer with retry logic."""
     return KafkaProducer(
         bootstrap_servers=kafka_bootstrap,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        acks='all',
+        acks="all",
         retries=3,
-        retry_backoff_ms=1000
+        retry_backoff_ms=1000,
     )
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
 def send_recommendation(producer, recommendation):
@@ -106,11 +111,17 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
     event_kind = _as_trimmed_string(evt.get("kind")) or "event"
     event_summary = _as_trimmed_string(evt.get("summary")) or f"{event_kind.title()} detected"
     work_orders = _ordered_unique_strings(ctx.get("last_wo_titles") or [])
-    doc_chunk_ids = _ordered_unique_strings([item.get("chunk_id") for item in ctx.get("doc_chunks", []) if isinstance(item, dict)])
-    signal_ids = _ordered_unique_strings([item.get("signal_id") for item in ctx.get("recent_signals", []) if isinstance(item, dict)])
+    doc_chunk_ids = _ordered_unique_strings(
+        [item.get("chunk_id") for item in ctx.get("doc_chunks", []) if isinstance(item, dict)]
+    )
+    signal_ids = _ordered_unique_strings(
+        [item.get("signal_id") for item in ctx.get("recent_signals", []) if isinstance(item, dict)]
+    )
     evidence_ids = _ordered_unique_strings([evt.get("event_id")] + doc_chunk_ids + signal_ids)
 
-    hypothesis = [f"{event_summary} on {asset_id} requires local inspection while GenAI analysis is unavailable."]
+    hypothesis = [
+        f"{event_summary} on {asset_id} requires local inspection while GenAI analysis is unavailable."
+    ]
     if work_orders:
         hypothesis.append(f"Recent maintenance activity may be related: {work_orders[0]}.")
 
@@ -119,29 +130,41 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
         "Manual review of local signals and maintenance context is required before remote GenAI analysis resumes.",
     ]
     if event_kind == "alarm":
-        root_causes[0] = "A protection, alarm, or process threshold was exceeded under current operating conditions."
+        root_causes[0] = (
+            "A protection, alarm, or process threshold was exceeded under current operating conditions."
+        )
 
     contributing_factors = []
     if doc_chunk_ids:
-        contributing_factors.append("Local maintenance documents were available for fallback review.")
+        contributing_factors.append(
+            "Local maintenance documents were available for fallback review."
+        )
     if signal_ids:
-        contributing_factors.append("Recent signals were present and should be checked against the current condition.")
+        contributing_factors.append(
+            "Recent signals were present and should be checked against the current condition."
+        )
     if work_orders:
-        contributing_factors.append("Recent work order history may have changed asset condition or maintenance state.")
+        contributing_factors.append(
+            "Recent work order history may have changed asset condition or maintenance state."
+        )
 
     immediate_actions = [
         f"Inspect {asset_id} at the source of the reported {event_kind}.",
         "Verify the alert condition against the current operating state and instrumentation.",
     ]
     if work_orders:
-        immediate_actions.append(f"Review recent work such as '{work_orders[0]}' before approving additional handoff.")
+        immediate_actions.append(
+            f"Review recent work such as '{work_orders[0]}' before approving additional handoff."
+        )
 
     pm_suggestions = [
         f"Schedule a manual follow-up inspection for {asset_id} in the next maintenance window.",
         "Capture technician findings so the remote RCA can be refined once GenAI connectivity returns.",
     ]
     if event_kind == "alarm":
-        pm_suggestions.append("Confirm alarm thresholds and sensor health during the follow-up inspection.")
+        pm_suggestions.append(
+            "Confirm alarm thresholds and sensor health during the follow-up inspection."
+        )
 
     summary_suffix = f" Reason: {reason}." if reason else ""
     return {
@@ -166,7 +189,9 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
     }
 
 
-def _edge_local_fallback(evt: dict, ctx: dict, reason: str | None = None) -> tuple[dict, str, dict, str, str]:
+def _edge_local_fallback(
+    evt: dict, ctx: dict, reason: str | None = None
+) -> tuple[dict, str, dict, str, str]:
     structured = _deterministic_edge_structured(evt, ctx, reason=reason)
     rationale = _build_rationale(structured, structured.get("summary", ""))
     model_meta = {
@@ -250,12 +275,21 @@ def _repair_plan_payload_has_content(repair_plan: dict) -> bool:
     return False
 
 
-def _persist_repair_plan(settings: Settings, evt: dict, run_id: str, recommendation_id: str, structured: dict, rationale: str):
+def _persist_repair_plan(
+    settings: Settings,
+    evt: dict,
+    run_id: str,
+    recommendation_id: str,
+    structured: dict,
+    rationale: str,
+):
     repair_plan = structured.get("repair_plan") or {}
     if not _repair_plan_payload_has_content(repair_plan):
         return None
 
-    summary_text = _as_trimmed_string(structured.get("summary")) or _as_trimmed_string(structured.get("title"))
+    summary_text = _as_trimmed_string(structured.get("summary")) or _as_trimmed_string(
+        structured.get("title")
+    )
     plan = create_repair_plan(
         settings.pg_dsn,
         run_id=run_id,
@@ -273,7 +307,8 @@ def _persist_repair_plan(settings: Settings, evt: dict, run_id: str, recommendat
         add_part_to_plan(
             settings.pg_dsn,
             plan["plan_id"],
-            name=_as_trimmed_string(raw_part.get("part_no")) or _as_trimmed_string(raw_part.get("description")),
+            name=_as_trimmed_string(raw_part.get("part_no"))
+            or _as_trimmed_string(raw_part.get("description")),
             description=_as_trimmed_string(raw_part.get("description")),
             quantity=raw_part.get("qty"),
             unit=None,
@@ -285,17 +320,24 @@ def _persist_repair_plan(settings: Settings, evt: dict, run_id: str, recommendat
 
     return plan
 
+
 def process_event(evt: dict, settings: Settings, producer, gateway=None):
     if evt.get("kind") not in ("alarm", "anomaly"):
         return None
 
     _t0 = time.time()
     ctx = _context_with_fallback(evt, settings)
-    structured, rationale, model_meta, lineage_source, inference_mode = _resolve_inference(evt, settings, ctx, gateway=gateway)
+    structured, rationale, model_meta, lineage_source, inference_mode = _resolve_inference(
+        evt, settings, ctx, gateway=gateway
+    )
 
     rec_id = str(uuid.uuid4())
     doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
-    signal_ids = [s.get("signal_id") for s in ctx.get("recent_signals", []) if isinstance(s, dict) and s.get("signal_id")]
+    signal_ids = [
+        s.get("signal_id")
+        for s in ctx.get("recent_signals", [])
+        if isinstance(s, dict) and s.get("signal_id")
+    ]
 
     out = {
         "event_type": "recommendation.created",
@@ -305,11 +347,17 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "recommendation": {
             "id": rec_id,
             "asset_id": evt.get("asset_id"),
-            "title": (structured.get("title") or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"),
+            "title": (
+                structured.get("title")
+                or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"
+            ),
             "rationale": rationale,
             "repair_plan": structured.get("repair_plan") or {},
             "evidence": _ordered_unique_strings(
-                [evt.get("event_id")] + doc_chunk_ids + signal_ids + (structured.get("evidence_ids") or [])
+                [evt.get("event_id")]
+                + doc_chunk_ids
+                + signal_ids
+                + (structured.get("evidence_ids") or [])
             ),
             "model": model_meta,
             "immutable": True,
@@ -324,8 +372,12 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             "doc_chunk_ids": doc_chunk_ids,
             "signal_ids": signal_ids,
             "context_scope": ctx.get("context_scope", "local"),
-            "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get("external_ref_count", 0),
-            "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get("referenced_asset_ids", []),
+            "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get(
+                "external_ref_count", 0
+            ),
+            "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get(
+                "referenced_asset_ids", []
+            ),
             "inference_mode": inference_mode,
             "degraded_inference": inference_mode == "local-deterministic",
         },
@@ -390,7 +442,14 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
     except Exception:
         pass
 
-    logger.info({"event": "rca.recommendation.created", "id": rec_id, "model": model_meta, "ctx": out.get("context_meta")})
+    logger.info(
+        {
+            "event": "rca.recommendation.created",
+            "id": rec_id,
+            "model": model_meta,
+            "ctx": out.get("context_meta"),
+        }
+    )
     try:
         rca_runs_total.labels(service="rca_agent").inc()
         rca_duration_seconds.labels(service="rca_agent").observe(max(0.0, time.time() - _t0))
@@ -403,6 +462,7 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "summary": summary_payload,
         "context": ctx,
     }
+
 
 def rca_agent(kafka_bootstrap: str = None):
     logger.info({"event": "rca_agent.start"})
@@ -429,8 +489,15 @@ def rca_agent(kafka_bootstrap: str = None):
         prod = create_kafka_producer(kafka_bootstrap)
 
         openai_key = os.getenv("OPENAI_API_KEY")
-        gateway = GenAIGateway(api_key=openai_key, model=getattr(settings, "genai_model", "gpt-4.1"),
-                               timeout_s=getattr(settings, "genai_timeout_s", 25)) if openai_key else None
+        gateway = (
+            GenAIGateway(
+                api_key=openai_key,
+                model=getattr(settings, "genai_model", "gpt-4.1"),
+                timeout_s=getattr(settings, "genai_timeout_s", 25),
+            )
+            if openai_key
+            else None
+        )
 
         for msg in cons:
             if shutdown_requested:
@@ -442,7 +509,13 @@ def rca_agent(kafka_bootstrap: str = None):
                 process_event(evt, settings, prod, gateway=gateway)
 
             except Exception as e:
-                logger.error({"event": "rca_agent.processing_error", "event_id": evt.get("event_id"), "error": str(e)})
+                logger.error(
+                    {
+                        "event": "rca_agent.processing_error",
+                        "event_id": evt.get("event_id"),
+                        "error": str(e),
+                    }
+                )
                 # Continue processing other events
 
     except Exception as e:

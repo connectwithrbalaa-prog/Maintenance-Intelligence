@@ -539,7 +539,9 @@ def _notification_policy(settings: Settings) -> Dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _is_scope_match(rule: Dict[str, Any], *, event_type: str, org_id: Optional[str], site_id: Optional[str]) -> bool:
+def _is_scope_match(
+    rule: Dict[str, Any], *, event_type: str, org_id: Optional[str], site_id: Optional[str]
+) -> bool:
     event_types = _as_text_list(rule.get("event_types") or rule.get("event_type"))
     if event_types and event_type not in event_types:
         return False
@@ -928,12 +930,21 @@ def recent_notification_deliveries(
         for record in records
         if isinstance(record, dict)
         and (status_filter is None or _normalize_status(record.get("status")) == status_filter)
-        and (severity_filter is None or _normalize_severity(record.get("severity"), default="") == severity_filter)
-        and (event_type_filter is None or (_as_text(record.get("event_type")) or "") == event_type_filter)
+        and (
+            severity_filter is None
+            or _normalize_severity(record.get("severity"), default="") == severity_filter
+        )
+        and (
+            event_type_filter is None
+            or (_as_text(record.get("event_type")) or "") == event_type_filter
+        )
         and (route_filter is None or (_as_text(record.get("route_id")) or "") == route_filter)
         and (org_filter is None or (_as_text(record.get("org_id")) or "") == org_filter)
         and (site_filter is None or (_as_text(record.get("site_id")) or "") == site_filter)
-        and (edge_state_filter is None or (_as_text(record.get("edge_connectivity_status")) or "").lower() == edge_state_filter)
+        and (
+            edge_state_filter is None
+            or (_as_text(record.get("edge_connectivity_status")) or "").lower() == edge_state_filter
+        )
         and _matches_contains_filter(record.get("destination"), destination_filter)
     ]
 
@@ -944,7 +955,11 @@ def recent_notification_deliveries(
         ordered = sorted(filtered, key=_sort_key_attempted_asc)
     else:
         ordered = sorted(filtered, key=_sort_key_attempted_desc, reverse=True)
-        failed = [record for record in ordered if _normalize_status(record.get("status")) == "failed"]
-        non_failed = [record for record in ordered if _normalize_status(record.get("status")) != "failed"]
+        failed = [
+            record for record in ordered if _normalize_status(record.get("status")) == "failed"
+        ]
+        non_failed = [
+            record for record in ordered if _normalize_status(record.get("status")) != "failed"
+        ]
         ordered = failed + non_failed
     return ordered[: max(1, int(limit))]

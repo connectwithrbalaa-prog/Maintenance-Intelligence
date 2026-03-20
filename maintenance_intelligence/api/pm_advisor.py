@@ -12,6 +12,7 @@ from maintenance_intelligence.cmms.adapter import (
     CMMSConfigurationError,
     CMMSPayloadError,
     CMMSRetryExhaustedError,
+    CMMSUnavailableError as _CMMSUnavailableError,
     UnsupportedBackendError,
     cmms_failure_summary_from_error,
     create_cmms_adapter,
@@ -36,6 +37,9 @@ from maintenance_intelligence.services.wo_bridge import process_recommendation, 
 router = APIRouter(prefix="/api/v1/agents/pm", tags=["pm"])
 
 QUEUED_OFFLINE_STATUS = "queued-offline"
+# Keep this symbol exported for tests and callers that reference
+# maintenance_intelligence.api.pm_advisor.CMMSUnavailableError.
+CMMSUnavailableError = _CMMSUnavailableError
 
 
 class AnalyzePayload(BaseModel):
@@ -43,7 +47,9 @@ class AnalyzePayload(BaseModel):
 
 
 class ApprovePayload(BaseModel):
-    admin_retry: bool = Field(default=False, description="Whether this approval call is an admin-initiated retry")
+    admin_retry: bool = Field(
+        default=False, description="Whether this approval call is an admin-initiated retry"
+    )
 
 
 connection_factory = with_pg
@@ -61,7 +67,9 @@ def _as_text(value: Any) -> Optional[str]:
     return None
 
 
-def _approval_attempt_metadata(result: Optional[Dict[str, Any]], approved_by: Optional[str], status: str) -> Dict[str, Any]:
+def _approval_attempt_metadata(
+    result: Optional[Dict[str, Any]], approved_by: Optional[str], status: str
+) -> Dict[str, Any]:
     attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
     return {
         "approval": {
@@ -88,7 +96,9 @@ def _approval_attempt_failure_metadata(
             "handoff_state": "failure",
             "detail": detail,
             "result": {},
-            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state="failure"),
+            "failure_summary": normalize_cmms_failure_summary(
+                detail=detail, handoff_state="failure"
+            ),
         }
     }
 
@@ -125,7 +135,13 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
             result = "failure"
         else:
             result = "pending"
-    if not attempted_at and not approved_by and not approved_at and not connector_result and not error_message:
+    if (
+        not attempted_at
+        and not approved_by
+        and not approved_at
+        and not connector_result
+        and not error_message
+    ):
         return None
     return {
         "attempt_number": attempt_number,
@@ -173,7 +189,9 @@ def _proposal_attempt_limit(settings: Settings) -> int:
 
 
 def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]:
-    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    attempts = proposal.get("approval_history") or _approval_attempts(
+        proposal.get("metadata") or {}
+    )
     attempt_count = len(attempts)
     attempts_remaining = max(0, max_attempts - attempt_count)
     proposal_status = _as_text(proposal.get("status")) or "pending"
@@ -182,7 +200,11 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
     latest_retryable = True
     if (latest_attempt.get("handoff_state") or "") == "failure" and latest_failure_summary:
         latest_retryable = bool(latest_failure_summary.get("retryable"))
-    retry_allowed = proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and attempts_remaining > 0 and latest_retryable
+    retry_allowed = (
+        proposal_status not in {"approved", QUEUED_OFFLINE_STATUS}
+        and attempts_remaining > 0
+        and latest_retryable
+    )
     return {
         "attempt_count": attempt_count,
         "attempts_remaining": attempts_remaining,
@@ -193,13 +215,17 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
 
 
 def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]:
-    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    attempts = proposal.get("approval_history") or _approval_attempts(
+        proposal.get("metadata") or {}
+    )
     latest_attempt = attempts[0] if attempts else {}
     proposal_status = _as_text(proposal.get("status")) or "pending"
     return {
         **proposal,
         **_retry_fields(proposal, max_attempts),
-        "admin_retry_required": bool(attempts) and proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and _retry_fields(proposal, max_attempts)["retry_allowed"],
+        "admin_retry_required": bool(attempts)
+        and proposal_status not in {"approved", QUEUED_OFFLINE_STATUS}
+        and _retry_fields(proposal, max_attempts)["retry_allowed"],
         "last_attempt_info": latest_attempt,
     }
 
@@ -212,34 +238,91 @@ def _connector_provenance_summary(
 ) -> Dict[str, Any]:
     proposal_id = _as_text(proposal.get("proposal_id")) or ""
     recommendation_id = _as_text(proposal.get("recommendation_id")) or proposal_id
-    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    attempts = proposal.get("approval_history") or _approval_attempts(
+        proposal.get("metadata") or {}
+    )
     latest_attempt = attempts[0] if attempts else {}
-    connector_result = result if isinstance(result, dict) and result else latest_attempt.get("connector_result")
+    connector_result = (
+        result if isinstance(result, dict) and result else latest_attempt.get("connector_result")
+    )
     if not isinstance(connector_result, dict):
         connector_result = {}
     snapshot = work_order_snapshot if isinstance(work_order_snapshot, dict) else {}
-    snapshot_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
-    handoff = snapshot_metadata.get("handoff") if isinstance(snapshot_metadata.get("handoff"), dict) else {}
-    handoff_lifecycle = handoff.get("lifecycle") if isinstance(handoff.get("lifecycle"), dict) else {}
-    connector_lifecycle = connector_result.get("lifecycle") if isinstance(connector_result.get("lifecycle"), dict) else {}
+    snapshot_metadata = (
+        snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    )
+    handoff = (
+        snapshot_metadata.get("handoff")
+        if isinstance(snapshot_metadata.get("handoff"), dict)
+        else {}
+    )
+    handoff_lifecycle = (
+        handoff.get("lifecycle") if isinstance(handoff.get("lifecycle"), dict) else {}
+    )
+    connector_lifecycle = (
+        connector_result.get("lifecycle")
+        if isinstance(connector_result.get("lifecycle"), dict)
+        else {}
+    )
     failure_summary = _attempt_failure_summary(latest_attempt)
     return {
         "proposal_id": proposal_id,
         "recommendation_id": recommendation_id,
-        "origin": _as_text(handoff.get("origin")) or _as_text(latest_attempt.get("origin")) or "approval",
-        "approved_by": _as_text(proposal.get("approved_by")) or _as_text(handoff.get("approved_by")) or _as_text(latest_attempt.get("approved_by")) or "",
-        "recorded_at": _as_text(handoff.get("attempted_at")) or _as_text(handoff.get("approved_at")) or _as_text(latest_attempt.get("attempted_at")) or "",
+        "origin": _as_text(handoff.get("origin"))
+        or _as_text(latest_attempt.get("origin"))
+        or "approval",
+        "approved_by": _as_text(proposal.get("approved_by"))
+        or _as_text(handoff.get("approved_by"))
+        or _as_text(latest_attempt.get("approved_by"))
+        or "",
+        "recorded_at": _as_text(handoff.get("attempted_at"))
+        or _as_text(handoff.get("approved_at"))
+        or _as_text(latest_attempt.get("attempted_at"))
+        or "",
         "attempt_count": len(attempts),
-        "backend": _as_text(handoff.get("backend")) or _as_text(connector_result.get("backend")) or "",
-        "connector_status": _as_text(connector_result.get("status")) or _as_text(proposal.get("handoff_state")) or _as_text(proposal.get("status")) or "pending",
-        "connector_lifecycle_phase": _as_text(connector_result.get("lifecycle_phase")) or _as_text(connector_lifecycle.get("phase")) or _as_text(handoff.get("lifecycle_phase")) or _as_text(handoff_lifecycle.get("phase")) or "",
-        "connector_terminal_state": bool(connector_result.get("terminal_state") or connector_lifecycle.get("terminal")),
-        "work_order_id": _as_text(snapshot.get("wo_id")) or _as_text(proposal.get("work_order_id")) or _as_text(connector_result.get("wo_id")) or "",
-        "work_order_status": _as_text(snapshot.get("status")) or _as_text(connector_result.get("status")) or "",
-        "work_order_lifecycle_phase": _as_text(snapshot.get("lifecycle_phase")) or _as_text(snapshot.get("lifecycle", {}).get("phase") if isinstance(snapshot.get("lifecycle"), dict) else None) or _as_text(connector_result.get("lifecycle_phase")) or "",
-        "work_order_terminal_state": bool(snapshot.get("terminal_state") or (snapshot.get("lifecycle", {}).get("terminal") if isinstance(snapshot.get("lifecycle"), dict) else False)),
+        "backend": _as_text(handoff.get("backend"))
+        or _as_text(connector_result.get("backend"))
+        or "",
+        "connector_status": _as_text(connector_result.get("status"))
+        or _as_text(proposal.get("handoff_state"))
+        or _as_text(proposal.get("status"))
+        or "pending",
+        "connector_lifecycle_phase": _as_text(connector_result.get("lifecycle_phase"))
+        or _as_text(connector_lifecycle.get("phase"))
+        or _as_text(handoff.get("lifecycle_phase"))
+        or _as_text(handoff_lifecycle.get("phase"))
+        or "",
+        "connector_terminal_state": bool(
+            connector_result.get("terminal_state") or connector_lifecycle.get("terminal")
+        ),
+        "work_order_id": _as_text(snapshot.get("wo_id"))
+        or _as_text(proposal.get("work_order_id"))
+        or _as_text(connector_result.get("wo_id"))
+        or "",
+        "work_order_status": _as_text(snapshot.get("status"))
+        or _as_text(connector_result.get("status"))
+        or "",
+        "work_order_lifecycle_phase": _as_text(snapshot.get("lifecycle_phase"))
+        or _as_text(
+            snapshot.get("lifecycle", {}).get("phase")
+            if isinstance(snapshot.get("lifecycle"), dict)
+            else None
+        )
+        or _as_text(connector_result.get("lifecycle_phase"))
+        or "",
+        "work_order_terminal_state": bool(
+            snapshot.get("terminal_state")
+            or (
+                snapshot.get("lifecycle", {}).get("terminal")
+                if isinstance(snapshot.get("lifecycle"), dict)
+                else False
+            )
+        ),
         "transition_from": _as_text(handoff.get("status_before")) or "",
-        "transition_to": _as_text(handoff.get("status_after")) or _as_text(snapshot.get("status")) or _as_text(connector_result.get("status")) or "",
+        "transition_to": _as_text(handoff.get("status_after"))
+        or _as_text(snapshot.get("status"))
+        or _as_text(connector_result.get("status"))
+        or "",
         "failure_summary": failure_summary,
     }
 
@@ -294,16 +377,22 @@ def _load_work_order_snapshots(conn: Any, work_order_ids: List[str]) -> Dict[str
     return snapshots
 
 
-def _attach_work_order_snapshots(proposals: List[Dict[str, Any]], snapshots: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _attach_work_order_snapshots(
+    proposals: List[Dict[str, Any]], snapshots: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     enriched: List[Dict[str, Any]] = []
     for proposal in proposals:
         work_order_id = proposal.get("work_order_id")
         snapshot = snapshots.get(str(work_order_id), {}) if work_order_id else {}
-        enriched.append({
-            **proposal,
-            "work_order_snapshot": snapshot,
-            "connector_provenance_summary": _connector_provenance_summary(proposal, work_order_snapshot=snapshot),
-        })
+        enriched.append(
+            {
+                **proposal,
+                "work_order_snapshot": snapshot,
+                "connector_provenance_summary": _connector_provenance_summary(
+                    proposal, work_order_snapshot=snapshot
+                ),
+            }
+        )
     return enriched
 
 
@@ -340,7 +429,9 @@ def _append_approval_metadata(
     normalized_attempts: List[Dict[str, Any]] = []
     for attempt in attempts:
         handoff_state = _as_text(attempt.get("handoff_state")) or "pending"
-        attempted_at = _as_text(attempt.get("attempted_at")) or dt.datetime.now(dt.timezone.utc).isoformat()
+        attempted_at = (
+            _as_text(attempt.get("attempted_at")) or dt.datetime.now(dt.timezone.utc).isoformat()
+        )
         approved_at = _as_text(attempt.get("approved_at"))
         if approved_at is None and handoff_state == "success":
             approved_at = attempted_at
@@ -352,8 +443,17 @@ def _append_approval_metadata(
                 "approved_at": approved_at,
                 "handoff_state": handoff_state,
                 "origin": _as_text(attempt.get("origin")) or origin,
-                "result": _as_text(attempt.get("result")) or ("success" if handoff_state == "success" else ("failure" if attempt.get("error_message") else "pending")),
-                "connector_result": attempt.get("connector_result") if isinstance(attempt.get("connector_result"), dict) else {},
+                "result": _as_text(attempt.get("result"))
+                or (
+                    "success"
+                    if handoff_state == "success"
+                    else ("failure" if attempt.get("error_message") else "pending")
+                ),
+                "connector_result": (
+                    attempt.get("connector_result")
+                    if isinstance(attempt.get("connector_result"), dict)
+                    else {}
+                ),
                 "error_message": _as_text(attempt.get("error_message")) or "",
                 "failure_summary": normalize_cmms_failure_summary(
                     attempt.get("failure_summary"),
@@ -363,16 +463,24 @@ def _append_approval_metadata(
             }
         )
     accumulated.extend(normalized_attempts)
-    latest = normalized_attempts[-1] if normalized_attempts else (accumulated[-1] if accumulated else {
-        "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "approved_by": approved_by,
-        "approved_at": None,
-        "handoff_state": "pending",
-        "result": "pending",
-        "connector_result": {},
-        "error_message": "",
-        "failure_summary": {},
-    })
+    latest = (
+        normalized_attempts[-1]
+        if normalized_attempts
+        else (
+            accumulated[-1]
+            if accumulated
+            else {
+                "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "approved_by": approved_by,
+                "approved_at": None,
+                "handoff_state": "pending",
+                "result": "pending",
+                "connector_result": {},
+                "error_message": "",
+                "failure_summary": {},
+            }
+        )
+    )
     approval = {
         "approved_by": latest.get("approved_by"),
         "approved_at": latest.get("approved_at"),
@@ -407,12 +515,22 @@ def _approval_response(
     response_status: Optional[str] = None,
 ) -> JSONResponse:
     approval = _approval_fields(proposal.get("metadata") or {})
-    approval_status = response_status or proposal.get("status") or ("approved" if result and result.get("handoff_complete") else "pending")
+    approval_status = (
+        response_status
+        or proposal.get("status")
+        or ("approved" if result and result.get("handoff_complete") else "pending")
+    )
     approved_by = proposal.get("approved_by") or approval.get("approved_by")
     approved_at = proposal.get("approved_at") or approval.get("approved_at")
     normalized_proposal = {**proposal, "approved_by": approved_by, "approved_at": approved_at}
-    handoff_state = normalized_proposal.get("handoff_state") or approval.get("handoff_state") or ("success" if approval_status == "approved" else "pending")
-    attempts = normalized_proposal.get("approval_history") or _approval_attempts(normalized_proposal.get("metadata") or {})
+    handoff_state = (
+        normalized_proposal.get("handoff_state")
+        or approval.get("handoff_state")
+        or ("success" if approval_status == "approved" else "pending")
+    )
+    attempts = normalized_proposal.get("approval_history") or _approval_attempts(
+        normalized_proposal.get("metadata") or {}
+    )
     latest_attempt = attempts[0] if attempts else {}
     retry_fields = _retry_fields(normalized_proposal, max_attempts)
     failure_summary = _attempt_failure_summary(latest_attempt)
@@ -429,13 +547,17 @@ def _approval_response(
         "failure_summary": failure_summary,
         "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
         "last_attempt_info": latest_attempt,
-        "admin_retry_required": bool(attempts) and approval_status not in {"approved", QUEUED_OFFLINE_STATUS} and retry_fields["retry_allowed"],
+        "admin_retry_required": bool(attempts)
+        and approval_status not in {"approved", QUEUED_OFFLINE_STATUS}
+        and retry_fields["retry_allowed"],
         "proposal_id": normalized_proposal.get("proposal_id"),
         "approved_by": approved_by,
         "approved_at": approved_at,
         "proposal": normalized_proposal,
         "work_order": result or {},
-        "connector_provenance_summary": _connector_provenance_summary(normalized_proposal, result=result),
+        "connector_provenance_summary": _connector_provenance_summary(
+            normalized_proposal, result=result
+        ),
     }
     return JSONResponse(status_code=status_code, content=body)
 
@@ -478,7 +600,9 @@ def _is_approval_role(role: Optional[str]) -> bool:
     return (role or "").strip().lower() in APPROVAL_ROLES
 
 
-def _proposal_scope(existing: Optional[Dict[str, Any]], payload: Optional[Dict[str, Any]]) -> tuple[Optional[str], Optional[str]]:
+def _proposal_scope(
+    existing: Optional[Dict[str, Any]], payload: Optional[Dict[str, Any]]
+) -> tuple[Optional[str], Optional[str]]:
     candidates: List[Dict[str, Any]] = []
     if isinstance(existing, dict):
         candidates.append(existing)
@@ -566,7 +690,9 @@ def _emit_cmms_exception_notification(
     )
 
 
-def _require_approval_actor(request: Request, *, org_id: Optional[str] = None, site_id: Optional[str] = None) -> tuple[str, str]:
+def _require_approval_actor(
+    request: Request, *, org_id: Optional[str] = None, site_id: Optional[str] = None
+) -> tuple[str, str]:
     identity = require_scoped_identity(
         request,
         detail="PM approval requires an authenticated identity",
@@ -580,12 +706,16 @@ def _require_approval_actor(request: Request, *, org_id: Optional[str] = None, s
     actor_id = _as_text(get_identity_subject(identity))
     actor_role = _as_text(get_identity_role(identity))
     if actor_id is None:
-        raise HTTPException(status_code=403, detail="PM approval requires an authenticated identity")
+        raise HTTPException(
+            status_code=403, detail="PM approval requires an authenticated identity"
+        )
     return actor_id, actor_role or ""
 
 
 def _require_read_access(request: Request) -> None:
-    require_authenticated_identity(request, detail="PM proposal reads require an authenticated identity")
+    require_authenticated_identity(
+        request, detail="PM proposal reads require an authenticated identity"
+    )
 
 
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
@@ -594,7 +724,9 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
     metadata = payload.get("metadata") or {}
     approval = _approval_fields(metadata)
     return {
-        "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
+        "proposal_id": payload.get("recommendation_id")
+        or payload.get("run_id")
+        or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
@@ -611,12 +743,18 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
     }
 
 
-def _proposal_record_from_summary(payload: Dict[str, Any], source_path: Path, proposed_by: Optional[str] = None) -> Dict[str, Any]:
+def _proposal_record_from_summary(
+    payload: Dict[str, Any], source_path: Path, proposed_by: Optional[str] = None
+) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
-    rationale = "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal"
+    rationale = (
+        "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal"
+    )
     return {
-        "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
+        "proposal_id": payload.get("recommendation_id")
+        or payload.get("run_id")
+        or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
@@ -636,7 +774,11 @@ def _proposal_record_from_summary(payload: Dict[str, Any], source_path: Path, pr
 def _build_recommendation(payload: Dict[str, Any]) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
-    rationale = "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal approval"
+    rationale = (
+        "\n".join(structured.get("hypothesis") or [])
+        or payload.get("summary")
+        or "RCA proposal approval"
+    )
     return {
         "id": payload.get("recommendation_id") or payload.get("run_id"),
         "asset_id": context_meta.get("asset_id"),
@@ -776,7 +918,9 @@ def _with_proposal_connection():
     return connection_factory(settings.pg_dsn)
 
 
-def _queue_attempts(attempts: List[Dict[str, Any]], queued_result: Dict[str, Any], detail: str) -> List[Dict[str, Any]]:
+def _queue_attempts(
+    attempts: List[Dict[str, Any]], queued_result: Dict[str, Any], detail: str
+) -> List[Dict[str, Any]]:
     if attempts:
         queued_attempt = {
             **attempts[-1],
@@ -784,7 +928,9 @@ def _queue_attempts(attempts: List[Dict[str, Any]], queued_result: Dict[str, Any
             "result": "pending",
             "connector_result": queued_result,
             "error_message": detail,
-            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state=QUEUED_OFFLINE_STATUS),
+            "failure_summary": normalize_cmms_failure_summary(
+                detail=detail, handoff_state=QUEUED_OFFLINE_STATUS
+            ),
         }
         return [*attempts[:-1], queued_attempt]
     return [
@@ -795,7 +941,9 @@ def _queue_attempts(attempts: List[Dict[str, Any]], queued_result: Dict[str, Any
             "result": "pending",
             "connector_result": queued_result,
             "error_message": detail,
-            "failure_summary": normalize_cmms_failure_summary(detail=detail, handoff_state=QUEUED_OFFLINE_STATUS),
+            "failure_summary": normalize_cmms_failure_summary(
+                detail=detail, handoff_state=QUEUED_OFFLINE_STATUS
+            ),
         }
     ]
 
@@ -846,7 +994,9 @@ def _queue_offline_handoff(
             approved_by,
             None,
             QUEUED_OFFLINE_STATUS,
-            _append_approval_metadata(proposal.get("metadata"), approved_by, queue_attempts, origin=attempt_origin),
+            _append_approval_metadata(
+                proposal.get("metadata"), approved_by, queue_attempts, origin=attempt_origin
+            ),
         )
     finally:
         conn.close()
@@ -857,7 +1007,11 @@ def _load_persisted_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
     conn = _with_proposal_connection()
     try:
         for proposal in _list_persisted_proposals(conn):
-            if proposal_id in {proposal.get("proposal_id"), proposal.get("recommendation_id"), proposal.get("run_id")}:
+            if proposal_id in {
+                proposal.get("proposal_id"),
+                proposal.get("recommendation_id"),
+                proposal.get("run_id"),
+            }:
                 return proposal
     finally:
         conn.close()
@@ -908,7 +1062,9 @@ def list_proposals(request: Request) -> List[Dict[str, Any]]:
             persisted = _list_persisted_proposals(conn)
             if persisted:
                 proposals = [_proposal_with_retry_fields(item, max_attempts) for item in persisted]
-                snapshots = _load_work_order_snapshots(conn, [str(item.get("work_order_id") or "") for item in proposals])
+                snapshots = _load_work_order_snapshots(
+                    conn, [str(item.get("work_order_id") or "") for item in proposals]
+                )
                 return _attach_work_order_snapshots(proposals, snapshots)
         finally:
             conn.close()
@@ -923,7 +1079,9 @@ def list_proposals(request: Request) -> List[Dict[str, Any]]:
         if not payload.get("recommendation_id") and not payload.get("run_id"):
             continue
         items.append(_proposal_from_summary(payload, path))
-    return _attach_work_order_snapshots([_proposal_with_retry_fields(item, max_attempts) for item in items], {})
+    return _attach_work_order_snapshots(
+        [_proposal_with_retry_fields(item, max_attempts) for item in items], {}
+    )
 
 
 @router.get("/proposals/{proposal_id}/history")
@@ -966,7 +1124,9 @@ def proposal_history(
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, request: Request, approve_request: ApprovePayload = ApprovePayload()) -> Dict[str, Any]:
+def approve_proposal(
+    proposal_id: str, request: Request, approve_request: ApprovePayload = ApprovePayload()
+) -> Dict[str, Any]:
     found = _find_proposal_payload(proposal_id)
     payload = found["payload"]
     settings = Settings()
@@ -979,7 +1139,9 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
         existing = None
 
     proposal_org_id, proposal_site_id = _proposal_scope(existing, payload)
-    approved_by, actor_role = _require_approval_actor(request, org_id=proposal_org_id, site_id=proposal_site_id)
+    approved_by, actor_role = _require_approval_actor(
+        request, org_id=proposal_org_id, site_id=proposal_site_id
+    )
 
     if existing and existing.get("status") == "approved" and existing.get("work_order_id"):
         return _approval_response(
@@ -1007,8 +1169,15 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
     latest_existing_attempt = existing_attempts[0] if existing_attempts else {}
     latest_failure_summary = _attempt_failure_summary(latest_existing_attempt)
     if attempts_remaining <= 0:
-        raise HTTPException(status_code=409, detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts")
-    if latest_existing_attempt.get("handoff_state") == "failure" and latest_failure_summary and not latest_failure_summary.get("retryable", False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts",
+        )
+    if (
+        latest_existing_attempt.get("handoff_state") == "failure"
+        and latest_failure_summary
+        and not latest_failure_summary.get("retryable", False)
+    ):
         raise HTTPException(
             status_code=409,
             detail=f"Latest connector failure is terminal ({latest_failure_summary.get('failure_class')}); retry is not allowed",
@@ -1018,9 +1187,13 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
     attempt_origin = "admin" if approve_request.admin_retry else "approval"
     if manual_retry:
         if not approve_request.admin_retry:
-            raise HTTPException(status_code=403, detail="Manual retries require an admin or maintainer role")
+            raise HTTPException(
+                status_code=403, detail="Manual retries require an admin or maintainer role"
+            )
         if not _is_admin_role(actor_role):
-            raise HTTPException(status_code=403, detail="Admin retry requires admin or maintainer role")
+            raise HTTPException(
+                status_code=403, detail="Admin retry requires admin or maintainer role"
+            )
 
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
@@ -1044,7 +1217,11 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 },
                 conn,
                 adapter,
-                retry_attempts=(1 if settings.edge_mode_enabled else min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining)),
+                retry_attempts=(
+                    1
+                    if settings.edge_mode_enabled
+                    else min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining)
+                ),
                 retry_interval_s=settings.pm_handoff_retry_interval_s,
             )
             status = "approved" if result.get("handoff_complete") else "pending"
@@ -1054,7 +1231,12 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 approved_by,
                 result.get("wo_id"),
                 status,
-                _append_approval_metadata(proposal.get("metadata"), approved_by, result.get("_attempts") or [], origin=attempt_origin),
+                _append_approval_metadata(
+                    proposal.get("metadata"),
+                    approved_by,
+                    result.get("_attempts") or [],
+                    origin=attempt_origin,
+                ),
             )
         finally:
             try:
@@ -1077,7 +1259,9 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
@@ -1101,7 +1285,13 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             queued_offline=False,
         )
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             502,
             detail,
@@ -1151,7 +1341,9 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, exc.attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, exc.attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
@@ -1167,7 +1359,13 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             queued_offline=False,
         )
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             503,
             detail,
@@ -1218,7 +1416,9 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
@@ -1242,7 +1442,13 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
             queued_offline=False,
         )
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             503 if failure_summary.get("retryable") else 502,
             detail,
