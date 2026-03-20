@@ -1,6 +1,10 @@
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
     CMMSAdapterError,
+    CMMSConfigurationError,
+    CMMSPayloadError,
+    cmms_failure_summary_from_error,
+    normalize_cmms_failure_summary,
     CMMSUnavailableError,
     UnsupportedBackendError,
     create_cmms_adapter,
@@ -18,6 +22,10 @@ from maintenance_intelligence.cmms.adapter import (
 __all__ = [
     "CMMSAdapter",
     "CMMSAdapterError",
+    "CMMSConfigurationError",
+    "CMMSPayloadError",
+    "cmms_failure_summary_from_error",
+    "normalize_cmms_failure_summary",
     "CMMSUnavailableError",
     "UnsupportedBackendError",
     "create_cmms_adapter",

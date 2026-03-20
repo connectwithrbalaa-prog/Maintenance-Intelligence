@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph ImplementedNow[Implemented Now]
+        A1[Event driven RCA pipeline]
+        A2[Context assembly with signals and hybrid RAG]
+        A3[Structured RCA outputs and run summaries]
+        A4[PM proposal analysis and approval APIs]
+        A5[Connector framework with Maximo SAP PM and ServiceNow scaffolds]
+        A6[Portal visibility notifications slice edge replay and observability]
+    end
+
+    subgraph PendingBRD[Pending BRD Closure Work]
+        B1[Production auth tenant isolation and scoped RBAC]
+        B2[Final acceptance and closure for governed cache pipeline]
+        B3[Final hardening and acceptance for connector framework]
+        B4[Broader notification triggers more channels suppression and escalation]
+        B5[Domain packs asset taxonomy and reusable guidance]
+        B6[Lineage redaction and source quality indicators]
+    end
+
+    A1 --> A2 --> A3 --> A4 --> A5 --> A6
+    A2 -. enables .-> B5
+    A3 -. requires governance .-> B6
+    A4 -. depends on .-> B1
+    A5 -. closeout .-> B3
+    A6 -. extend .-> B4
+    A2 -. closeout .-> B2
+
+    classDef implemented fill:#dcfce7,stroke:#166534,color:#1f2937,stroke-width:1.5px;
+    classDef pending fill:#fee2e2,stroke:#b91c1c,color:#1f2937,stroke-width:1.5px;
+
+    class A1,A2,A3,A4,A5,A6 implemented;
+    class B1,B2,B3,B4,B5,B6 pending;

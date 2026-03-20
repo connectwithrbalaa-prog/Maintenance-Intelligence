@@ -6,8 +6,8 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
+    CMMSConfigurationError,
     CMMSPayloadError,
-    CMMSUnavailableError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -78,7 +78,11 @@ class SAPPMCMMSAdapter(CMMSAdapter):
         self.username = getattr(settings, "sap_pm_username", None)
         self.password = getattr(settings, "sap_pm_password", None)
         self.timeout_s = getattr(settings, "sap_pm_timeout_s", 15)
-        auth = httpx.BasicAuth(self.username, self.password) if self.username and self.password else None
+        auth = (
+            httpx.BasicAuth(self.username, self.password)
+            if self.username and self.password
+            else None
+        )
         self.client = client or httpx.Client(timeout=self.timeout_s, auth=auth)
 
     def _headers(self) -> Dict[str, str]:
@@ -89,11 +93,8 @@ class SAPPMCMMSAdapter(CMMSAdapter):
 
     def _endpoint(self) -> str:
         if not self.base_url:
-            raise CMMSUnavailableError("SAP PM backend is not configured: set MI_SAP_PM_BASE_URL")
-        return (
-            f"{self.base_url.rstrip('/')}/sap/opu/odata/sap/"
-            "ZMI_WORKORDER_SRV/WorkOrders"
-        )
+            raise CMMSConfigurationError("SAP PM backend is not configured: set MI_SAP_PM_BASE_URL")
+        return f"{self.base_url.rstrip('/')}/sap/opu/odata/sap/" "ZMI_WORKORDER_SRV/WorkOrders"
 
     def _map_recommendation(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
         return {

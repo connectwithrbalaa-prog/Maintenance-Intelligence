@@ -6,7 +6,7 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
-    CMMSUnavailableError,
+    CMMSConfigurationError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -72,7 +72,7 @@ class MaximoCMMSAdapter(CMMSAdapter):
 
     def _endpoint(self) -> str:
         if not self.base_url:
-            raise CMMSUnavailableError("Maximo backend is not configured: set MI_MAXIMO_BASE_URL")
+            raise CMMSConfigurationError("Maximo backend is not configured: set MI_MAXIMO_BASE_URL")
         return f"{self.base_url.rstrip('/')}/oslc/os/mxwo"
 
     def _map_recommendation(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,7 +110,13 @@ class MaximoCMMSAdapter(CMMSAdapter):
                     status_fields=("status",),
                     workorder_created_fields=("workorder_created_at", "created_at"),
                     handoff_completed_fields=("handoff_completed_at", "statusdate", "changedate"),
-                    workorder_completed_fields=("workorder_completed_at", "actfinish", "completed_at", "closed_at", "finishdate"),
+                    workorder_completed_fields=(
+                        "workorder_completed_at",
+                        "actfinish",
+                        "completed_at",
+                        "closed_at",
+                        "finishdate",
+                    ),
                     default_status="WAPPR",
                 ),
                 "request": payload,

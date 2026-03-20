@@ -6,7 +6,7 @@ import httpx
 
 from maintenance_intelligence.cmms.adapter import (
     CMMSAdapter,
-    CMMSUnavailableError,
+    CMMSConfigurationError,
     normalize_work_order_result,
     parse_json_response_body,
     post_json_request,
@@ -69,7 +69,11 @@ class ServiceNowCMMSAdapter(CMMSAdapter):
         self.username = getattr(settings, "servicenow_username", None)
         self.password = getattr(settings, "servicenow_password", None)
         self.timeout_s = getattr(settings, "servicenow_timeout_s", 15)
-        auth = httpx.BasicAuth(self.username, self.password) if self.username and self.password else None
+        auth = (
+            httpx.BasicAuth(self.username, self.password)
+            if self.username and self.password
+            else None
+        )
         self.client = client or httpx.Client(timeout=self.timeout_s, auth=auth)
 
     def _headers(self) -> Dict[str, str]:
@@ -80,7 +84,9 @@ class ServiceNowCMMSAdapter(CMMSAdapter):
 
     def _endpoint(self) -> str:
         if not self.base_url:
-            raise CMMSUnavailableError("ServiceNow backend is not configured: set MI_SERVICENOW_BASE_URL")
+            raise CMMSConfigurationError(
+                "ServiceNow backend is not configured: set MI_SERVICENOW_BASE_URL"
+            )
         return f"{self.base_url.rstrip('/')}/api/now/table/{self.table}"
 
     def _map_recommendation(self, recommendation: Dict[str, Any]) -> Dict[str, Any]:
@@ -126,7 +132,11 @@ class ServiceNowCMMSAdapter(CMMSAdapter):
                     wo_id_fields=("number", "sys_id"),
                     status_fields=("state_display", "state", "status"),
                     message_fields=("message", "status_message"),
-                    workorder_created_fields=("sys_created_on", "opened_at", "workorder_created_at"),
+                    workorder_created_fields=(
+                        "sys_created_on",
+                        "opened_at",
+                        "workorder_created_at",
+                    ),
                     handoff_completed_fields=("sys_created_on", "opened_at"),
                     workorder_completed_fields=("closed_at", "work_end", "workorder_completed_at"),
                     default_status="NEW",

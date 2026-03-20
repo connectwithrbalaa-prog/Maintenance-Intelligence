@@ -10,6 +10,7 @@ test('portal analytics: switches asset, operator, and org outcome views', async 
 	const outcomesPanel = page.locator('.outcomes-panel');
   const cmmsHealthCard = outcomesPanel.locator('.compare-card').filter({ hasText: 'CMMS handoff health' });
   const cmmsRetryCard = outcomesPanel.locator('.compare-card').filter({ hasText: 'CMMS retry pressure' });
+  const cmmsFailureSplitCard = outcomesPanel.locator('.compare-card').filter({ hasText: 'CMMS failure split' });
   const cmmsAssetCard = outcomesPanel.locator('.compare-card').filter({ hasText: 'CMMS breakdown by asset' });
   const cmmsBackendCard = outcomesPanel.locator('.compare-card').filter({ hasText: 'CMMS breakdown by backend' });
 
@@ -26,6 +27,9 @@ test('portal analytics: switches asset, operator, and org outcome views', async 
   await expect(cmmsRetryCard.getByText('Limit reached 1')).toBeVisible();
   await expect(cmmsRetryCard.getByText('Avg lead time 8m')).toBeVisible();
   await expect(cmmsRetryCard.getByText('Source outcomes.cmms_summary')).toBeVisible();
+  await expect(cmmsFailureSplitCard).toBeVisible();
+  await expect(cmmsFailureSplitCard.getByText('Retryable 1')).toBeVisible();
+  await expect(cmmsFailureSplitCard.getByText('Terminal 0')).toBeVisible();
   await expect(cmmsAssetCard).toBeVisible();
   await expect(cmmsAssetCard.getByText('PUMP-202')).toBeVisible();
   await expect(cmmsAssetCard.getByText('PUMP-101')).toBeVisible();

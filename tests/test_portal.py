@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import portal as portal_mod
+from maintenance_intelligence.services import notifications as notifications_mod
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-
 
 READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
 
@@ -85,8 +85,22 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert "Lifecycle mappings" in page.text
     assert "Handoff provenance" in page.text
     assert "Connector provenance summary" in page.text
+    assert "Failure class" in page.text
+    assert "Retryability" in page.text
+    assert "CMMS failure split" in page.text
+    assert "Retryable" in page.text
+    assert "Terminal" in page.text
+    assert "Notification delivery" in page.text
+    assert "Notification routes" in page.text
+    assert "All statuses" in page.text
+    assert "Filter org id" in page.text
+    assert "Filter site id" in page.text
+    assert "Response code" in page.text
+    assert "Error detail" in page.text
     assert "loadEdgeStatus" in page.text
     assert "/api/v1/portal/edge-status" in page.text
+    assert "/api/v1/portal/notifications" in page.text
+    assert "/api/v1/portal/notification-routes" in page.text
     assert "/api/v1/agents/pm/connectors" in page.text
 
     runs = client.get("/api/v1/portal/runs", headers=READ_HEADERS)
@@ -101,7 +115,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail.status_code == 200
     detail_payload = detail.json()
     assert detail_payload["structured"]["hypothesis"] == ["Bearing wear is increasing vibration"]
-    assert detail_payload["structured"]["root_causes"] == ["Bearing degradation from lubrication loss"]
+    assert detail_payload["structured"]["root_causes"] == [
+        "Bearing degradation from lubrication loss"
+    ]
     assert detail_payload["structured"]["contributing_factors"] == ["High ambient temperature"]
     assert detail_payload["structured"]["evidence_ids"] == ["EV-9", "DOC-1", "SIG-1"]
     assert detail_payload["model"]["latency_ms"] == 812
@@ -110,7 +126,9 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
     assert detail_payload["fleet_context_summary"]["external_ref_count"] == 1
     assert detail_payload["context_items"]["doc_chunks"][0]["source_scope"] == "fleet"
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": "PUMP-101"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 200
     latest_payload = latest.json()
     assert latest_payload["run_id"] == "RUN-123"
@@ -151,7 +169,12 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
     assert payload[0]["summary"] == ""
     assert payload[0]["hypothesis"] == []
     assert payload[0]["context_meta"] == {}
-    assert payload[0]["model"] == {"name": "", "version": "", "latency_ms": None, "confidence": None}
+    assert payload[0]["model"] == {
+        "name": "",
+        "version": "",
+        "latency_ms": None,
+        "confidence": None,
+    }
 
 
 def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
@@ -203,6 +226,607 @@ def test_portal_edge_status_reports_buffered_backlog(tmp_path, monkeypatch):
     assert payload["last_error"] == "central store unavailable"
 
 
+def test_portal_notifications_list_recent_deliveries_without_triggering_new_send(
+    tmp_path, monkeypatch
+):
+    buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    command_buffer_path = tmp_path / "edge" / "edge-command.sqlite3"
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_BUFFER_PATH", str(buffer_path))
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(command_buffer_path))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "demo-org": {
+                    "webhook_url": "https://hooks.example.test/edge",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    deliveries = []
+
+    def fake_send(url, payload, timeout_s):
+        deliveries.append({"url": url, "payload": payload, "timeout_s": timeout_s})
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    buffer = EdgeEventBuffer(str(buffer_path), max_events=10)
+    command_buffer = EdgeCommandBuffer(str(command_buffer_path))
+    buffer.buffer_event(
+        {
+            "event_id": "EV-OFFLINE",
+            "occurred_at": "2026-03-15T10:00:00Z",
+            "org_id": "demo-org",
+            "asset_id": "PUMP-101",
+            "kind": "anomaly",
+            "severity": "high",
+            "summary": "Offline buffered event",
+            "details": {"source": "edge"},
+            "lineage": {"channel": "kafka"},
+        },
+        error="central store unavailable",
+    )
+    command_buffer.enqueue_command(
+        "REC-1",
+        {
+            "proposal_id": "REC-1",
+            "recommendation_id": "REC-1",
+            "recommendation": {"id": "REC-1", "asset_id": "PUMP-101"},
+        },
+        error="cmms offline",
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="critical",
+        summary="Edge connectivity is offline; buffered events=1, queued handoffs=1",
+        org_id="demo-org",
+        dedupe_key="edge:demo-org:offline:central store unavailable",
+        payload={
+            "connectivity_status": "offline",
+            "buffered_event_count": 1,
+            "queued_command_count": 1,
+            "last_error": "central store unavailable",
+        },
+    )
+
+    client = TestClient(app)
+    edge_response = client.get(
+        "/api/v1/portal/edge-status", headers={**READ_HEADERS, "x-user-org": "demo-org"}
+    )
+    notifications_response = client.get("/api/v1/portal/notifications", headers=READ_HEADERS)
+
+    assert edge_response.status_code == 200
+    assert notifications_response.status_code == 200
+    assert len(deliveries) == 1
+    assert deliveries[0]["payload"]["event_type"] == "edge.degraded"
+    payload = notifications_response.json()
+    assert payload[0]["status"] == "sent"
+    assert payload[0]["event_type"] == "edge.degraded"
+    assert payload[0]["destination"] == "hooks.example.test"
+
+
+def test_portal_notifications_support_filters_and_failure_first_order(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        site_id="site-a",
+        dedupe_key="cmms-terminal-filter-test",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        site_id="site-a",
+        dedupe_key="edge-filter-test",
+        payload={
+            "connectivity_status": "degraded",
+            "buffered_event_count": 2,
+            "queued_command_count": 1,
+            "transition_count": 9,
+        },
+    )
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="info",
+        summary="Info-only notification",
+        org_id="demo-org",
+        site_id="site-b",
+        dedupe_key="cmms-info-filter-test",
+        payload={"proposal_id": "REC-2"},
+    )
+
+    client = TestClient(app)
+
+    all_response = client.get("/api/v1/portal/notifications?limit=10", headers=READ_HEADERS)
+    failed_response = client.get(
+        "/api/v1/portal/notifications?limit=10&status=failed", headers=READ_HEADERS
+    )
+    critical_response = client.get(
+        "/api/v1/portal/notifications?limit=10&severity=critical", headers=READ_HEADERS
+    )
+    event_response = client.get(
+        "/api/v1/portal/notifications?limit=10&event_type=edge.degraded", headers=READ_HEADERS
+    )
+    destination_response = client.get(
+        "/api/v1/portal/notifications?limit=10&destination=hooks.example.test", headers=READ_HEADERS
+    )
+    edge_state_response = client.get(
+        "/api/v1/portal/notifications?limit=10&event_type=edge.degraded&edge_state=degraded",
+        headers=READ_HEADERS,
+    )
+    route_response = client.get(
+        "/api/v1/portal/notifications?limit=10&route_id=default&sort=recent", headers=READ_HEADERS
+    )
+    org_response = client.get(
+        "/api/v1/portal/notifications?limit=10&org_id=demo-org", headers=READ_HEADERS
+    )
+    site_response = client.get(
+        "/api/v1/portal/notifications?limit=10&site_id=site-a", headers=READ_HEADERS
+    )
+    missing_site_response = client.get(
+        "/api/v1/portal/notifications?limit=10&site_id=site-missing", headers=READ_HEADERS
+    )
+
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert all_payload[0]["status"] == "failed"
+    assert all_payload[0]["event_type"] == "edge.degraded"
+
+    assert failed_response.status_code == 200
+    failed_payload = failed_response.json()
+    assert len(failed_payload) == 1
+    assert failed_payload[0]["response_status_code"] == 503
+    assert failed_payload[0]["delivery_error"] == "gateway down"
+
+    assert critical_response.status_code == 200
+    critical_payload = critical_response.json()
+    assert len(critical_payload) == 1
+    assert critical_payload[0]["event_type"] == "cmms.terminal_failure"
+
+    assert event_response.status_code == 200
+    event_payload = event_response.json()
+    assert len(event_payload) == 1
+    assert event_payload[0]["status"] == "failed"
+
+    assert destination_response.status_code == 200
+    destination_payload = destination_response.json()
+    assert len(destination_payload) == 2
+    assert all(item["destination"] == "hooks.example.test" for item in destination_payload)
+
+    assert edge_state_response.status_code == 200
+    edge_state_payload = edge_state_response.json()
+    assert len(edge_state_payload) == 1
+    assert edge_state_payload[0]["event_type"] == "edge.degraded"
+    assert edge_state_payload[0]["edge_connectivity_status"] == "degraded"
+    assert edge_state_payload[0]["edge_buffered_event_count"] == 2
+    assert edge_state_payload[0]["edge_queued_command_count"] == 1
+    assert edge_state_payload[0]["edge_transition_count"] == 9
+
+    assert route_response.status_code == 200
+    route_payload = route_response.json()
+    assert all(item["route_id"] == "default" for item in route_payload)
+
+    assert org_response.status_code == 200
+    org_payload = org_response.json()
+    assert len(org_payload) == 3
+    assert all(item["org_id"] == "demo-org" for item in org_payload)
+
+    assert site_response.status_code == 200
+    site_payload = site_response.json()
+    assert len(site_payload) == 2
+    assert all(item["site_id"] == "site-a" for item in site_payload)
+
+    assert missing_site_response.status_code == 200
+    assert missing_site_response.json() == []
+
+
+def test_portal_notifications_org_filter_remains_query_driven_with_identity_headers(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure for demo org",
+        org_id="demo-org",
+        dedupe_key="identity-org-filter-demo",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure for ops org",
+        org_id="ops-demo",
+        dedupe_key="identity-org-filter-ops",
+        payload={"proposal_id": "REC-2"},
+    )
+
+    client = TestClient(app)
+    headers = {**READ_HEADERS, "x-user-org": "demo-org"}
+
+    filtered_response = client.get(
+        "/api/v1/portal/notifications?limit=10&org_id=ops-demo",
+        headers=headers,
+    )
+    all_response = client.get("/api/v1/portal/notifications?limit=10&org_id=all", headers=headers)
+
+    assert filtered_response.status_code == 200
+    filtered_payload = filtered_response.json()
+    assert len(filtered_payload) == 1
+    assert filtered_payload[0]["org_id"] == "ops-demo"
+
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert len(all_payload) == 2
+    assert {item["org_id"] for item in all_payload} == {"demo-org", "ops-demo"}
+
+
+def test_portal_notifications_site_filter_remains_query_driven_with_identity_headers(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure for demo site",
+        org_id="demo-org",
+        site_id="site-a",
+        dedupe_key="identity-site-filter-demo",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure for ops site",
+        org_id="ops-demo",
+        site_id="site-b",
+        dedupe_key="identity-site-filter-ops",
+        payload={"proposal_id": "REC-2"},
+    )
+
+    client = TestClient(app)
+    headers = {**READ_HEADERS, "x-user-org": "demo-org"}
+
+    filtered_response = client.get(
+        "/api/v1/portal/notifications?limit=10&site_id=site-b",
+        headers=headers,
+    )
+    all_response = client.get("/api/v1/portal/notifications?limit=10&site_id=all", headers=headers)
+
+    assert filtered_response.status_code == 200
+    filtered_payload = filtered_response.json()
+    assert len(filtered_payload) == 1
+    assert filtered_payload[0]["site_id"] == "site-b"
+    assert filtered_payload[0]["org_id"] == "ops-demo"
+
+    assert all_response.status_code == 200
+    all_payload = all_response.json()
+    assert len(all_payload) == 2
+    assert {item["site_id"] for item in all_payload} == {"site-a", "site-b"}
+
+
+def test_portal_notifications_unknown_sort_falls_back_to_failures_first(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        dedupe_key="sort-fallback-terminal",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        dedupe_key="sort-fallback-edge",
+        payload={"connectivity_status": "degraded"},
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/notifications?limit=10&sort=unexpected_value",
+        headers=READ_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 2
+    assert payload[0]["status"] == "failed"
+    assert payload[0]["event_type"] == "edge.degraded"
+
+
+def test_portal_notifications_unknown_edge_state_falls_back_to_all(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        dedupe_key="edge-fallback-terminal",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        dedupe_key="edge-fallback-edge",
+        payload={"connectivity_status": "degraded"},
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/notifications?limit=10&edge_state=not-a-state",
+        headers=READ_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 2
+    assert {item["event_type"] for item in payload} == {
+        "cmms.terminal_failure",
+        "edge.degraded",
+    }
+
+
+def test_portal_notifications_unknown_status_falls_back_to_all(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        dedupe_key="status-fallback-terminal",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        dedupe_key="status-fallback-edge",
+        payload={"connectivity_status": "degraded"},
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/notifications?limit=10&status=not-a-status",
+        headers=READ_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 2
+    assert {item["event_type"] for item in payload} == {
+        "cmms.terminal_failure",
+        "edge.degraded",
+    }
+
+
+def test_portal_notifications_unknown_severity_falls_back_to_all(tmp_path, monkeypatch):
+    monkeypatch.setenv("MI_NOTIFICATION_LOG_PATH", str(tmp_path / "notifications.jsonl"))
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            {
+                "default": {
+                    "webhook_url": "https://hooks.example.test/notify",
+                    "minimum_severity": "warning",
+                }
+            }
+        ),
+    )
+
+    def fake_send(url, payload, timeout_s):
+        if payload["event_type"] == "edge.degraded":
+            return False, 503, "gateway down"
+        return True, 202, ""
+
+    monkeypatch.setattr(notifications_mod, "_send_webhook", fake_send)
+
+    notifications_mod.emit_notification(
+        event_type="cmms.terminal_failure",
+        severity="critical",
+        summary="Terminal CMMS failure",
+        org_id="demo-org",
+        dedupe_key="severity-fallback-terminal",
+        payload={"proposal_id": "REC-1"},
+    )
+    notifications_mod.emit_notification(
+        event_type="edge.degraded",
+        severity="warning",
+        summary="Edge degraded",
+        org_id="demo-org",
+        dedupe_key="severity-fallback-edge",
+        payload={"connectivity_status": "degraded"},
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/notifications?limit=10&severity=not-a-severity",
+        headers=READ_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 2
+    assert {item["event_type"] for item in payload} == {
+        "cmms.terminal_failure",
+        "edge.degraded",
+    }
+
+
+def test_portal_notification_routes_and_preview_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MI_NOTIFICATION_WEBHOOK_ROUTES",
+        json.dumps(
+            [
+                {
+                    "route_id": "default",
+                    "webhook_url": "https://hooks.example.test/default",
+                    "minimum_severity": "warning",
+                },
+                {
+                    "route_id": "org-terminal",
+                    "webhook_url": "https://hooks.example.test/org-terminal",
+                    "org_ids": ["demo-org"],
+                    "event_types": ["cmms.terminal_failure"],
+                    "priority": 1,
+                },
+                {
+                    "route_id": "site-critical",
+                    "webhook_url": "https://hooks.example.test/site-critical",
+                    "org_ids": ["demo-org"],
+                    "site_ids": ["site-a"],
+                    "event_types": ["cmms.terminal_failure"],
+                    "severities": ["critical"],
+                    "priority": 2,
+                },
+            ]
+        ),
+    )
+
+    client = TestClient(app)
+
+    routes_response = client.get("/api/v1/portal/notification-routes", headers=READ_HEADERS)
+    preview_response = client.get(
+        "/api/v1/portal/notification-routes/preview?org_id=demo-org&site_id=site-a&event_type=cmms.terminal_failure&severity=critical",
+        headers=READ_HEADERS,
+    )
+
+    assert routes_response.status_code == 200
+    routes_payload = routes_response.json()
+    assert routes_payload[0]["route_id"] == "site-critical"
+    assert routes_payload[0]["specificity"] == 4
+
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["selected_routes"][0]["route_id"] == "site-critical"
+    evaluated = {item["route_id"]: item for item in preview_payload["evaluated_routes"]}
+    assert "lower_specificity_than_selected" in evaluated["org-terminal"]["reasons"]
+
+
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
@@ -216,7 +840,9 @@ def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monk
     assert detail.json()["detail"] == "Run summary is malformed"
 
 
-def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(tmp_path, monkeypatch):
+def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(
+    tmp_path, monkeypatch
+):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
     (run_dir / "RUN-PARTIAL.json").write_text(
@@ -302,7 +928,9 @@ def test_portal_latest_run_lookup_rejects_invalid_asset_id(tmp_path, monkeypatch
 
     client = TestClient(app)
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": " PUMP-101"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": " PUMP-101"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 400
     assert latest.json()["detail"] == "Invalid asset id"
 
@@ -325,7 +953,9 @@ def test_portal_latest_run_lookup_returns_404_when_asset_is_missing(tmp_path, mo
 
     client = TestClient(app)
 
-    latest = client.get("/api/v1/portal/runs/latest", params={"asset_id": "PUMP-999"}, headers=READ_HEADERS)
+    latest = client.get(
+        "/api/v1/portal/runs/latest", params={"asset_id": "PUMP-999"}, headers=READ_HEADERS
+    )
     assert latest.status_code == 404
     assert latest.json()["detail"] == "Run summary not found for asset"
 
@@ -346,8 +976,18 @@ def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, mon
                     "repair_plan": {
                         "plan_id": "RP-123",
                         "procedure_steps": [
-                            {"seq": 1, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15},
-                            {"seq": 2, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90},
+                            {
+                                "seq": 1,
+                                "action": "Isolate the pump",
+                                "safety_note": "Apply LOTO",
+                                "estimated_mins": 15,
+                            },
+                            {
+                                "seq": 2,
+                                "action": "Replace the bearing",
+                                "safety_note": "Verify lift points",
+                                "estimated_mins": 90,
+                            },
                         ],
                         "tools_required": ["Torque wrench", "Laser alignment kit"],
                         "safety_requirements": ["LOTO required"],
@@ -411,10 +1051,22 @@ def test_portal_run_detail_includes_persisted_repair_plan_snapshot(tmp_path, mon
     payload = detail.json()
     assert payload["repair_plan_id"] == "RP-123"
     assert payload["repair_plan"]["plan_id"] == "RP-123"
-    assert payload["repair_plan"]["summary"] == "Replace the inboard bearing and re-align the shaft."
+    assert (
+        payload["repair_plan"]["summary"] == "Replace the inboard bearing and re-align the shaft."
+    )
     assert payload["repair_plan"]["procedure_steps"] == [
-        {"seq": 1.0, "action": "Isolate the pump", "safety_note": "Apply LOTO", "estimated_mins": 15.0},
-        {"seq": 2.0, "action": "Replace the bearing", "safety_note": "Verify lift points", "estimated_mins": 90.0},
+        {
+            "seq": 1.0,
+            "action": "Isolate the pump",
+            "safety_note": "Apply LOTO",
+            "estimated_mins": 15.0,
+        },
+        {
+            "seq": 2.0,
+            "action": "Replace the bearing",
+            "safety_note": "Verify lift points",
+            "estimated_mins": 90.0,
+        },
     ]
     assert payload["repair_plan"]["tools_required"] == ["Torque wrench", "Laser alignment kit"]
     assert payload["repair_plan"]["parts"][0]["name"] == "Bearing kit"
@@ -434,7 +1086,12 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
                     "repair_plan": {
                         "plan_id": "RP-FAIL",
                         "procedure_steps": [
-                            {"seq": 1, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30}
+                            {
+                                "seq": 1,
+                                "action": "Verify coupling alignment",
+                                "safety_note": "Check guards",
+                                "estimated_mins": 30,
+                            }
                         ],
                         "parts_list": [
                             {
@@ -450,7 +1107,11 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
         encoding="utf-8",
     )
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
-    monkeypatch.setattr(portal_mod, "get_repair_plan", lambda dsn, plan_id: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(
+        portal_mod,
+        "get_repair_plan",
+        lambda dsn, plan_id: (_ for _ in ()).throw(RuntimeError("db down")),
+    )
 
     client = TestClient(app)
 
@@ -462,14 +1123,21 @@ def test_portal_run_detail_keeps_structured_repair_plan_when_lookup_fails(tmp_pa
     assert payload["repair_plan"]["plan_id"] == "RP-FAIL"
     assert payload["repair_plan"]["load_error"] == "Repair plan lookup unavailable"
     assert payload["repair_plan"]["procedure_steps"] == [
-        {"seq": 1.0, "action": "Verify coupling alignment", "safety_note": "Check guards", "estimated_mins": 30.0}
+        {
+            "seq": 1.0,
+            "action": "Verify coupling alignment",
+            "safety_note": "Check guards",
+            "estimated_mins": 30.0,
+        }
     ]
 
 
 def test_portal_run_endpoints_require_authenticated_identity(tmp_path, monkeypatch):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
-    (run_dir / "RUN-123.json").write_text(json.dumps({"run_id": "RUN-123", "structured": {}}), encoding="utf-8")
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps({"run_id": "RUN-123", "structured": {}}), encoding="utf-8"
+    )
     monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
     monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
 
@@ -529,7 +1197,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Run comparison" in page.text
     assert "Compare against" in page.text
     assert "Confidence drift" in page.text
-    assert "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run." in page.text
+    assert (
+        "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run."
+        in page.text
+    )
     assert "Repair plan drift" in page.text
     assert "Repair procedure drift" in page.text
     assert "Repair parts drift" in page.text
@@ -551,26 +1222,35 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "data-compare-evidence-ref-type" in page.text
     assert "data-compare-evidence-side" in page.text
     assert "data-compare-evidence-run-id" in page.text
-    assert '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.' in page.text
+    assert (
+        '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.'
+        in page.text
+    )
     assert "Retry limit reached" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text
     assert "Approval history" in page.text
     assert "No approval attempts recorded yet." in page.text
     assert "Audit history stays in the current run view." in page.text
-    assert "Showing the in-app audit trail for ${escapeHtml(proposalId || \"this proposal\")}." in page.text
+    assert (
+        'Showing the in-app audit trail for ${escapeHtml(proposalId || "this proposal")}.'
+        in page.text
+    )
     assert "audit-item" in page.text
     assert "admin-origin" in page.text
     assert "audit-head" in page.text
     assert "audit-badge actor" in page.text
-    assert "Origin ${escapeHtml(attempt.origin || \"approval\")}" in page.text
-    assert "Actor ${escapeHtml(attempt.approved_by || \"Unknown approver\")}" in page.text
+    assert 'Origin ${escapeHtml(attempt.origin || "approval")}' in page.text
+    assert 'Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}' in page.text
     assert "origin-admin" in page.text
     assert "origin-approval" in page.text
     assert "Load more" in page.text
     assert "Loading more audit..." in page.text
     assert "All recorded audit attempts are visible." in page.text
-    assert "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts" in page.text
+    assert (
+        "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts"
+        in page.text
+    )
     assert "appendApprovalHistoryPage" in page.text
     assert "existingAttempts.concat" in page.text
     assert "history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}" in page.text
@@ -584,12 +1264,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Latest connector outcome" in page.text
     assert "Trace every approval and retry attempt without leaving the run view." in page.text
     assert "Handoff exceptions queue" in page.text
-    assert "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish." in page.text
+    assert (
+        "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish."
+        in page.text
+    )
     assert "Current proposal exception state" in page.text
     assert "Loading handoff exceptions" in page.text
     assert "Handoff exceptions unavailable" in page.text
     assert "No handoff exceptions right now" in page.text
-    assert "There are no PM proposals waiting on retry, escalation, or connector cleanup right now." in page.text
+    assert (
+        "There are no PM proposals waiting on retry, escalation, or connector cleanup right now."
+        in page.text
+    )
     assert "Current proposal needs attention first" in page.text
     assert "More urgent handoffs exist" in page.text
     assert "Current proposal is clear" in page.text
@@ -603,7 +1289,7 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "submitHandoffQueueRetry" in page.text
     assert "Run admin retry" in page.text
     assert "Open follow-through" in page.text
-    assert 'data-handoff-open-audit-run-id' in page.text
+    assert "data-handoff-open-audit-run-id" in page.text
     assert "Open audit trail" in page.text
     assert "Audit history stays in the current run view." in page.text
     assert "Queue view" in page.text
@@ -644,7 +1330,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "handoffRowMatchesAgeBucket" in page.text
     assert "Handoff queue age filters" in page.text
     assert "data-handoff-age-bucket" in page.text
-    assert "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}" in page.text
+    assert (
+        "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}"
+        in page.text
+    )
     assert "Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}" in page.text
     assert "Retries remaining ${escapeHtml(retriesRemaining)}" in page.text
     assert "Longest wait ${escapeHtml(longestWait)}" in page.text
@@ -675,7 +1364,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Admin role required for retry." in page.text
     assert "data-handoff-retry-proposal-id" in page.text
     assert "data-handoff-focus-run-id" in page.text
-    assert 'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {' in page.text
+    assert (
+        'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals", {'
+        in page.text
+    )
     assert "headers: portalIdentityHeaders()" in page.text
     assert "Live evidence" in page.text
     assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
@@ -699,7 +1391,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "latestEvidenceTrend" in page.text
     assert "rollupEvidenceTrend" in page.text
     assert "renderEvidenceTrendChip" in page.text
-    assert "Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
+    assert (
+        "Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6"
+        in page.text
+    )
     assert "renderEvidencePanel" in page.text
     assert "loadEvidenceSummary" in page.text
     assert "evidenceByAssetId" in page.text
@@ -707,12 +1402,18 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "evidenceErrorByAssetId" in page.text
     assert "/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
     assert "Asset triage queue" in page.text
-    assert "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first." in page.text
+    assert (
+        "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first."
+        in page.text
+    )
     assert "Current asset queue rank" in page.text
     assert "Loading triage queue" in page.text
     assert "Triage queue unavailable" in page.text
     assert "No triage pressure yet" in page.text
-    assert "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate." in page.text
+    assert (
+        "There are no prioritized assets in the current ranking window yet. The queue will populate as events, signals, and follow-through data accumulate."
+        in page.text
+    )
     assert "Current asset leads the queue" in page.text
     assert "Higher-pressure assets exist" in page.text
     assert "Current asset is outside the top queue" in page.text
@@ -757,10 +1458,19 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "data-triage-run-id" in page.text
     assert "data-triage-evidence-asset-id" in page.text
     assert "triageReportUrl" in page.text
-    assert 'return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;' in page.text
-    assert 'const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {' in page.text
+    assert (
+        'return `/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}`;'
+        in page.text
+    )
+    assert (
+        "const latestRun = await fetchJson(`/api/v1/portal/runs/latest?asset_id=${encodeURIComponent(normalizedAssetId)}`, {"
+        in page.text
+    )
     assert "headers: portalIdentityHeaders()" in page.text
-    assert "/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? \"true\" : \"false\"}" in page.text
+    assert (
+        '/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}'
+        in page.text
+    )
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
     assert "outcomesScopeSelect" in page.text
@@ -792,13 +1502,30 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "renderOutcomesPanel" in page.text
     assert "ensureOutcomesReport" in page.text
     assert "resetOutcomesReport" in page.text
-    assert 'state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {' in page.text
-    assert "Switch between asset, operator, and org lenses without leaving the run view." in page.text
-    assert "Start with the asset tied to this run, or compare another asset that already has live trend data." in page.text
-    assert "Follow the signed-in operator first, or switch to another operator with recorded feedback activity." in page.text
-    assert "Start with the current organization, or compare another org that already has live feedback activity." in page.text
+    assert (
+        "state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`, {"
+        in page.text
+    )
+    assert (
+        "Switch between asset, operator, and org lenses without leaving the run view." in page.text
+    )
+    assert (
+        "Start with the asset tied to this run, or compare another asset that already has live trend data."
+        in page.text
+    )
+    assert (
+        "Follow the signed-in operator first, or switch to another operator with recorded feedback activity."
+        in page.text
+    )
+    assert (
+        "Start with the current organization, or compare another org that already has live feedback activity."
+        in page.text
+    )
     assert "No live trends yet" in page.text
-    assert "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive." in page.text
+    assert (
+        "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive."
+        in page.text
+    )
     assert "No operator trends yet" in page.text
     assert "No organization trends yet" in page.text
     assert "Loading outcomes" in page.text
@@ -807,29 +1534,53 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "We could not load outcomes trends right now:" in page.text
     assert "Partial report" in page.text
     assert "Showing the nearest live series" in page.text
-    assert 'renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))' in page.text
-    assert "This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead." in page.text
-    assert "This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead." in page.text
+    assert (
+        'renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))'
+        in page.text
+    )
+    assert (
+        "This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead."
+        in page.text
+    )
+    assert (
+        "This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead."
+        in page.text
+    )
     assert "Workorder volume" in page.text
     assert "Feedback volume" in page.text
     assert "Acceptance rate" in page.text
     assert "Decision quality across the last ${outcomesWindow} days." in page.text
     assert "Waiting" in page.text
     assert "Peak daily volume" in page.text
-    assert "Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window." in page.text
-    assert "No accept or reject feedback was recorded for this asset in the current window." in page.text
+    assert (
+        "Range ${formatTrendValue(low, metricName, options)} to ${formatTrendValue(peak, metricName, options)} across the current window."
+        in page.text
+    )
+    assert (
+        "No accept or reject feedback was recorded for this asset in the current window."
+        in page.text
+    )
     assert "No work orders were recorded for this asset in the current window." in page.text
     assert "No feedback was recorded for this operator in the current window." in page.text
-    assert "No accept or reject decisions were recorded for this operator in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this operator in the current window."
+        in page.text
+    )
     assert "No feedback was recorded for this organization in the current window." in page.text
-    assert "No accept or reject decisions were recorded for this organization in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this organization in the current window."
+        in page.text
+    )
     assert "No acceptance decisions yet" in page.text
     assert "No work order volume yet" in page.text
     assert "No feedback yet" in page.text
     assert "chart-line" in page.text
     assert "chart-dot" in page.text
     assert "buildTrendSegments" in page.text
-    assert "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}" in page.text
+    assert (
+        "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}"
+        in page.text
+    )
 
 
 def test_portal_index_includes_feedback_loop_controls():
@@ -849,9 +1600,9 @@ def test_portal_index_includes_feedback_loop_controls():
     assert "No operator feedback recorded yet for this run." in page.text
     assert "Loading feedback history..." in page.text
     assert "Unable to load feedback history:" in page.text
-    assert 'Accept ${escapeHtml(counts.accept || 0)}' in page.text
-    assert 'Reject ${escapeHtml(counts.reject || 0)}' in page.text
-    assert 'Edited ${escapeHtml(counts.edited || 0)}' in page.text
+    assert "Accept ${escapeHtml(counts.accept || 0)}" in page.text
+    assert "Reject ${escapeHtml(counts.reject || 0)}" in page.text
+    assert "Edited ${escapeHtml(counts.edited || 0)}" in page.text
     assert "loadFeedbackHistory" in page.text
     assert "submitFeedback" in page.text
     assert "feedbackByRunId" in page.text
