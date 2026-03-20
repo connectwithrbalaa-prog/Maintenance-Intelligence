@@ -59,7 +59,9 @@ def test_factory_selects_sap_pm_backend_with_alias(monkeypatch):
 def test_factory_rejects_unknown_backend(monkeypatch):
     monkeypatch.setenv("MI_PM_CONNECTOR_BACKEND", "oracle")
 
-    with pytest.raises(UnsupportedBackendError, match="Supported backends: maximo, mock, sap_pm, servicenow"):
+    with pytest.raises(
+        UnsupportedBackendError, match="Supported backends: maximo, mock, sap_pm, servicenow"
+    ):
         create_cmms_adapter(Settings())
 
 
@@ -76,11 +78,20 @@ def test_discover_cmms_backends_reports_required_config_fields():
     )
 
     assert metadata["current_backend"] == "sap_pm"
-    sap_backend = next(item for item in metadata["supported_backends"] if item["backend"] == "sap_pm")
+    sap_backend = next(
+        item for item in metadata["supported_backends"] if item["backend"] == "sap_pm"
+    )
     assert sap_backend["configured"] is True
-    assert any(field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"] for field in sap_backend["config_fields"])
-    assert {entry["phase"]: entry["statuses"] for entry in sap_backend["lifecycle_statuses"]}["completed"] == ["CLSD", "TECO"]
-    maximo_backend = next(item for item in metadata["supported_backends"] if item["backend"] == "maximo")
+    assert any(
+        field["env_var"] == "MI_SAP_PM_BASE_URL" and field["required"]
+        for field in sap_backend["config_fields"]
+    )
+    assert {entry["phase"]: entry["statuses"] for entry in sap_backend["lifecycle_statuses"]}[
+        "completed"
+    ] == ["CLSD", "TECO"]
+    maximo_backend = next(
+        item for item in metadata["supported_backends"] if item["backend"] == "maximo"
+    )
     assert maximo_backend["configured"] is False
 
 
@@ -129,8 +140,12 @@ def test_shared_http_helpers_post_and_parse_json():
 
 
 def test_normalize_cmms_failure_summary_distinguishes_payload_and_transient_failures():
-    payload_failure = normalize_cmms_failure_summary(detail="CMMS backend returned malformed payload", handoff_state="failure")
-    transient_failure = normalize_cmms_failure_summary(detail="temporary outage", handoff_state="failure")
+    payload_failure = normalize_cmms_failure_summary(
+        detail="CMMS backend returned malformed payload", handoff_state="failure"
+    )
+    transient_failure = normalize_cmms_failure_summary(
+        detail="temporary outage", handoff_state="failure"
+    )
 
     assert payload_failure == {
         "failure_class": "payload",
@@ -155,7 +170,12 @@ def test_submit_work_order_with_retry_marks_payload_failures_as_terminal():
             return "bad-payload"
 
     with pytest.raises(CMMSPayloadError) as exc_info:
-        submit_work_order_with_retry(BadAdapter(), {"id": "REC-1", "asset_id": "PUMP-101"}, retry_attempts=3, retry_interval_s=0)
+        submit_work_order_with_retry(
+            BadAdapter(),
+            {"id": "REC-1", "asset_id": "PUMP-101"},
+            retry_attempts=3,
+            retry_interval_s=0,
+        )
 
     exc = exc_info.value
     assert exc.failure_summary["failure_class"] == "payload"
@@ -179,7 +199,9 @@ def test_submit_work_order_with_retry_retries_transient_failures_until_success()
             return {"wo_id": "WO-REC-1", "status": "DRAFT", "backend": self.backend_name}
 
     adapter = FlakyAdapter()
-    result = submit_work_order_with_retry(adapter, {"id": "REC-1", "asset_id": "PUMP-101"}, retry_attempts=3, retry_interval_s=0)
+    result = submit_work_order_with_retry(
+        adapter, {"id": "REC-1", "asset_id": "PUMP-101"}, retry_attempts=3, retry_interval_s=0
+    )
 
     assert adapter.calls == 3
     assert len(result["_attempts"]) == 3
@@ -237,7 +259,9 @@ def test_lifecycle_phase_for_status_uses_connector_mapping():
 
 
 def test_normalize_work_order_result_preserves_connector_phase_hints_on_second_pass():
-    first_pass = MockCMMSAdapter(Settings()).create_work_order({"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"})
+    first_pass = MockCMMSAdapter(Settings()).create_work_order(
+        {"id": "REC-1", "asset_id": "PUMP-101", "title": "Inspect seal"}
+    )
 
     second_pass = normalize_work_order_lifecycle(first_pass)
 
@@ -247,7 +271,9 @@ def test_normalize_work_order_result_preserves_connector_phase_hints_on_second_p
 def test_mock_adapter_returns_normalized_work_order():
     adapter = MockCMMSAdapter(Settings())
 
-    result = adapter.create_work_order({"id": "REC-12345678", "asset_id": "PUMP-101", "title": "Inspect seal"})
+    result = adapter.create_work_order(
+        {"id": "REC-12345678", "asset_id": "PUMP-101", "title": "Inspect seal"}
+    )
 
     assert result["wo_id"] == "WO-REC-1234"
     assert result["status"] == "DRAFT"
@@ -284,7 +310,11 @@ def test_maximo_adapter_maps_and_parses_response(monkeypatch):
 
     client = FakeClient()
     adapter = MaximoCMMSAdapter(
-        Settings(maximo_base_url="https://maximo.example.test", maximo_site="PLANT1", maximo_api_key="secret"),
+        Settings(
+            maximo_base_url="https://maximo.example.test",
+            maximo_site="PLANT1",
+            maximo_api_key="secret",
+        ),
         client=client,
     )
 
@@ -386,7 +416,10 @@ def test_sap_pm_adapter_maps_and_parses_odata_response():
         }
     )
 
-    assert client.calls[0]["url"] == "https://sap.example.test/sap/opu/odata/sap/ZMI_WORKORDER_SRV/WorkOrders"
+    assert (
+        client.calls[0]["url"]
+        == "https://sap.example.test/sap/opu/odata/sap/ZMI_WORKORDER_SRV/WorkOrders"
+    )
     assert client.calls[0]["json"]["Equipment"] == "PUMP-101"
     assert client.calls[0]["json"]["Plant"] == "1710"
     assert client.calls[0]["json"]["OrderType"] == "PM02"

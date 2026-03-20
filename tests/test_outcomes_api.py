@@ -8,7 +8,6 @@ from maintenance_intelligence.api.main import app
 from maintenance_intelligence.api import outcomes as outcomes_mod
 from maintenance_intelligence.api import reports as reports_mod
 
-
 READ_HEADERS = {"x-user-id": "viewer-1", "x-user-role": "viewer"}
 
 
@@ -60,7 +59,14 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
             "summary": {
                 "total_assets": 2,
                 "status_counts": {"critical": 1, "elevated": 1, "watch": 0, "normal": 0},
-                "top_assets": [{"asset_id": "PUMP-202", "score": 78.0, "status": "critical", "reasons": ["Temperature remains high"]}],
+                "top_assets": [
+                    {
+                        "asset_id": "PUMP-202",
+                        "score": 78.0,
+                        "status": "critical",
+                        "reasons": ["Temperature remains high"],
+                    }
+                ],
                 "last_evaluated_at": "2026-03-15T12:00:00Z",
             },
             "asset_metrics": {
@@ -80,28 +86,122 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     fake_conn = FakeConnection(
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 2), ("reject", 1)],
-            "FROM workorders w\n                    JOIN events e": lambda: (_ for _ in ()).throw(RuntimeError("join unavailable")),
+            "FROM workorders w\n                    JOIN events e": lambda: (_ for _ in ()).throw(
+                RuntimeError("join unavailable")
+            ),
             "SELECT asset_id, occurred_at\n                    FROM events": lambda: [
                 ("PUMP-101", datetime(2026, 3, 13, 8, 0, tzinfo=timezone.utc)),
                 ("PUMP-101", datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc)),
                 ("PUMP-101", datetime(2026, 3, 14, 12, 0, tzinfo=timezone.utc)),
             ],
             "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: [
-                ("WO-1", datetime(2026, 3, 14, 8, 0, tzinfo=timezone.utc), datetime(2026, 3, 14, 14, 0, tzinfo=timezone.utc), "COMPLETE"),
-                ("WO-2", datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc), datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc), "CLOSED"),
+                (
+                    "WO-1",
+                    datetime(2026, 3, 14, 8, 0, tzinfo=timezone.utc),
+                    datetime(2026, 3, 14, 14, 0, tzinfo=timezone.utc),
+                    "COMPLETE",
+                ),
+                (
+                    "WO-2",
+                    datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc),
+                    datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc),
+                    "CLOSED",
+                ),
             ],
-            "GROUP BY w.asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2)],
-            "GROUP BY asset_id, bucket_date": lambda: [("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1, 1)],
+            "GROUP BY w.asset_id, bucket_date": lambda: [
+                ("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2)
+            ],
+            "GROUP BY asset_id, bucket_date": lambda: [
+                ("PUMP-101", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1, 1)
+            ],
             "SELECT asset_id, severity, occurred_at, details": lambda: [],
             "SELECT asset_id,\n                           signal_type,": lambda: [],
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 4)],
             "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: [
-                ("REC-44", "approved", "WO-1", {"approval": {"handoff_state": "success", "approved_at": "2026-03-14T09:55:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-14T09:55:00Z", "handoff_state": "success"}]}, datetime(2026, 3, 14, 10, 5, tzinfo=timezone.utc), "PUMP-101", "PUMP-101", {"handoff": {"backend": "maximo"}}, datetime(2026, 3, 14, 9, 55, tzinfo=timezone.utc)),
-                ("REC-21", "pending", None, {"approval": {"handoff_state": "failure", "attempted_at": "2026-03-14T08:05:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-14T08:05:00Z", "handoff_state": "failure"}]}, None, "PUMP-202", None, {}, datetime(2026, 3, 14, 8, 5, tzinfo=timezone.utc)),
-                ("REC-77", "pending", None, {"approval": {"handoff_state": "failure", "attempted_at": "2026-03-15T08:05:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-15T07:05:00Z", "handoff_state": "pending"}, {"attempted_at": "2026-03-15T07:35:00Z", "handoff_state": "failure"}, {"attempted_at": "2026-03-15T08:05:00Z", "handoff_state": "failure"}]}, None, "PUMP-202", None, {}, datetime(2026, 3, 15, 8, 5, tzinfo=timezone.utc)),
-                ("REC-55", "pending", None, {"approval": {"handoff_state": "pending", "attempted_at": "2026-03-15T11:05:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-15T11:05:00Z", "handoff_state": "pending"}]}, None, "PUMP-303", None, {}, datetime(2026, 3, 15, 11, 5, tzinfo=timezone.utc)),
+                (
+                    "REC-44",
+                    "approved",
+                    "WO-1",
+                    {
+                        "approval": {
+                            "handoff_state": "success",
+                            "approved_at": "2026-03-14T09:55:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-14T09:55:00Z", "handoff_state": "success"}
+                        ],
+                    },
+                    datetime(2026, 3, 14, 10, 5, tzinfo=timezone.utc),
+                    "PUMP-101",
+                    "PUMP-101",
+                    {"handoff": {"backend": "maximo"}},
+                    datetime(2026, 3, 14, 9, 55, tzinfo=timezone.utc),
+                ),
+                (
+                    "REC-21",
+                    "pending",
+                    None,
+                    {
+                        "approval": {
+                            "handoff_state": "failure",
+                            "attempted_at": "2026-03-14T08:05:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-14T08:05:00Z", "handoff_state": "failure"}
+                        ],
+                    },
+                    None,
+                    "PUMP-202",
+                    None,
+                    {},
+                    datetime(2026, 3, 14, 8, 5, tzinfo=timezone.utc),
+                ),
+                (
+                    "REC-77",
+                    "pending",
+                    None,
+                    {
+                        "approval": {
+                            "handoff_state": "failure",
+                            "attempted_at": "2026-03-15T08:05:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-15T07:05:00Z", "handoff_state": "pending"},
+                            {"attempted_at": "2026-03-15T07:35:00Z", "handoff_state": "failure"},
+                            {"attempted_at": "2026-03-15T08:05:00Z", "handoff_state": "failure"},
+                        ],
+                    },
+                    None,
+                    "PUMP-202",
+                    None,
+                    {},
+                    datetime(2026, 3, 15, 8, 5, tzinfo=timezone.utc),
+                ),
+                (
+                    "REC-55",
+                    "pending",
+                    None,
+                    {
+                        "approval": {
+                            "handoff_state": "pending",
+                            "attempted_at": "2026-03-15T11:05:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-15T11:05:00Z", "handoff_state": "pending"}
+                        ],
+                    },
+                    None,
+                    "PUMP-303",
+                    None,
+                    {},
+                    datetime(2026, 3, 15, 11, 5, tzinfo=timezone.utc),
+                ),
             ],
-            "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [("operator-1", "accept", 1), ("operator-2", "reject", 1), ("operator-3", "accept", 1)],
+            "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [
+                ("operator-1", "accept", 1),
+                ("operator-2", "reject", 1),
+                ("operator-3", "accept", 1),
+            ],
             "SELECT user_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               COUNT(*) AS n": lambda: [
                 ("operator-1", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1),
                 ("operator-2", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 1),
@@ -112,8 +212,15 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
                 ("operator-2", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 0, 1),
                 ("operator-3", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1, 0),
             ],
-            "SELECT user_id AS entity_id, COUNT(*) AS n": lambda: [("operator-1", 1), ("operator-2", 1), ("operator-3", 1)],
-            "SELECT org_id AS entity_id, action, COUNT(*) AS n": lambda: [("demo-org", "accept", 2), ("demo-org", "reject", 1)],
+            "SELECT user_id AS entity_id, COUNT(*) AS n": lambda: [
+                ("operator-1", 1),
+                ("operator-2", 1),
+                ("operator-3", 1),
+            ],
+            "SELECT org_id AS entity_id, action, COUNT(*) AS n": lambda: [
+                ("demo-org", "accept", 2),
+                ("demo-org", "reject", 1),
+            ],
             "SELECT org_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               COUNT(*) AS n": lambda: [
                 ("demo-org", datetime(2026, 3, 14, tzinfo=timezone.utc).date(), 2),
                 ("demo-org", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1),
@@ -137,7 +244,12 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert payload["feedback_counts"] == {"accept": 2, "reject": 1, "edited": 0}
     assert payload["feedback_total"] == 3
     assert payload["acceptance_rate"] == 2 / 3
-    assert payload["early_warning_summary"]["status_counts"] == {"critical": 1, "elevated": 1, "watch": 0, "normal": 0}
+    assert payload["early_warning_summary"]["status_counts"] == {
+        "critical": 1,
+        "elevated": 1,
+        "watch": 0,
+        "normal": 0,
+    }
     assert payload["early_warning_summary"]["top_assets"][0]["asset_id"] == "PUMP-202"
     assert payload["ttr_seconds_avg"] is None
     assert payload["mtbf_seconds_avg"] == 50400.0
@@ -231,22 +343,46 @@ def test_outcomes_endpoint_returns_partial_placeholders_when_one_query_fails(mon
     assert payload["backend_metrics"]["unknown"]["handoff_success_rate"] == 0.0
     assert payload["backend_metrics"]["unknown"]["retryable_failure_total"] == 0
     assert payload["backend_metrics"]["unknown"]["terminal_failure_total"] == 2
-    assert any(point["value"] == 2 for point in payload["backend_metrics"]["unknown"]["handoff_volume"])
-    assert any(point["value"] == 0.0 for point in payload["backend_metrics"]["unknown"]["handoff_success_rate_series"] if point["value"] is not None)
-    assert payload["user_metrics"]["operator-1"]["feedback_counts"] == {"accept": 1, "reject": 0, "edited": 0}
+    assert any(
+        point["value"] == 2 for point in payload["backend_metrics"]["unknown"]["handoff_volume"]
+    )
+    assert any(
+        point["value"] == 0.0
+        for point in payload["backend_metrics"]["unknown"]["handoff_success_rate_series"]
+        if point["value"] is not None
+    )
+    assert payload["user_metrics"]["operator-1"]["feedback_counts"] == {
+        "accept": 1,
+        "reject": 0,
+        "edited": 0,
+    }
     assert payload["user_metrics"]["operator-1"]["feedback_total"] == 1
     assert payload["user_metrics"]["operator-1"]["acceptance_rate"] == 1.0
     assert len(payload["user_metrics"]["operator-1"]["feedback_volume"]) == 30
-    assert any(point["value"] == 1 for point in payload["user_metrics"]["operator-1"]["feedback_volume"])
-    assert any(point["value"] == 1.0 for point in payload["user_metrics"]["operator-1"]["acceptance_rate_series"] if point["value"] is not None)
-    assert payload["org_metrics"]["demo-org"]["feedback_counts"] == {"accept": 2, "reject": 1, "edited": 0}
+    assert any(
+        point["value"] == 1 for point in payload["user_metrics"]["operator-1"]["feedback_volume"]
+    )
+    assert any(
+        point["value"] == 1.0
+        for point in payload["user_metrics"]["operator-1"]["acceptance_rate_series"]
+        if point["value"] is not None
+    )
+    assert payload["org_metrics"]["demo-org"]["feedback_counts"] == {
+        "accept": 2,
+        "reject": 1,
+        "edited": 0,
+    }
     assert payload["org_metrics"]["demo-org"]["feedback_total"] == 3
     assert payload["org_metrics"]["demo-org"]["acceptance_rate"] == 2 / 3
     assert len(payload["org_metrics"]["demo-org"]["feedback_volume"]) == 30
     assert len(payload["asset_metrics"]["PUMP-101"]["workorder_volume"]) == 30
-    assert any(point["value"] == 2 for point in payload["asset_metrics"]["PUMP-101"]["workorder_volume"])
+    assert any(
+        point["value"] == 2 for point in payload["asset_metrics"]["PUMP-101"]["workorder_volume"]
+    )
     assert len(payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]) == 30
-    assert any(point["value"] == 0.5 for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"])
+    assert any(
+        point["value"] == 0.5 for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]
+    )
     assert payload["warnings"] == ["ttr aggregation unavailable: join unavailable"]
     assert "mtbf_seconds_avg" not in payload["placeholders"]
     assert "mttr_seconds_avg" not in payload["placeholders"]
@@ -263,14 +399,23 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
             "summary": {
                 "total_assets": 2,
                 "status_counts": {"critical": 0, "elevated": 1, "watch": 1, "normal": 0},
-                "top_assets": [{"asset_id": "PUMP-102", "score": 61.0, "status": "elevated", "reasons": ["A fresh event landed within the last 24 hours"]}],
+                "top_assets": [
+                    {
+                        "asset_id": "PUMP-102",
+                        "score": 61.0,
+                        "status": "elevated",
+                        "reasons": ["A fresh event landed within the last 24 hours"],
+                    }
+                ],
                 "last_evaluated_at": "2026-03-15T10:00:00Z",
             },
             "asset_metrics": {
                 "PUMP-101": {
                     "early_warning_score": 28.0,
                     "early_warning_status": "watch",
-                    "early_warning_reasons": ["Low-volume warning signals are present but not yet persistent"],
+                    "early_warning_reasons": [
+                        "Low-volume warning signals are present but not yet persistent"
+                    ],
                 },
                 "PUMP-102": {
                     "early_warning_score": 61.0,
@@ -291,8 +436,18 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 ("PUMP-102", datetime(2026, 3, 15, 6, 0, tzinfo=timezone.utc)),
             ],
             "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: [
-                ("WO-1", datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc), datetime(2026, 3, 13, 9, 0, tzinfo=timezone.utc), "COMP"),
-                ("WO-2", datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc), datetime(2026, 3, 15, 10, 30, tzinfo=timezone.utc), "DONE"),
+                (
+                    "WO-1",
+                    datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc),
+                    datetime(2026, 3, 13, 9, 0, tzinfo=timezone.utc),
+                    "COMP",
+                ),
+                (
+                    "WO-2",
+                    datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc),
+                    datetime(2026, 3, 15, 10, 30, tzinfo=timezone.utc),
+                    "DONE",
+                ),
             ],
             "GROUP BY w.asset_id, bucket_date": lambda: [
                 ("PUMP-101", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 3),
@@ -304,13 +459,68 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
             ],
             "SELECT asset_id, severity, occurred_at, details": lambda: [],
             "SELECT asset_id,\n                           signal_type,": lambda: [],
-            "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [("PUMP-101", 3), ("PUMP-102", 1)],
-            "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: [
-                ("REC-44", "approved", "WO-1", {"approval": {"handoff_state": "success", "approved_at": "2026-03-13T05:50:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-13T05:50:00Z", "handoff_state": "success"}]}, datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc), "PUMP-101", "PUMP-101", {"handoff": {"backend": "maximo"}}),
-                ("REC-45", "approved", "WO-2", {"approval": {"handoff_state": "success", "approved_at": "2026-03-15T06:52:00Z"}, "approval_attempts": [{"attempted_at": "2026-03-15T06:52:00Z", "handoff_state": "success"}]}, datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc), "PUMP-102", "PUMP-102", {"handoff": {"backend": "mock"}}),
-                ("REC-46", "pending", None, {"approval": {"handoff_state": "pending", "attempted_at": "2026-03-15T06:40:00Z"}}, None, "PUMP-102", None, {}),
+            "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [
+                ("PUMP-101", 3),
+                ("PUMP-102", 1),
             ],
-            "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [("operator-1", "accept", 2), ("operator-2", "reject", 1), ("operator-3", "accept", 1)],
+            "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: [
+                (
+                    "REC-44",
+                    "approved",
+                    "WO-1",
+                    {
+                        "approval": {
+                            "handoff_state": "success",
+                            "approved_at": "2026-03-13T05:50:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-13T05:50:00Z", "handoff_state": "success"}
+                        ],
+                    },
+                    datetime(2026, 3, 13, 6, 0, tzinfo=timezone.utc),
+                    "PUMP-101",
+                    "PUMP-101",
+                    {"handoff": {"backend": "maximo"}},
+                ),
+                (
+                    "REC-45",
+                    "approved",
+                    "WO-2",
+                    {
+                        "approval": {
+                            "handoff_state": "success",
+                            "approved_at": "2026-03-15T06:52:00Z",
+                        },
+                        "approval_attempts": [
+                            {"attempted_at": "2026-03-15T06:52:00Z", "handoff_state": "success"}
+                        ],
+                    },
+                    datetime(2026, 3, 15, 7, 0, tzinfo=timezone.utc),
+                    "PUMP-102",
+                    "PUMP-102",
+                    {"handoff": {"backend": "mock"}},
+                ),
+                (
+                    "REC-46",
+                    "pending",
+                    None,
+                    {
+                        "approval": {
+                            "handoff_state": "pending",
+                            "attempted_at": "2026-03-15T06:40:00Z",
+                        }
+                    },
+                    None,
+                    "PUMP-102",
+                    None,
+                    {},
+                ),
+            ],
+            "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [
+                ("operator-1", "accept", 2),
+                ("operator-2", "reject", 1),
+                ("operator-3", "accept", 1),
+            ],
             "SELECT user_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               COUNT(*) AS n": lambda: [
                 ("operator-1", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 2),
                 ("operator-2", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1),
@@ -321,8 +531,15 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
                 ("operator-2", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 0, 1),
                 ("operator-3", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1, 0),
             ],
-            "SELECT user_id AS entity_id, COUNT(*) AS n": lambda: [("operator-1", 2), ("operator-2", 1), ("operator-3", 1)],
-            "SELECT org_id AS entity_id, action, COUNT(*) AS n": lambda: [("demo-org", "accept", 3), ("demo-org", "reject", 1)],
+            "SELECT user_id AS entity_id, COUNT(*) AS n": lambda: [
+                ("operator-1", 2),
+                ("operator-2", 1),
+                ("operator-3", 1),
+            ],
+            "SELECT org_id AS entity_id, action, COUNT(*) AS n": lambda: [
+                ("demo-org", "accept", 3),
+                ("demo-org", "reject", 1),
+            ],
             "SELECT org_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               COUNT(*) AS n": lambda: [
                 ("demo-org", datetime(2026, 3, 13, tzinfo=timezone.utc).date(), 3),
                 ("demo-org", datetime(2026, 3, 15, tzinfo=timezone.utc).date(), 1),
@@ -342,7 +559,12 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["early_warning_summary"]["status_counts"] == {"critical": 0, "elevated": 1, "watch": 1, "normal": 0}
+    assert payload["early_warning_summary"]["status_counts"] == {
+        "critical": 0,
+        "elevated": 1,
+        "watch": 1,
+        "normal": 0,
+    }
     assert payload["asset_metrics"]["PUMP-101"]["early_warning_status"] == "watch"
     assert payload["asset_metrics"]["PUMP-102"]["early_warning_score"] == 61.0
     assert payload["mtbf_seconds_avg"] == 64800.0
@@ -427,11 +649,21 @@ def test_outcomes_endpoint_returns_asset_metric_daily_buckets_with_sparse_days(m
     assert len(pump_101_acceptance) == 30
     assert any(point["value"] == 3 for point in pump_101_volume)
     assert any(point["value"] == 2 / 3 for point in pump_101_acceptance)
-    assert any(point["value"] == 0 for point in payload["asset_metrics"]["PUMP-102"]["workorder_volume"])
-    assert any(point["value"] is None for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"])
+    assert any(
+        point["value"] == 0 for point in payload["asset_metrics"]["PUMP-102"]["workorder_volume"]
+    )
+    assert any(
+        point["value"] is None for point in payload["asset_metrics"]["PUMP-101"]["acceptance_rate"]
+    )
     assert payload["user_metrics"]["operator-2"]["acceptance_rate"] == 0.0
-    assert any(point["value"] == 2 for point in payload["user_metrics"]["operator-1"]["feedback_volume"])
-    assert any(point["value"] == 1.0 for point in payload["user_metrics"]["operator-1"]["acceptance_rate_series"] if point["value"] is not None)
+    assert any(
+        point["value"] == 2 for point in payload["user_metrics"]["operator-1"]["feedback_volume"]
+    )
+    assert any(
+        point["value"] == 1.0
+        for point in payload["user_metrics"]["operator-1"]["acceptance_rate_series"]
+        if point["value"] is not None
+    )
     assert payload["org_metrics"]["demo-org"]["acceptance_rate"] == 3 / 4
 
 
@@ -441,14 +673,30 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
         {
             "SELECT action, COUNT(*) FROM rca_feedback": lambda: [("accept", 1)],
             "FROM workorders w\n                    JOIN events e": lambda: [],
-            "SELECT asset_id, occurred_at\n                    FROM events": lambda: (_ for _ in ()).throw(RuntimeError("event interval unavailable")),
-            "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: (_ for _ in ()).throw(RuntimeError("terminal wo timestamps unavailable")),
-            "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("wo trend unavailable")),
-            "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(RuntimeError("feedback trend unavailable")),
-            "SELECT asset_id, severity, occurred_at, details": lambda: (_ for _ in ()).throw(RuntimeError("event warning input unavailable")),
-            "SELECT asset_id,\n                           signal_type,": lambda: (_ for _ in ()).throw(RuntimeError("signal warning input unavailable")),
+            "SELECT asset_id, occurred_at\n                    FROM events": lambda: (
+                _ for _ in ()
+            ).throw(RuntimeError("event interval unavailable")),
+            "SELECT w.wo_id,\n                           w.workorder_created_at AS created_ts,": lambda: (
+                _ for _ in ()
+            ).throw(
+                RuntimeError("terminal wo timestamps unavailable")
+            ),
+            "GROUP BY w.asset_id, bucket_date": lambda: (_ for _ in ()).throw(
+                RuntimeError("wo trend unavailable")
+            ),
+            "GROUP BY asset_id, bucket_date": lambda: (_ for _ in ()).throw(
+                RuntimeError("feedback trend unavailable")
+            ),
+            "SELECT asset_id, severity, occurred_at, details": lambda: (_ for _ in ()).throw(
+                RuntimeError("event warning input unavailable")
+            ),
+            "SELECT asset_id,\n                           signal_type,": lambda: (
+                _ for _ in ()
+            ).throw(RuntimeError("signal warning input unavailable")),
             "GROUP BY w.asset_id\n                    ORDER BY n DESC": lambda: [],
-            "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: (_ for _ in ()).throw(RuntimeError("proposal summary unavailable")),
+            "LEFT JOIN workorders w ON w.wo_id = p.work_order_id": lambda: (_ for _ in ()).throw(
+                RuntimeError("proposal summary unavailable")
+            ),
             "SELECT user_id AS entity_id, action, COUNT(*) AS n": lambda: [],
             "SELECT user_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               COUNT(*) AS n": lambda: [],
             "SELECT user_id AS entity_id,\n                               DATE_TRUNC('day', created_at)::date AS bucket_date,\n                               SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accepted_count": lambda: [],
@@ -491,7 +739,9 @@ def test_outcomes_endpoint_marks_partial_when_asset_trend_queries_fail(monkeypat
     assert "mttr aggregation unavailable: terminal wo timestamps unavailable" in payload["warnings"]
     assert "asset workorder trend unavailable: wo trend unavailable" in payload["warnings"]
     assert "asset acceptance trend unavailable: feedback trend unavailable" in payload["warnings"]
-    assert "early warning summary unavailable: event warning input unavailable" in payload["warnings"]
+    assert (
+        "early warning summary unavailable: event warning input unavailable" in payload["warnings"]
+    )
     assert "cmms handoff summary unavailable: proposal summary unavailable" in payload["warnings"]
     assert fake_conn.rollback_calls == 6
 
