@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     maximo_api_key: str | None = Field(default=None)
     maximo_timeout_s: int = Field(default=15)
     rag_vector_alpha: float = Field(default=0.6)
+    rca_fleet_wide_context: bool = Field(default=True)
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
 
     @property
     def pg_dsn(self) -> str:
@@ -36,6 +38,4 @@ class Settings(BaseSettings):
     def sqlalchemy_url(self) -> str:
         return f"postgresql://{self.pg_user}:{self.pg_password}@{self.pg_host}:{self.pg_port}/{self.pg_db}"
 
-    class Config:
-        env_prefix = "MI_"
-        extra = "allow"
+    model_config = SettingsConfigDict(env_prefix="MI_", extra="allow")

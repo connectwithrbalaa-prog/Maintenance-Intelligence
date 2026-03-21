@@ -2,10 +2,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
+from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.repair_plan_service import (
+    get_repair_plan,
+    list_parts_for_plan,
+)
 
 router = APIRouter(tags=["portal"])
 
@@ -92,16 +97,202 @@ def _sanitize_model(value: Any) -> Dict[str, Any]:
     }
 
 
+def _sanitize_context_item(value: Any) -> Dict[str, Any]:
+    item = _as_dict(value)
+    return {
+        "chunk_id": _as_safe_text(item.get("chunk_id")),
+        "title": _as_safe_text(item.get("title")),
+        "asset_id": _as_safe_text(item.get("asset_id")),
+        "source": _as_safe_text(item.get("source")),
+        "org_id": _as_safe_text(item.get("org_id")),
+        "site_id": _as_safe_text(item.get("site_id")),
+        "asset_class": _as_safe_text(item.get("asset_class")),
+        "source_scope": _as_safe_text(item.get("source_scope"), "local") or "local",
+    }
+
+
+def _sanitize_context_items(value: Any) -> Dict[str, Any]:
+    items = _as_dict(value)
+    doc_chunks = [
+        _sanitize_context_item(item)
+        for item in items.get("doc_chunks") or []
+        if isinstance(item, dict)
+    ]
+    return {"doc_chunks": doc_chunks}
+
+
+def _sanitize_fleet_context_summary(value: Any) -> Dict[str, Any]:
+    summary = _as_dict(value)
+    return {
+        "external_ref_count": int(_as_number(summary.get("external_ref_count")) or 0),
+        "referenced_asset_ids": _as_string_list(summary.get("referenced_asset_ids")),
+        "referenced_sources": _as_string_list(summary.get("referenced_sources")),
+        "current_asset_id": _as_safe_text(summary.get("current_asset_id")),
+    }
+
+
 def _sanitize_structured(value: Any) -> Dict[str, Any]:
     structured = _as_dict(value)
-    return {
+    repair_plan = _sanitize_structured_repair_plan(structured.get("repair_plan"))
+    sanitized = {
         "title": _as_safe_text(structured.get("title")),
         "summary": _as_safe_text(structured.get("summary")),
         "confidence": _as_number(structured.get("confidence")),
         "hypothesis": _as_string_list(structured.get("hypothesis")),
+        "root_causes": _as_string_list(structured.get("root_causes")),
+        "contributing_factors": _as_string_list(structured.get("contributing_factors")),
+        "evidence_ids": _as_string_list(structured.get("evidence_ids")),
         "immediate_actions": _as_string_list(structured.get("immediate_actions")),
         "pm_suggestions": _as_string_list(structured.get("pm_suggestions")),
     }
+    if _repair_plan_has_content(repair_plan):
+        sanitized["repair_plan"] = repair_plan
+    return sanitized
+
+
+def _sanitize_repair_part(value: Any) -> Dict[str, Any]:
+    part = _as_dict(value)
+    return {
+        "part_id": _as_safe_text(part.get("part_id")),
+        "plan_id": _as_safe_text(part.get("plan_id")),
+        "name": _as_safe_text(part.get("name")),
+        "description": _as_safe_text(part.get("description")),
+        "quantity": _as_number(part.get("quantity")),
+        "unit": _as_safe_text(part.get("unit")),
+        "metadata": _sanitize_context_meta(part.get("metadata")),
+        "created_at": _as_safe_text(part.get("created_at")),
+    }
+
+
+def _sanitize_structured_part(value: Any) -> Dict[str, Any]:
+    part = _as_dict(value)
+    return {
+        "part_no": _as_safe_text(part.get("part_no")),
+        "description": _as_safe_text(part.get("description")),
+        "qty": _as_number(part.get("qty")),
+        "lead_time_days": _as_number(part.get("lead_time_days")),
+    }
+
+
+def _sanitize_structured_procedure_step(value: Any) -> Dict[str, Any]:
+    if isinstance(value, str):
+        return {
+            "seq": None,
+            "action": _as_safe_text(value),
+            "safety_note": "",
+            "estimated_mins": None,
+        }
+    step = _as_dict(value)
+    return {
+        "seq": _as_number(step.get("seq")),
+        "action": _as_safe_text(step.get("action")),
+        "safety_note": _as_safe_text(step.get("safety_note")),
+        "estimated_mins": _as_number(step.get("estimated_mins")),
+    }
+
+
+def _sanitize_structured_repair_plan(value: Any) -> Dict[str, Any]:
+    repair_plan = _as_dict(value)
+    parts_list = [
+        _sanitize_structured_part(item)
+        for item in repair_plan.get("parts_list") or []
+        if isinstance(item, dict)
+    ]
+    procedure_steps = [
+        _sanitize_structured_procedure_step(item)
+        for item in repair_plan.get("procedure_steps") or []
+    ]
+    return {
+        "plan_id": _as_safe_text(repair_plan.get("plan_id")),
+        "summary": _as_safe_text(repair_plan.get("summary")),
+        "rationale": _as_safe_text(repair_plan.get("rationale")),
+        "confidence": _as_number(repair_plan.get("confidence")),
+        "status": _as_safe_text(repair_plan.get("status")),
+        "parts_list": [item for item in parts_list if any(item.values())],
+        "tools_required": _as_string_list(repair_plan.get("tools_required")),
+        "procedure_steps": [item for item in procedure_steps if any(item.values())],
+        "estimated_duration_hrs": _as_number(repair_plan.get("estimated_duration_hrs")),
+        "safety_requirements": _as_string_list(repair_plan.get("safety_requirements")),
+        "permit_type": _as_safe_text(repair_plan.get("permit_type")),
+        "spare_parts_cost_estimate": _as_number(repair_plan.get("spare_parts_cost_estimate")),
+    }
+
+
+def _repair_plan_has_content(value: Dict[str, Any]) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for item in value.values():
+        if item not in (None, "", [], {}):
+            return True
+    return False
+
+
+def _load_persisted_repair_plan(plan_id: str) -> Dict[str, Any]:
+    try:
+        settings = Settings()
+        plan = get_repair_plan(settings.pg_dsn, plan_id)
+        if not plan:
+            return {"plan_id": plan_id}
+        parts = list_parts_for_plan(settings.pg_dsn, plan_id)
+        sanitized = {
+            "plan_id": _as_safe_text(plan.get("plan_id")),
+            "run_id": _as_safe_text(plan.get("run_id")),
+            "recommendation_id": _as_safe_text(plan.get("recommendation_id")),
+            "org_id": _as_safe_text(plan.get("org_id")),
+            "asset_id": _as_safe_text(plan.get("asset_id")),
+            "summary": _as_safe_text(plan.get("summary")),
+            "rationale": _as_safe_text(plan.get("rationale")),
+            "confidence": _as_number(plan.get("confidence")),
+            "status": _as_safe_text(plan.get("status")),
+            "created_at": _as_safe_text(plan.get("created_at")),
+            "updated_at": _as_safe_text(plan.get("updated_at")),
+            "parts": [_sanitize_repair_part(item) for item in parts],
+        }
+        return sanitized
+    except Exception:
+        return {
+            "plan_id": plan_id,
+            "load_error": "Repair plan lookup unavailable",
+        }
+
+
+def _extract_repair_plan(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    structured = _as_dict(payload.get("structured"))
+    structured_plan = _sanitize_structured_repair_plan(structured.get("repair_plan"))
+    plan_id = _as_safe_text(payload.get("repair_plan_id")) or structured_plan.get("plan_id")
+    persisted_plan = _load_persisted_repair_plan(plan_id) if plan_id else {}
+    merged = {
+        "plan_id": plan_id or _as_safe_text(persisted_plan.get("plan_id")),
+        "run_id": _as_safe_text(persisted_plan.get("run_id")),
+        "recommendation_id": _as_safe_text(persisted_plan.get("recommendation_id")),
+        "org_id": _as_safe_text(persisted_plan.get("org_id")),
+        "asset_id": _as_safe_text(persisted_plan.get("asset_id")),
+        "summary": structured_plan.get("summary") or _as_safe_text(persisted_plan.get("summary")),
+        "rationale": structured_plan.get("rationale")
+        or _as_safe_text(persisted_plan.get("rationale")),
+        "confidence": (
+            structured_plan.get("confidence")
+            if structured_plan.get("confidence") is not None
+            else _as_number(persisted_plan.get("confidence"))
+        ),
+        "status": structured_plan.get("status") or _as_safe_text(persisted_plan.get("status")),
+        "created_at": _as_safe_text(persisted_plan.get("created_at")),
+        "updated_at": _as_safe_text(persisted_plan.get("updated_at")),
+        "parts": [
+            _sanitize_repair_part(item)
+            for item in persisted_plan.get("parts") or []
+            if isinstance(item, dict)
+        ],
+        "parts_list": structured_plan.get("parts_list") or [],
+        "tools_required": structured_plan.get("tools_required") or [],
+        "procedure_steps": structured_plan.get("procedure_steps") or [],
+        "estimated_duration_hrs": structured_plan.get("estimated_duration_hrs"),
+        "safety_requirements": structured_plan.get("safety_requirements") or [],
+        "permit_type": structured_plan.get("permit_type"),
+        "spare_parts_cost_estimate": structured_plan.get("spare_parts_cost_estimate"),
+        "load_error": _as_safe_text(persisted_plan.get("load_error")),
+    }
+    return merged if _repair_plan_has_content(merged) else None
 
 
 def _validate_run_id(run_id: str) -> str:
@@ -114,6 +305,24 @@ def _validate_run_id(run_id: str) -> str:
     ):
         raise HTTPException(status_code=400, detail="Invalid run id")
     return candidate
+
+
+def _validate_asset_id(asset_id: str) -> str:
+    candidate = asset_id.strip()
+    if (
+        not candidate
+        or candidate != asset_id
+        or len(candidate) > 255
+        or any(ord(char) < 32 for char in candidate)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid asset id")
+    return candidate
+
+
+def _require_read_access(request: Request) -> None:
+    require_authenticated_identity(
+        request, detail="Portal run data requires an authenticated identity"
+    )
 
 
 def _portal_index_path() -> Path:
@@ -131,6 +340,9 @@ def _run_summary_root() -> Path:
 def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = _sanitize_structured(payload.get("structured"))
     model = _sanitize_model(payload.get("model"))
+    structured_repair_plan = (
+        structured.get("repair_plan") if isinstance(structured.get("repair_plan"), dict) else {}
+    )
     return {
         "run_id": _as_text(payload.get("run_id")) or source_path.stem,
         "status": _as_safe_text(payload.get("status"), "unknown"),
@@ -142,8 +354,14 @@ def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str
         "hypothesis": structured["hypothesis"],
         "immediate_actions": structured["immediate_actions"],
         "pm_suggestions": structured["pm_suggestions"],
+        "repair_plan_id": _as_safe_text(payload.get("repair_plan_id"))
+        or _as_safe_text(structured_repair_plan.get("plan_id")),
         "model": model,
         "context_meta": _sanitize_context_meta(payload.get("context_meta")),
+        "context_scope": _as_safe_text(payload.get("context_scope"), "local") or "local",
+        "fleet_context_summary": _sanitize_fleet_context_summary(
+            payload.get("fleet_context_summary")
+        ),
         "date": source_path.parent.name,
         "source_file": source_path.name,
         "updated_at": source_path.stat().st_mtime,
@@ -167,6 +385,18 @@ def _list_run_files(root: Path) -> List[Path]:
     return sorted(root.glob("*/*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
 
 
+def _find_latest_run_by_asset(root: Path, asset_id: str) -> Optional[Dict[str, Any]]:
+    for path in _list_run_files(root):
+        payload = _load_run_payload(path)
+        if payload is None:
+            continue
+        context_meta = _sanitize_context_meta(payload.get("context_meta"))
+        if _as_safe_text(context_meta.get("asset_id")) != asset_id:
+            continue
+        return _extract_run_summary(payload, path)
+    return None
+
+
 @router.get("/", include_in_schema=False)
 def root_redirect():
     return RedirectResponse(url="/portal", status_code=307)
@@ -179,7 +409,8 @@ def portal_index():
 
 
 @router.get("/api/v1/portal/runs")
-def recent_runs(limit: int = Query(12, ge=1, le=50)) -> List[Dict[str, Any]]:
+def recent_runs(request: Request, limit: int = Query(12, ge=1, le=50)) -> List[Dict[str, Any]]:
+    _require_read_access(request)
     items: List[Dict[str, Any]] = []
     for path in _list_run_files(_run_summary_root()):
         payload = _load_run_payload(path)
@@ -191,8 +422,24 @@ def recent_runs(limit: int = Query(12, ge=1, le=50)) -> List[Dict[str, Any]]:
     return items
 
 
+@router.get("/api/v1/portal/runs/latest")
+def latest_run_for_asset(
+    request: Request,
+    asset_id: str = Query(
+        ..., min_length=1, description="Asset ID to resolve to the freshest run summary"
+    ),
+) -> Dict[str, Any]:
+    _require_read_access(request)
+    resolved_asset_id = _validate_asset_id(asset_id)
+    latest_run = _find_latest_run_by_asset(_run_summary_root(), resolved_asset_id)
+    if latest_run is None:
+        raise HTTPException(status_code=404, detail="Run summary not found for asset")
+    return latest_run
+
+
 @router.get("/api/v1/portal/runs/{run_id}")
-def run_details(run_id: str) -> Dict[str, Any]:
+def run_details(run_id: str, request: Request) -> Dict[str, Any]:
+    _require_read_access(request)
     run_id = _validate_run_id(run_id)
     for path in _list_run_files(_run_summary_root()):
         if path.stem != run_id:
@@ -203,5 +450,7 @@ def run_details(run_id: str) -> Dict[str, Any]:
         return {
             **_extract_run_summary(payload, path),
             "structured": _sanitize_structured(payload.get("structured")),
+            "repair_plan": _extract_repair_plan(payload),
+            "context_items": _sanitize_context_items(payload.get("context_items")),
         }
     raise HTTPException(status_code=404, detail="Run summary not found")

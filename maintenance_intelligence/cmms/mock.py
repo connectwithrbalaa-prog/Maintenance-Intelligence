@@ -16,7 +16,7 @@ class MockCMMSAdapter(CMMSAdapter):
                 "wo_id": f"WO-{rec_id[:8]}",
                 "status": "DRAFT",
                 "backend": self.backend_name,
-                "created_at": dt.datetime.utcnow().isoformat() + "Z",
+                "created_at": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
                 "request": {
                     "asset_id": recommendation.get("asset_id"),
                     "title": recommendation.get("title"),

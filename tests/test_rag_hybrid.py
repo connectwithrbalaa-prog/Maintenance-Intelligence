@@ -69,3 +69,58 @@ def test_tokenize():
     assert "world" in tokens
     assert "test" in tokens
     assert "!" not in tokens  # Punctuation removed
+
+
+def test_retrieve_prefers_local_chunks_when_scores_tie(monkeypatch):
+    retriever = HybridRetriever("dummy_db_url")
+
+    monkeypatch.setattr(
+        retriever,
+        "_vector_search",
+        lambda query, asset_id, limit, fleet_wide=False: [
+            {
+                "chunk_id": "fleet-1",
+                "title": "Fleet doc",
+                "content": "",
+                "asset_id": "PUMP-202",
+                "source_scope": "fleet",
+                "vector_score": 0.9,
+            },
+            {
+                "chunk_id": "local-1",
+                "title": "Local doc",
+                "content": "",
+                "asset_id": "PUMP-101",
+                "source_scope": "local",
+                "vector_score": 0.9,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_bm25_search",
+        lambda query, asset_id, limit, fleet_wide=False: [
+            {
+                "chunk_id": "fleet-1",
+                "title": "Fleet doc",
+                "content": "",
+                "asset_id": "PUMP-202",
+                "source_scope": "fleet",
+                "bm25_score": 1.0,
+            },
+            {
+                "chunk_id": "local-1",
+                "title": "Local doc",
+                "content": "",
+                "asset_id": "PUMP-101",
+                "source_scope": "local",
+                "bm25_score": 1.0,
+            },
+        ],
+    )
+
+    results = retriever.retrieve(
+        "pump vibration", asset_id="PUMP-101", limit=2, token_budget=100, fleet_wide=True
+    )
+
+    assert [chunk["chunk_id"] for chunk in results] == ["local-1", "fleet-1"]

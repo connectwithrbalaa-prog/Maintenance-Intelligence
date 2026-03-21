@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Maintenance Intelligence Dashboards
+    orgId: 1
+    folder: Maintenance Intelligence
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
