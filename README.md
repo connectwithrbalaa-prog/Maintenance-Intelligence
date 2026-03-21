@@ -184,6 +184,94 @@ Notes:
 - `MI_PROMPT_CANARY_RATIO` controls the default canary split; the RCA agent records `prompt_id` and variant in run summaries and recommendation model metadata.
 - Feedback can carry `prompt_id` and `prompt_route`, enabling prompt quality tracking via `prompt_feedback_total` and auto-rollback decisions.
 
+## PM Advisor Skeleton
+
+- New PM advisory endpoints live under `/api/v1/agents`:
+  - `POST /pm/advisor/analyze` creates a draft PM change proposal from an RCA recommendation.
+  - `POST /playbooks/search` returns stub playbook matches for planner review.
+  - `GET /pm/proposals` lists scoped proposal drafts.
+  - `POST /pm/proposals/{proposal_id}/approve` marks a proposal approved and sends it through the configured CMMS connector.
+  - PM proposal endpoints resolve identity from `request.state.user` first, then guarded dev headers, and finally the configured auth mode fallback.
+  - Proposal responses include `org_id` and `proposer_subject` so the portal can reflect backend identity consistently.
+- Thin portal preview:
+  - `GET /portal/pm-approvals` serves a single-page planner review UI backed by the PM proposal endpoints.
+  - `GET /api/v1/whoami` returns `{org_id, role, subject}` from request context when available.
+  - Dev header fallback via `X-Org-Id`, `X-Role`, and `X-Subject` is honored only when `MI_DEV_ALLOW_HEADERS=true`.
+  - The portal sends explicit dev headers from its local controls, but it fails clearly when backend identity is unavailable and the env guard is off.
+- Manual check:
+  - Create a PM proposal through the advisor API.
+  - Open `/portal/pm-approvals` and verify the draft renders.
+  - Verify `/api/v1/whoami` returns the expected role from auth context or dev headers.
+  - Switch fallback role state to `viewer` only when backend identity is unavailable and confirm approve actions are disabled.
+  - Use an `operator` or `admin` identity, approve a proposal, and confirm the CMS handoff reference is shown.
+  - Use `scripts/demo_pm_approval.sh` for a curl-based end-to-end staging demo against the shipped PM advisor routes.
+- Schema:
+  - Alembic revision `005_pm_change_proposals`
+  - Alembic revision `006_pm_change_proposals_identity`
+  - SQL fallback migration `008_pm_change_proposals.sql`
+  - SQL fallback migration `009_pm_change_proposals_identity.sql`
+- `MI_PM_CONNECTOR_BACKEND` defaults to `mock`, which returns a realistic draft work-order payload and keeps the approval path behind a swappable adapter boundary.
+- The CMMS connector entry point lives behind `maintenance_intelligence/services/cmms.py`; add a real connector there before rollout.
+
+## Environment & Dev Mode
+
+- `MI_DEV_ALLOW_HEADERS` defaults to `false` and should only be enabled for local development or isolated test environments.
+- `MI_PM_CONNECTOR_BACKEND` defaults to `mock`; switch it only after adding a real connector implementation behind the same adapter interface.
+- When enabled, `/api/v1/whoami` and the PM proposal endpoints may honor `X-Org-Id`, `X-Role`, and `X-Subject` for developer-controlled identity.
+- When disabled, real request-context auth is required; header-only identity returns null from `/api/v1/whoami` and PM proposal actions reject unauthenticated access.
+
+Local examples:
+
+- Run the API locally with guarded dev headers enabled:
+  - `MI_DEV_ALLOW_HEADERS=true uvicorn maintenance_intelligence.api.main:app --reload`
+- Run the focused auth and PM advisor tests with guarded dev headers enabled:
+  - `MI_DEV_ALLOW_HEADERS=true pytest tests/test_pm_advisor_identity.py tests/test_whoami.py tests/test_whoami_header_guard.py`
+- If you use the existing compose stack for local review, set the API service env override to `MI_DEV_ALLOW_HEADERS=true` only in your local override file.
+- Run the demo helper with an existing bearer token:
+  - `BASE_URL=https://staging.example.com AUTH_BEARER_TOKEN="$TOKEN" ./scripts/demo_pm_approval.sh`
+- The demo helper also accepts `API_URL` as an alias for `BASE_URL` and `--api-url` on the command line.
+- The demo helper accepts `RUN_ID` or `--run-id` to choose the RCA run id sent to the PM advisor API.
+- `--use-existing-api` and `DEMO_PM_START_API=false` are accepted for compatibility; this branch's demo script always targets a running API instead of starting uvicorn.
+- JSON output is pretty-printed with `jq` when available and otherwise falls back to `python -m json.tool`.
+- Token-fetch examples for Keycloak-style and Okta-style flows are included in `scripts/demo_pm_approval.sh`; substitute your own token endpoint, client, and user credentials.
+
+Dev setup (recommended)
+
+1. Create and activate a virtual environment (recommended)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # macOS / Linux
+# or on Windows:
+# .venv\Scripts\activate
+```
+
+2. Install the project in editable mode
+
+```bash
+python -m pip install -e .
+```
+
+3. Run tools and tests
+
+- Use the editable-installed console scripts when the venv is active:
+  `mi-runner ...`           # available when the venv bin is on PATH
+- Or fall back to the module runner if the script name is not on PATH:
+  `python -m maintenance_intelligence.runner.cli ...`
+
+Notes
+
+- Installing into a system path (for example `/usr/local/...`) is possible but not recommended for development; prefer the per-worktree venv approach for reproducibility.
+- If you must use a global install, ensure the install location is on your `PATH` or invoke the script via its full path.
+
+Staging / production checklist:
+
+- Ensure upstream auth middleware populates `request.state.user` before exposing the portal or PM approval endpoints.
+- Leave `MI_DEV_ALLOW_HEADERS` unset or explicitly set it to `false`.
+- Verify `GET /api/v1/whoami` returns real request-context identity without developer headers.
+- Verify the PM approval flow still works end to end through `/portal/pm-approvals` and the PM proposal API.
+- Confirm header-only requests do not gain identity in staging or production.
+
 ## Cost and Latency Dashboards v2
 
 - RCA runs now export `rca_cost_usd_total{model,prompt_id}` using a token-based estimate derived from `MI_RCA_MODEL_RATES`.

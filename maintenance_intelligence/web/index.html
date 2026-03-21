@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maintenance Intelligence Portal</title>
+    <style>
+      :root {
+        --bg: #f4efe4;
+        --panel: rgba(255, 251, 244, 0.88);
+        --panel-strong: #fffaf1;
+        --ink: #1b1813;
+        --muted: #5f5648;
+        --line: rgba(48, 36, 23, 0.14);
+        --accent: #0f766e;
+        --accent-strong: #0b5a54;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --warn: #92400e;
+        --shadow: 0 22px 60px rgba(56, 42, 24, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(146, 64, 14, 0.12), transparent 22%),
+          linear-gradient(180deg, #f8f2e8 0%, var(--bg) 48%, #efe4d1 100%);
+      }
+
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 20px 56px;
+      }
+
+      .masthead {
+        display: grid;
+        grid-template-columns: 1.4fr 0.9fr;
+        gap: 18px;
+        margin-bottom: 22px;
+      }
+
+      .hero,
+      .control,
+      .board,
+      .checklist {
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: 28px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        font-size: 0.86rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 14px 0 10px;
+        font-size: clamp(2rem, 3.8vw, 3.9rem);
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+      }
+
+      .lede {
+        margin: 0;
+        max-width: 60ch;
+        color: var(--muted);
+        font-size: 1.02rem;
+        line-height: 1.6;
+      }
+
+      .control {
+        padding: 22px;
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .control h2,
+      .board h2,
+      .checklist h2 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: -0.02em;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        border: 1px solid rgba(48, 36, 23, 0.16);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        background: var(--panel-strong);
+        color: var(--ink);
+      }
+
+      .field textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 16px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      .secondary {
+        background: rgba(27, 24, 19, 0.08);
+        color: var(--ink);
+      }
+
+      .secondary[disabled],
+      .primary[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1.6fr 0.85fr;
+        gap: 18px;
+      }
+
+      .board,
+      .checklist {
+        padding: 22px;
+      }
+
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(27, 24, 19, 0.06);
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .status {
+        font-weight: 600;
+        color: var(--accent-strong);
+      }
+
+      .status.warn {
+        color: var(--warn);
+      }
+
+      .queue {
+        display: grid;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .proposal {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.64);
+        padding: 18px;
+      }
+
+      .proposal h3 {
+        margin: 0 0 8px;
+        font-size: 1.25rem;
+        letter-spacing: -0.02em;
+      }
+
+      .proposal p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .split h4 {
+        margin: 0 0 6px;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--ink);
+      }
+
+      li + li {
+        margin-top: 6px;
+      }
+
+      .empty,
+      .message {
+        margin-top: 18px;
+        padding: 16px;
+        border-radius: 16px;
+        background: rgba(27, 24, 19, 0.05);
+        color: var(--muted);
+      }
+
+      .message.error {
+        background: rgba(146, 64, 14, 0.12);
+        color: #78350f;
+      }
+
+      .checklist ol {
+        margin: 16px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+
+      .checklist li + li {
+        margin-top: 10px;
+      }
+
+      @media (max-width: 920px) {
+        .masthead,
+        .layout,
+        .split {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="masthead">
+        <div class="hero">
+          <div class="eyebrow">Portal Preview</div>
+          <h1>PM approval queue for planner review.</h1>
+          <p class="lede">
+            Thin operator UI for reviewing PM change proposals created from RCA output,
+            checking playbook context, and sending approved work into the stub CMS handoff.
+          </p>
+          <div class="meta-row">
+            <span class="pill">Path: <strong>/portal/pm-approvals</strong></span>
+            <span class="pill">Data: <strong>/api/v1/agents/pm/proposals</strong></span>
+          </div>
+        </div>
+        <aside class="control">
+          <h2>Identity Controls</h2>
+          <div class="field">
+            <label for="role">Visible role</label>
+            <select id="role">
+              <option value="viewer">viewer</option>
+              <option value="operator">operator</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="org-id">Dev org id</label>
+            <input id="org-id" type="text" value="default-org" />
+          </div>
+          <div class="field">
+            <label for="approver">Approver name</label>
+            <input id="approver" type="text" value="planner@example.com" />
+          </div>
+          <div class="field">
+            <label for="notes">Approval note</label>
+            <textarea id="notes">Approve and send to planner queue.</textarea>
+          </div>
+          <div class="actions">
+            <button id="refresh" class="primary" type="button">Refresh queue</button>
+            <button id="show-all" class="secondary" type="button">Include approved</button>
+            <button id="reload-identity" class="secondary" type="button">Reload identity</button>
+          </div>
+          <div id="role-state" class="pill">Identity: loading</div>
+        </aside>
+      </section>
+
+      <section class="layout">
+        <section class="board">
+          <h2>PM Change Queue</h2>
+          <div id="message" class="message">Loading PM proposals.</div>
+          <div id="queue" class="queue" aria-live="polite"></div>
+          <div id="empty" class="empty" hidden>
+            No PM proposals returned. Create one through the PM advisor API, then refresh this queue.
+          </div>
+        </section>
+
+        <aside class="checklist">
+          <h2>Manual Check</h2>
+          <ol>
+            <li>Create a PM proposal with the PM advisor endpoint or seeded smoke test data.</li>
+            <li>Open <strong>/portal/pm-approvals</strong> and verify the proposal details render.</li>
+            <li>Call <strong>/api/v1/whoami</strong> with real auth or dev headers and confirm the page reflects the returned role.</li>
+            <li>Set the fallback selector to <strong>viewer</strong> only when backend identity is unavailable, then confirm approve actions disappear.</li>
+            <li>Use an <strong>operator</strong> or <strong>admin</strong> identity, approve a proposal, and confirm a CMS reference is returned.</li>
+            <li>Refresh the queue and verify the proposal status changes from draft to approved when the backend persists it.</li>
+          </ol>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const queueNode = document.getElementById("queue");
+      const emptyNode = document.getElementById("empty");
+      const messageNode = document.getElementById("message");
+      const roleNode = document.getElementById("role");
+      const roleStateNode = document.getElementById("role-state");
+      const orgNode = document.getElementById("org-id");
+      const approverNode = document.getElementById("approver");
+      const notesNode = document.getElementById("notes");
+      const refreshNode = document.getElementById("refresh");
+      const showAllNode = document.getElementById("show-all");
+      const reloadIdentityNode = document.getElementById("reload-identity");
+
+      let includeApproved = false;
+      let currentIdentity = { org_id: null, role: null, subject: "loading" };
+
+      function readFallbackRole() {
+        return window.localStorage.getItem("mi_portal_role") || roleNode.value || "operator";
+      }
+
+      function writeFallbackRole(role) {
+        window.localStorage.setItem("mi_portal_role", role);
+      }
+
+      function readFallbackOrg() {
+        return window.localStorage.getItem("mi_portal_org") || orgNode.value || "default-org";
+      }
+
+      function writeFallbackOrg(orgId) {
+        window.localStorage.setItem("mi_portal_org", orgId);
+      }
+
+      function identityHeaders() {
+        return {
+          "X-Org-Id": readFallbackOrg(),
+          "X-Role": readFallbackRole(),
+          "X-Subject": approverNode.value || "portal-dev-user",
+        };
+      }
+
+      function activeRole() {
+        return currentIdentity.role;
+      }
+
+      function renderIdentityState(mode) {
+        const suffix = mode === "backend" ? "backend" : "fallback";
+        roleStateNode.textContent = `Identity: ${currentIdentity.subject} | role ${currentIdentity.role} | org ${currentIdentity.org_id} | ${suffix}`;
+      }
+
+      function setMessage(text, isError = false) {
+        messageNode.hidden = false;
+        messageNode.textContent = text;
+        messageNode.className = isError ? "message error" : "message";
+      }
+
+      async function fetchJson(response, fallbackValue) {
+        try {
+          return await response.json();
+        } catch (error) {
+          if (response.ok) {
+            throw new Error("Portal API returned invalid JSON");
+          }
+          return fallbackValue;
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      async function loadIdentity() {
+        roleNode.disabled = true;
+        orgNode.disabled = true;
+        roleStateNode.textContent = "Identity: loading";
+        try {
+          const response = await fetch("/api/v1/whoami", {
+            headers: { Accept: "application/json", ...identityHeaders() },
+          });
+          const payload = await fetchJson(response, {});
+          if (!response.ok || !payload.role) {
+            throw new Error(payload.detail || "Backend identity is required for this portal view.");
+          }
+          currentIdentity = {
+            org_id: payload.org_id || "default-org",
+            role: payload.role,
+            subject: payload.subject || "request-context",
+          };
+          orgNode.value = currentIdentity.org_id;
+          roleNode.value = currentIdentity.role;
+          renderIdentityState("backend");
+          return;
+        } catch (error) {
+          currentIdentity = { org_id: null, role: null, subject: "missing-identity" };
+          renderIdentityState("fallback");
+          setMessage(error.message || "Backend identity is required for this portal view.", true);
+        } finally {
+          roleNode.disabled = false;
+          orgNode.disabled = false;
+        }
+      }
+
+      async function approveProposal(proposalId) {
+        const role = activeRole();
+        if (!role) {
+          setMessage("Backend identity is required before approval actions are available.", true);
+          return;
+        }
+        if (role === "viewer") {
+          setMessage("Viewer mode hides approval actions. Switch to operator or admin to approve.", true);
+          return;
+        }
+
+        setMessage(`Approving ${proposalId}...`);
+        try {
+          const response = await fetch(`/api/v1/agents/pm/proposals/${proposalId}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...identityHeaders() },
+            body: JSON.stringify({
+              approved_by: approverNode.value || "planner@example.com",
+              notes: notesNode.value || "Approve and send to planner queue.",
+            }),
+          });
+          const payload = await fetchJson(response, {});
+          if (!response.ok) {
+            throw new Error(payload.detail || "Approval request failed");
+          }
+          const cmsReference = payload.cms_result?.cms_reference || "pending";
+          setMessage(`Approved ${proposalId}. CMS handoff reference: ${cmsReference}.`);
+          await loadQueue();
+        } catch (error) {
+          setMessage(error.message || "Approval request failed", true);
+        }
+      }
+
+      function renderProposal(proposal) {
+        const role = activeRole();
+        const canApprove = !!role && role !== "viewer" && proposal.status !== "approved";
+        const actionItems = Array.isArray(proposal.recommended_actions) ? proposal.recommended_actions : [];
+        const playbooks = Array.isArray(proposal.playbook_refs) ? proposal.playbook_refs : [];
+        const playbookItems = playbooks.length
+          ? playbooks.map((item) => `<li>${escapeHtml(item.title || item.playbook_id || "Playbook reference")}</li>`).join("")
+          : "<li>No playbook matches attached.</li>";
+        const actionMarkup = actionItems.length
+          ? actionItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+          : "<li>No recommended actions attached.</li>";
+        const cmsReference = proposal.cms_reference ? escapeHtml(proposal.cms_reference) : "pending";
+        const approvedBy = proposal.approved_by ? escapeHtml(proposal.approved_by) : "unassigned";
+        const statusClass = proposal.status === "approved" ? "status" : "status warn";
+
+        return `
+          <article class="proposal">
+            <div class="meta-row">
+              <span class="pill">${escapeHtml(proposal.asset_id)}</span>
+              <span class="pill ${statusClass}">status: ${escapeHtml(proposal.status)}</span>
+              <span class="pill">run: ${escapeHtml(proposal.run_id)}</span>
+              <span class="pill">cms: ${cmsReference}</span>
+            </div>
+            <h3>${escapeHtml(proposal.proposal_title)}</h3>
+            <p>${escapeHtml(proposal.proposal_summary)}</p>
+            <div class="split">
+              <div>
+                <h4>Recommended Actions</h4>
+                <ul>${actionMarkup}</ul>
+              </div>
+              <div>
+                <h4>Playbook Matches</h4>
+                <ul>${playbookItems}</ul>
+              </div>
+            </div>
+            <div class="meta-row">
+              <span class="pill">approver: ${approvedBy}</span>
+              <span class="pill">proposal: ${escapeHtml(proposal.proposal_id)}</span>
+            </div>
+            <div class="actions" style="margin-top: 14px;">
+              <button
+                class="primary"
+                type="button"
+                data-approve="${escapeHtml(proposal.proposal_id)}"
+                ${canApprove ? "" : "disabled"}
+              >
+                ${proposal.status === "approved" ? "Already approved" : "Approve proposal"}
+              </button>
+            </div>
+          </article>
+        `;
+      }
+
+      async function loadQueue() {
+        queueNode.innerHTML = "";
+        emptyNode.hidden = true;
+        setMessage("Loading PM proposals.");
+
+        const statusQuery = includeApproved ? "" : "?status=draft";
+        try {
+          const response = await fetch(`/api/v1/agents/pm/proposals${statusQuery}`, {
+            headers: identityHeaders(),
+          });
+          const payload = await fetchJson(response, []);
+          if (!response.ok) {
+            throw new Error(payload.detail || "Unable to fetch PM proposals");
+          }
+          if (!Array.isArray(payload) || payload.length === 0) {
+            queueNode.innerHTML = "";
+            emptyNode.hidden = false;
+            setMessage(includeApproved ? "No PM proposals available." : "No draft PM proposals available.");
+            return;
+          }
+          queueNode.innerHTML = payload.map(renderProposal).join("");
+          setMessage(`${payload.length} proposal${payload.length === 1 ? "" : "s"} loaded.`);
+          queueNode.querySelectorAll("[data-approve]").forEach((button) => {
+            button.addEventListener("click", () => approveProposal(button.dataset.approve));
+          });
+        } catch (error) {
+          emptyNode.hidden = true;
+          setMessage(error.message || "Unable to fetch PM proposals", true);
+        }
+      }
+
+      roleNode.value = readFallbackRole();
+      orgNode.value = readFallbackOrg();
+      writeFallbackRole(roleNode.value);
+      writeFallbackOrg(orgNode.value);
+
+      roleNode.addEventListener("change", async () => {
+        writeFallbackRole(roleNode.value);
+        await loadIdentity();
+        await loadQueue();
+      });
+
+      orgNode.addEventListener("change", async () => {
+        writeFallbackOrg(orgNode.value);
+        await loadIdentity();
+        await loadQueue();
+      });
+
+      refreshNode.addEventListener("click", () => loadQueue());
+      reloadIdentityNode.addEventListener("click", async () => {
+        await loadIdentity();
+        await loadQueue();
+      });
+      showAllNode.addEventListener("click", () => {
+        includeApproved = !includeApproved;
+        showAllNode.textContent = includeApproved ? "Show draft only" : "Include approved";
+        loadQueue();
+      });
+
+      loadIdentity().then(() => loadQueue());
+    </script>
+  </body>
+</html>

@@ -8,6 +8,7 @@ from loguru import logger
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.multitenancy import consumer_topics, event_in_scope
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.services.cmms import get_cmms_adapter, normalize_connector_result
 
 
 def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
@@ -26,6 +27,16 @@ def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
     if last_error is not None:
         raise last_error
     raise RuntimeError("Failed to connect to PostgreSQL")
+
+
+def push_work_order_to_cms(proposal: dict, approved_by: str | None = None, notes: str | None = None):
+    connector = get_cmms_adapter(Settings())
+    result = connector.submit_proposal(proposal, approved_by=approved_by, notes=notes)
+    return normalize_connector_result(
+        result,
+        proposal_id=str(proposal.get("proposal_id") or "unknown"),
+        connector_name=getattr(connector, "connector_name", None),
+    )
 
 
 def wo_bridge(kafka_bootstrap: str, pg_dsn: str):
