@@ -1,12 +1,13 @@
-import datetime as dt
 import re
 from typing import Dict, Any, List, Optional
 import psycopg2
 from loguru import logger
 from maintenance_intelligence.runner.config import Settings
 
+
 def with_pg(dsn: str):
     import time
+
     last_error = None
     for _ in range(3):
         try:
@@ -109,9 +110,7 @@ def _build_rag_query(event: Dict[str, Any]) -> str:
     event_kind = event.get("kind", "")
     event_summary = event.get("summary", "")
     detail_values = " ".join(
-        part
-        for key in sorted(event_details)
-        for part in _flatten_detail_value(event_details[key])
+        part for key in sorted(event_details) for part in _flatten_detail_value(event_details[key])
     )
     return " ".join(part for part in [event_kind, event_summary, detail_values] if part).strip()
 
@@ -173,7 +172,9 @@ def _fetch_fallback_doc_chunks(conn, asset_id: Optional[str], query: str) -> Lis
         return _rank_fallback_doc_chunks(cur.fetchall(), query)
 
 
-def _fetch_doc_chunks(conn, asset_id: Optional[str], query: str, dsn: str, retriever_cls=None) -> List[Dict[str, Any]]:
+def _fetch_doc_chunks(
+    conn, asset_id: Optional[str], query: str, dsn: str, retriever_cls=None
+) -> List[Dict[str, Any]]:
     if retriever_cls is None:
         from maintenance_intelligence.rag.retrieval import HybridRetriever
 
@@ -187,7 +188,13 @@ def _fetch_doc_chunks(conn, asset_id: Optional[str], query: str, dsn: str, retri
         logger.debug({"event": "ctx.hybrid_rag.skip", "err": str(exc)})
         return _fetch_fallback_doc_chunks(conn, asset_id, query)
 
-def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None, connection_factory=with_pg, retriever_cls=None) -> Dict[str, Any]:
+
+def get_event_context(
+    event: Dict[str, Any],
+    settings: Optional[Settings] = None,
+    connection_factory=with_pg,
+    retriever_cls=None,
+) -> Dict[str, Any]:
     """
     MVP bootstrap context assembly.
     - last_wo_titles: last few WOs for the asset (90d)
@@ -212,30 +219,32 @@ def get_event_context(event: Dict[str, Any], settings: Optional[Settings] = None
         try:
             out["last_wo_titles"] = _fetch_last_wo_titles(conn, asset_id)
         except Exception as e:
-            logger.debug({"event":"ctx.wo.skip","err":str(e)})
+            logger.debug({"event": "ctx.wo.skip", "err": str(e)})
 
         # signal summary: recent rollups and anomalies
         try:
             out.update(_fetch_signal_context(conn, asset_id))
         except Exception as e:
-            logger.debug({"event":"ctx.signals.skip","err":str(e)})
+            logger.debug({"event": "ctx.signals.skip", "err": str(e)})
             out["signal_rollups"] = []
             out["recent_signals"] = []
 
         # doc chunks via hybrid retrieval (BM25 + vector)
         try:
             query = _build_rag_query(event)
-            out["doc_chunks"] = _fetch_doc_chunks(conn, asset_id, query, settings.pg_dsn, retriever_cls=retriever_cls)
+            out["doc_chunks"] = _fetch_doc_chunks(
+                conn, asset_id, query, settings.pg_dsn, retriever_cls=retriever_cls
+            )
         except Exception as e:
-            logger.debug({"event":"ctx.docs.skip","err":str(e)})
+            logger.debug({"event": "ctx.docs.skip", "err": str(e)})
             out["doc_chunks"] = []
 
-
     except Exception as e:
-        logger.debug({"event":"ctx.error","err":str(e)})
+        logger.debug({"event": "ctx.error", "err": str(e)})
     finally:
         try:
-            if conn: conn.close()
+            if conn:
+                conn.close()
         except Exception:
             pass
     return out

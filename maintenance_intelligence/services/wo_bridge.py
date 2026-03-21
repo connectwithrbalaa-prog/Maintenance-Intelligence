@@ -1,4 +1,5 @@
-import json, datetime as dt
+import json
+import datetime as dt
 import time
 from kafka import KafkaConsumer
 import psycopg2
@@ -7,8 +8,10 @@ from maintenance_intelligence.cmms.adapter import create_cmms_adapter, submit_wo
 from maintenance_intelligence.api.metrics import wo_drafts_total
 from maintenance_intelligence.runner.config import Settings
 
+
 def with_pg(dsn: str):
     import time
+
     while True:
         try:
             return psycopg2.connect(dsn)
@@ -18,7 +21,9 @@ def with_pg(dsn: str):
 
 def _lifecycle_timestamps(result):
     response = result.get("response") if isinstance(result.get("response"), dict) else {}
-    raw_response = result.get("raw_response") if isinstance(result.get("raw_response"), dict) else {}
+    raw_response = (
+        result.get("raw_response") if isinstance(result.get("raw_response"), dict) else {}
+    )
     workorder_created_at = (
         result.get("workorder_created_at")
         or result.get("created_at")
@@ -54,7 +59,9 @@ def _lifecycle_timestamps(result):
 
 
 def persist_work_order(conn, recommendation, result):
-    workorder_created_at, handoff_completed_at, workorder_completed_at = _lifecycle_timestamps(result)
+    workorder_created_at, handoff_completed_at, workorder_completed_at = _lifecycle_timestamps(
+        result
+    )
     metadata = {
         "source": f"agent-wo-bridge-{result.get('backend', 'unknown')}",
         "created_at": result.get("created_at", dt.datetime.utcnow().isoformat() + "Z"),
@@ -92,7 +99,14 @@ def persist_work_order(conn, recommendation, result):
             )
 
 
-def process_recommendation(message_value, conn, adapter, retry_attempts: int = 3, retry_interval_s: float = 1.0, sleep_fn=time.sleep):
+def process_recommendation(
+    message_value,
+    conn,
+    adapter,
+    retry_attempts: int = 3,
+    retry_interval_s: float = 1.0,
+    sleep_fn=time.sleep,
+):
     recommendation = message_value.get("recommendation", {})
     result = submit_work_order_with_retry(
         adapter,
@@ -103,13 +117,33 @@ def process_recommendation(message_value, conn, adapter, retry_attempts: int = 3
     )
     if result.get("handoff_complete"):
         persist_work_order(conn, recommendation, result)
-        logger.info({"event": "wo_bridge.draft_created", "wo_id": result.get("wo_id"), "backend": result.get("backend")})
+        logger.info(
+            {
+                "event": "wo_bridge.draft_created",
+                "wo_id": result.get("wo_id"),
+                "backend": result.get("backend"),
+            }
+        )
         wo_drafts_total.labels(service="wo_bridge").inc()
     else:
-        logger.warning({"event": "wo_bridge.handoff_pending", "recommendation_id": recommendation.get("id"), "backend": result.get("backend")})
+        logger.warning(
+            {
+                "event": "wo_bridge.handoff_pending",
+                "recommendation_id": recommendation.get("id"),
+                "backend": result.get("backend"),
+            }
+        )
     return result
 
-def wo_bridge(kafka_bootstrap: str, pg_dsn: str, settings: Settings | None = None, connection_factory=with_pg, consumer_factory=KafkaConsumer, adapter_factory=create_cmms_adapter):
+
+def wo_bridge(
+    kafka_bootstrap: str,
+    pg_dsn: str,
+    settings: Settings | None = None,
+    connection_factory=with_pg,
+    consumer_factory=KafkaConsumer,
+    adapter_factory=create_cmms_adapter,
+):
     settings = settings or Settings()
     conn = connection_factory(pg_dsn)
     adapter = adapter_factory(settings)

@@ -19,7 +19,11 @@ class RecordingGitHub:
 
 def test_seed_milestone_uses_fixture_input_and_preserves_whitespace_safely(tmp_path) -> None:
     issue_data = [
-        {"title": "  Model routing and cost controls  ", "body": "  First body  ", "label": "enhancement"},
+        {
+            "title": "  Model routing and cost controls  ",
+            "body": "  First body  ",
+            "label": "enhancement",
+        },
         {"title": "Operator UX: feedback endpoints + UI stubs", "body": "Second body"},
     ]
     issues_file = tmp_path / "milestone-issues.json"
@@ -54,7 +58,9 @@ def test_github_cli_retries_issue_creation(monkeypatch) -> None:
         calls.append(args)
         attempts["count"] += 1
         if attempts["count"] < 3:
-            return type("Result", (), {"returncode": 1, "stdout": "", "stderr": "temporary failure"})()
+            return type(
+                "Result", (), {"returncode": 1, "stdout": "", "stderr": "temporary failure"}
+            )()
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     monkeypatch.setattr("subprocess.run", fake_run)

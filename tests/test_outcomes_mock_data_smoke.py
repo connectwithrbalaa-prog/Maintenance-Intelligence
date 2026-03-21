@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from maintenance_intelligence.api.main import app
 
-
 testcontainers_postgres = pytest.importorskip("testcontainers.postgres")
 PostgresContainer = testcontainers_postgres.PostgresContainer
 
@@ -89,9 +88,33 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                             (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
                         """,
                         (
-                            "EVT-1", "2026-03-14T08:00:00Z", "demo-org", "PUMP-101", "alarm", "high", "High vibration", json.dumps({"rms": 8.5}), json.dumps({"source": "smoke"}),
-                            "EVT-2", "2026-03-15T08:00:00Z", "demo-org", "PUMP-101", "alarm", "high", "High vibration persisted", json.dumps({"rms": 8.9}), json.dumps({"source": "smoke"}),
-                            "EVT-3", "2026-03-15T10:30:00Z", "demo-org", "PUMP-202", "alarm", "medium", "Temperature alert", json.dumps({"temp": 91}), json.dumps({"source": "smoke"}),
+                            "EVT-1",
+                            "2026-03-14T08:00:00Z",
+                            "demo-org",
+                            "PUMP-101",
+                            "alarm",
+                            "high",
+                            "High vibration",
+                            json.dumps({"rms": 8.5}),
+                            json.dumps({"source": "smoke"}),
+                            "EVT-2",
+                            "2026-03-15T08:00:00Z",
+                            "demo-org",
+                            "PUMP-101",
+                            "alarm",
+                            "high",
+                            "High vibration persisted",
+                            json.dumps({"rms": 8.9}),
+                            json.dumps({"source": "smoke"}),
+                            "EVT-3",
+                            "2026-03-15T10:30:00Z",
+                            "demo-org",
+                            "PUMP-202",
+                            "alarm",
+                            "medium",
+                            "Temperature alert",
+                            json.dumps({"temp": 91}),
+                            json.dumps({"source": "smoke"}),
                         ),
                     )
                     cur.execute(
@@ -105,10 +128,26 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                             (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
                         """,
                         (
-                            "WO-1", "PUMP-101", "COMP", "Inspect pump seal", "Seal wear suspected", "HIGH", json.dumps({"evidence_event_id": "EVT-1"}),
-                            "2026-03-14T10:00:00Z", "2026-03-14T10:05:00Z", "2026-03-14T13:00:00Z",
-                            "WO-2", "PUMP-101", "DONE", "Replace coupling", "Coupling wear confirmed", "MEDIUM", json.dumps({"evidence_event_id": "EVT-2"}),
-                            "2026-03-15T10:00:00Z", "2026-03-15T10:03:00Z", "2026-03-15T14:00:00Z",
+                            "WO-1",
+                            "PUMP-101",
+                            "COMP",
+                            "Inspect pump seal",
+                            "Seal wear suspected",
+                            "HIGH",
+                            json.dumps({"evidence_event_id": "EVT-1"}),
+                            "2026-03-14T10:00:00Z",
+                            "2026-03-14T10:05:00Z",
+                            "2026-03-14T13:00:00Z",
+                            "WO-2",
+                            "PUMP-101",
+                            "DONE",
+                            "Replace coupling",
+                            "Coupling wear confirmed",
+                            "MEDIUM",
+                            json.dumps({"evidence_event_id": "EVT-2"}),
+                            "2026-03-15T10:00:00Z",
+                            "2026-03-15T10:03:00Z",
+                            "2026-03-15T14:00:00Z",
                         ),
                     )
                     cur.execute(
@@ -120,9 +159,36 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
                             (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
                         """,
                         (
-                            "FB-1", "RUN-1", "REC-1", "demo-org", "PUMP-101", "accept", json.dumps({}), "good recommendation", "operator-1", "2026-03-14T12:00:00Z",
-                            "FB-2", "RUN-2", "REC-2", "demo-org", "PUMP-101", "reject", json.dumps({}), "not needed", "operator-2", "2026-03-15T12:00:00Z",
-                            "FB-3", "RUN-3", "REC-3", "demo-org", "PUMP-101", "accept", json.dumps({}), "completed", "operator-3", "2026-03-15T13:00:00Z",
+                            "FB-1",
+                            "RUN-1",
+                            "REC-1",
+                            "demo-org",
+                            "PUMP-101",
+                            "accept",
+                            json.dumps({}),
+                            "good recommendation",
+                            "operator-1",
+                            "2026-03-14T12:00:00Z",
+                            "FB-2",
+                            "RUN-2",
+                            "REC-2",
+                            "demo-org",
+                            "PUMP-101",
+                            "reject",
+                            json.dumps({}),
+                            "not needed",
+                            "operator-2",
+                            "2026-03-15T12:00:00Z",
+                            "FB-3",
+                            "RUN-3",
+                            "REC-3",
+                            "demo-org",
+                            "PUMP-101",
+                            "accept",
+                            json.dumps({}),
+                            "completed",
+                            "operator-3",
+                            "2026-03-15T13:00:00Z",
                         ),
                     )
 
@@ -142,7 +208,11 @@ def test_outcomes_report_with_mock_data_on_ephemeral_postgres(monkeypatch) -> No
             assert payload["placeholders"] == {}
             assert sorted(payload["asset_metrics"].keys()) == ["PUMP-101"]
 
-            volume_points = [point for point in payload["asset_metrics"]["PUMP-101"]["workorder_volume"] if point["value"]]
+            volume_points = [
+                point
+                for point in payload["asset_metrics"]["PUMP-101"]["workorder_volume"]
+                if point["value"]
+            ]
             assert volume_points == [
                 {"date": "2026-03-14", "value": 1},
                 {"date": "2026-03-15", "value": 1},

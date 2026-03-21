@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_REPO = "connectwithrbalaa-prog/Maintenance-Intelligence"
 DEFAULT_V0_2_0_PULL_REQUESTS = [19, 20, 21, 22, 23, 24, 25]
 
@@ -87,7 +86,9 @@ def _match_pull_request_record(
 
     raw_labels = record.get("labels", [])
     if isinstance(raw_labels, str):
-        normalized_labels = {label.strip().casefold() for label in raw_labels.split(",") if label.strip()}
+        normalized_labels = {
+            label.strip().casefold() for label in raw_labels.split(",") if label.strip()
+        }
     else:
         normalized_labels = {
             str(label.get("name", "") if isinstance(label, dict) else label).strip().casefold()
@@ -122,7 +123,9 @@ def _match_pull_request_record(
     return True
 
 
-def _select_batch(pull_request_numbers: list[int], batch_size: int | None, batch_index: int) -> tuple[list[int], int]:
+def _select_batch(
+    pull_request_numbers: list[int], batch_size: int | None, batch_index: int
+) -> tuple[list[int], int]:
     if batch_size is None:
         return pull_request_numbers, 1
 
@@ -141,7 +144,9 @@ def _select_batch(pull_request_numbers: list[int], batch_size: int | None, batch
 
 
 class GitHubCLI:
-    def __init__(self, dry_run: bool = False, max_attempts: int = 3, backoff_seconds: float = 1.0) -> None:
+    def __init__(
+        self, dry_run: bool = False, max_attempts: int = 3, backoff_seconds: float = 1.0
+    ) -> None:
         self.dry_run = dry_run
         self.max_attempts = max_attempts
         self.backoff_seconds = backoff_seconds
@@ -163,7 +168,9 @@ class GitHubCLI:
                 time.sleep(self.backoff_seconds * attempt)
 
         assert last_result is not None
-        raise RuntimeError(last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed")
+        raise RuntimeError(
+            last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed"
+        )
 
     def merge_pull_request(
         self,

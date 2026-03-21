@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
+
 class Settings(BaseSettings):
     env: str = Field(default="dev")
     log_level: str = Field(default="INFO")

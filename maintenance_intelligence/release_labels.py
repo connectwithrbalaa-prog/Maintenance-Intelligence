@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_REPO = "connectwithrbalaa-prog/Maintenance-Intelligence"
 DEFAULT_MILESTONE_TITLE = "v0.3.0"
 DEFAULT_LABELS = [
@@ -107,7 +106,9 @@ class GitHubCLI:
                 time.sleep(self.backoff_seconds * attempt)
 
         assert last_result is not None
-        raise RuntimeError(last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed")
+        raise RuntimeError(
+            last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed"
+        )
 
     def list_open_milestone_issues(self, repo: str, milestone_title: str) -> list[dict[str, Any]]:
         result = self._run(

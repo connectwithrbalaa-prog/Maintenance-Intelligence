@@ -4,7 +4,12 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from maintenance_intelligence.cmms.adapter import CMMSAdapter, CMMSPayloadError, CMMSUnavailableError, normalize_work_order_result
+from maintenance_intelligence.cmms.adapter import (
+    CMMSAdapter,
+    CMMSPayloadError,
+    CMMSUnavailableError,
+    normalize_work_order_result,
+)
 
 
 class MaximoCMMSAdapter(CMMSAdapter):

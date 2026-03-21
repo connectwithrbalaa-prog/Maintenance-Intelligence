@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, Response
 from typing import Dict, Any, List
 from datetime import datetime, timedelta, timezone
-import io, csv
+import io
+import csv
 import psycopg2
 from maintenance_intelligence.runner.config import Settings
 
@@ -12,8 +13,10 @@ PLACEHOLDER_NOTES = {
     "mttr_seconds_avg": "Placeholder until work order lifecycle repair timestamps are available.",
 }
 
+
 def with_pg(dsn: str):
     import time
+
     last_error = None
     for _ in range(3):
         try:
@@ -22,6 +25,7 @@ def with_pg(dsn: str):
             last_error = exc
             time.sleep(0.2)
     raise last_error
+
 
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
@@ -72,7 +76,9 @@ def _empty_asset_series(bucket_dates: List[str], *, empty_value: Any) -> List[Di
     return [{"date": bucket_date, "value": empty_value} for bucket_date in bucket_dates]
 
 
-def _series_to_rows(values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any) -> Dict[str, List[Dict[str, Any]]]:
+def _series_to_rows(
+    values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any
+) -> Dict[str, List[Dict[str, Any]]]:
     rows: Dict[str, List[Dict[str, Any]]] = {}
     for asset_id, per_day in values.items():
         rows[asset_id] = [
@@ -82,13 +88,21 @@ def _series_to_rows(values: Dict[str, Dict[str, Any]], bucket_dates: List[str], 
     return rows
 
 
-def _set_asset_metric_series(out: Dict[str, Any], metric_name: str, series: Dict[str, List[Dict[str, Any]]], bucket_dates: List[str]) -> None:
+def _set_asset_metric_series(
+    out: Dict[str, Any],
+    metric_name: str,
+    series: Dict[str, List[Dict[str, Any]]],
+    bucket_dates: List[str],
+) -> None:
     asset_metrics = out.setdefault("asset_metrics", {})
     asset_ids = set(asset_metrics) | set(series)
     for asset_id in sorted(asset_ids):
         asset_entry = asset_metrics.setdefault(asset_id, {})
         empty_value = 0 if metric_name == "workorder_volume" else None
-        asset_entry[metric_name] = series.get(asset_id, _empty_asset_series(bucket_dates, empty_value=empty_value))
+        asset_entry[metric_name] = series.get(
+            asset_id, _empty_asset_series(bucket_dates, empty_value=empty_value)
+        )
+
 
 @router.get("/rca-outcomes")
 def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
@@ -114,7 +128,9 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                 out["feedback_counts"].update({key: fb.get(key, 0) for key in FEEDBACK_ACTIONS})
                 out["feedback_total"] = sum(out["feedback_counts"].values())
                 accept = out["feedback_counts"].get("accept", 0)
-                out["acceptance_rate"] = (accept / out["feedback_total"]) if out["feedback_total"] > 0 else None
+                out["acceptance_rate"] = (
+                    (accept / out["feedback_total"]) if out["feedback_total"] > 0 else None
+                )
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"feedback aggregation unavailable: {exc}")
@@ -142,7 +158,7 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                         delta = (wo_ts - rec_ts).total_seconds()
                         if delta >= 0:
                             ttrs.append(delta)
-                out["ttr_seconds_avg"] = (sum(ttrs)/len(ttrs)) if ttrs else None
+                out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"ttr aggregation unavailable: {exc}")
@@ -216,7 +232,9 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                     ORDER BY n DESC
                     LIMIT 10
                 """)
-                out["top_assets_by_wo_volume"] = [{"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r]
+                out["top_assets_by_wo_volume"] = [
+                    {"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r
+                ]
             except Exception as exc:
                 _safe_rollback(conn)
                 _mark_partial(out, f"asset volume aggregation unavailable: {exc}")
@@ -236,7 +254,9 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
-                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
                     workorder_volume.setdefault(asset_id, {})[bucket_date] = int(row[2] or 0)
                 _set_asset_metric_series(
                     out,
@@ -266,11 +286,15 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
-                    bucket_date = row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
                     accepted_count = int(row[2] or 0)
                     rejected_count = int(row[3] or 0)
                     total = accepted_count + rejected_count
-                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (accepted_count / total) if total > 0 else None
+                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (
+                        (accepted_count / total) if total > 0 else None
+                    )
                 _set_asset_metric_series(
                     out,
                     "acceptance_rate",
@@ -284,6 +308,7 @@ def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
         return out
     finally:
         conn.close()
+
 
 @router.get("/rca-outcomes/csv")
 def rca_outcomes_csv(window: int = Query(30, ge=1, le=365)):
@@ -306,15 +331,19 @@ def rca_outcomes_csv(window: int = Query(30, ge=1, le=365)):
         rows.append({"metric": f"top_asset_{a['asset_id']}_wo_count", "value": a["count"]})
     for asset_id, asset_metrics in (rep.get("asset_metrics") or {}).items():
         for point in asset_metrics.get("workorder_volume") or []:
-            rows.append({
-                "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
-                "value": point.get("value", 0),
-            })
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
+                    "value": point.get("value", 0),
+                }
+            )
         for point in asset_metrics.get("acceptance_rate") or []:
-            rows.append({
-                "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
-                "value": point.get("value"),
-            })
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
+                    "value": point.get("value"),
+                }
+            )
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["metric", "value"])

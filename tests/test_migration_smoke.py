@@ -5,7 +5,6 @@ import sys
 import psycopg2
 import pytest
 
-
 testcontainers_postgres = pytest.importorskip("testcontainers.postgres")
 PostgresContainer = testcontainers_postgres.PostgresContainer
 
@@ -72,8 +71,7 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
         )
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT
                         to_regclass('public.events'),
                         to_regclass('public.pm_proposals'),
@@ -81,18 +79,25 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
                         to_regclass('public.rca_feedback'),
                         to_regclass('public.alembic_version'),
                         to_regclass('public.mi_schema_migrations')
-                    """
-                )
-                events_table, pm_proposals_table, workorders_table, rca_feedback_table, alembic_table, fallback_table = cur.fetchone()
+                    """)
+                (
+                    events_table,
+                    pm_proposals_table,
+                    workorders_table,
+                    rca_feedback_table,
+                    alembic_table,
+                    fallback_table,
+                ) = cur.fetchone()
 
                 assert events_table == "events"
                 assert pm_proposals_table == "pm_proposals"
                 assert workorders_table == "workorders"
                 assert rca_feedback_table == "rca_feedback"
-                assert alembic_table == "alembic_version" or fallback_table == "mi_schema_migrations"
+                assert (
+                    alembic_table == "alembic_version" or fallback_table == "mi_schema_migrations"
+                )
 
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT column_name
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
@@ -103,25 +108,22 @@ def test_migrate_module_applies_schema_to_ephemeral_postgres() -> None:
                           'workorder_completed_at'
                       )
                     ORDER BY column_name
-                    """
-                )
+                    """)
                 assert [row[0] for row in cur.fetchall()] == [
-                    'handoff_completed_at',
-                    'workorder_completed_at',
-                    'workorder_created_at',
+                    "handoff_completed_at",
+                    "workorder_completed_at",
+                    "workorder_created_at",
                 ]
 
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT column_name
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
                       AND table_name = 'events'
                       AND column_name IN ('event_time', 'occurred_at')
                     ORDER BY column_name
-                    """
-                )
-                assert [row[0] for row in cur.fetchall()] == ['occurred_at']
+                    """)
+                assert [row[0] for row in cur.fetchall()] == ["occurred_at"]
 
                 if alembic_table == "alembic_version":
                     cur.execute("SELECT version_num FROM alembic_version")

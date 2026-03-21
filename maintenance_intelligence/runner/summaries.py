@@ -1,5 +1,7 @@
-import json, os, datetime as dt
+import json
+import datetime as dt
 from pathlib import Path
+
 
 def write_run_summary(dir_path: str, run_id: str, payload: dict) -> str:
     date_dir = Path(dir_path) / dt.datetime.utcnow().strftime("%Y-%m-%d")

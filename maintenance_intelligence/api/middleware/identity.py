@@ -18,7 +18,9 @@ def _normalize_identity(user: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def resolve_identity(request: Request, settings: Optional[Settings] = None) -> Optional[Dict[str, Any]]:
+def resolve_identity(
+    request: Request, settings: Optional[Settings] = None
+) -> Optional[Dict[str, Any]]:
     settings = settings or Settings()
 
     existing = _normalize_identity(getattr(request.state, "user", None))

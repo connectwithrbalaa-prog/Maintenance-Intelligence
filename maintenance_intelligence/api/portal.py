@@ -59,7 +59,11 @@ def _sanitize_meta_value(value: Any) -> Any:
         return cleaned
 
     if isinstance(value, (list, tuple, set)):
-        items = [item for item in (_sanitize_meta_value(item) for item in value) if item not in (None, "", [], {})]
+        items = [
+            item
+            for item in (_sanitize_meta_value(item) for item in value)
+            if item not in (None, "", [], {})
+        ]
         return items
 
     text = _as_text(value)
@@ -102,7 +106,12 @@ def _sanitize_structured(value: Any) -> Dict[str, Any]:
 
 def _validate_run_id(run_id: str) -> str:
     candidate = run_id.strip()
-    if not candidate or candidate != run_id or len(candidate) > 255 or any(ord(char) < 32 for char in candidate):
+    if (
+        not candidate
+        or candidate != run_id
+        or len(candidate) > 255
+        or any(ord(char) < 32 for char in candidate)
+    ):
         raise HTTPException(status_code=400, detail="Invalid run id")
     return candidate
 

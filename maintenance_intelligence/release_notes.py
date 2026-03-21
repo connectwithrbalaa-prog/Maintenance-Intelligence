@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_REPO = "connectwithrbalaa-prog/Maintenance-Intelligence"
 
 
@@ -29,7 +28,9 @@ def _load_json(path: str | None) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def fetch_compare_data(repo: str, since_tag: str, to_tag: str, compare_data_file: str | None) -> dict[str, Any]:
+def fetch_compare_data(
+    repo: str, since_tag: str, to_tag: str, compare_data_file: str | None
+) -> dict[str, Any]:
     fixture = _load_json(compare_data_file)
     if fixture is not None:
         return fixture
@@ -118,7 +119,9 @@ def format_release_notes(to_tag: str, changes: list[str], contributors: list[str
     ]
     lines.extend(changes or ["- No changes found"])
     lines.extend(["", "## Contributors", ""])
-    lines.extend([f"- {contributor}" for contributor in contributors] or ["- No contributors found"])
+    lines.extend(
+        [f"- {contributor}" for contributor in contributors] or ["- No contributors found"]
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -131,7 +134,9 @@ def build_release_notes(
     commit_pr_map_file: str | None = None,
 ) -> str:
     compare_data = fetch_compare_data(repo, since_tag, to_tag, compare_data_file)
-    commit_shas = [commit.get("sha") for commit in compare_data.get("commits", []) if commit.get("sha")]
+    commit_shas = [
+        commit.get("sha") for commit in compare_data.get("commits", []) if commit.get("sha")
+    ]
     commit_pr_map = fetch_commit_pr_map(repo, commit_shas, commit_pr_map_file)
     changes = collect_changes(compare_data, commit_pr_map)
     contributors = collect_contributors(compare_data)
@@ -139,7 +144,9 @@ def build_release_notes(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate release notes from a GitHub compare range")
+    parser = argparse.ArgumentParser(
+        description="Generate release notes from a GitHub compare range"
+    )
     parser.add_argument("since_tag", nargs="?", default="v0.1.0")
     parser.add_argument("to_tag", nargs="?", default="v0.2.0")
     parser.add_argument("--repo", default=DEFAULT_REPO)

@@ -9,16 +9,14 @@ from typing import Sequence, Union
 
 from alembic import op
 
-
-revision: str = '004_events_occurred_at'
-down_revision: Union[str, None] = '003_add_workorder_timestamps'
+revision: str = "004_events_occurred_at"
+down_revision: Union[str, None] = "003_add_workorder_timestamps"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         DO $$
         BEGIN
             IF EXISTS (
@@ -37,13 +35,11 @@ def upgrade() -> None:
                 ALTER TABLE events RENAME COLUMN event_time TO occurred_at;
             END IF;
         END $$;
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         DO $$
         BEGIN
             IF EXISTS (
@@ -62,5 +58,4 @@ def downgrade() -> None:
                 ALTER TABLE events RENAME COLUMN occurred_at TO event_time;
             END IF;
         END $$;
-        """
-    )
+        """)

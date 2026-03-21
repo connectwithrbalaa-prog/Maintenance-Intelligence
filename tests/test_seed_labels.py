@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 
@@ -60,7 +59,9 @@ def test_github_cli_retries_before_succeeding(monkeypatch) -> None:
         calls.append(args)
         attempts["count"] += 1
         if attempts["count"] < 3:
-            return type("Result", (), {"returncode": 1, "stdout": "", "stderr": "temporary failure"})()
+            return type(
+                "Result", (), {"returncode": 1, "stdout": "", "stderr": "temporary failure"}
+            )()
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     monkeypatch.setattr("subprocess.run", fake_run)

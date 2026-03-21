@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 import psycopg2
 import pytest
 
-
 RUN_MIGRATION_SMOKE = os.getenv("RUN_MIGRATION_SMOKE", "").lower() in {"1", "true", "yes"}
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
@@ -57,8 +56,7 @@ def test_migrate_module_adds_workorder_timestamp_columns() -> None:
     )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
@@ -69,25 +67,24 @@ def test_migrate_module_adds_workorder_timestamp_columns() -> None:
                       'workorder_completed_at'
                   )
                 ORDER BY column_name
-                """
-            )
+                """)
             columns = [row[0] for row in cur.fetchall()]
             assert columns == [
-                'handoff_completed_at',
-                'workorder_completed_at',
-                'workorder_created_at',
+                "handoff_completed_at",
+                "workorder_completed_at",
+                "workorder_created_at",
             ]
 
             cur.execute("SELECT to_regclass('public.alembic_version')")
             alembic_table = cur.fetchone()[0]
-            if alembic_table == 'alembic_version':
+            if alembic_table == "alembic_version":
                 cur.execute("SELECT version_num FROM alembic_version")
-                assert cur.fetchone()[0] == '005_rca_feedback'
+                assert cur.fetchone()[0] == "005_rca_feedback"
             else:
                 cur.execute(
                     "SELECT filename FROM mi_schema_migrations WHERE filename = %s",
-                    ('011_rename_event_time_to_occurred_at.sql',),
+                    ("011_rename_event_time_to_occurred_at.sql",),
                 )
-                assert cur.fetchone()[0] == '011_rename_event_time_to_occurred_at.sql'
+                assert cur.fetchone()[0] == "011_rename_event_time_to_occurred_at.sql"
     finally:
         conn.close()

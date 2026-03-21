@@ -1,15 +1,16 @@
 from maintenance_intelligence.services import rca_agent as rca_mod
 from maintenance_intelligence.runner.config import Settings
 
+
 def test_agent_structured_mock(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "x")
 
     class FakeGW:
         def call_rca(self, event, context):
             return {
-                "text": "ok", 
-                "model_version": "gpt-4.1", 
-                "tokens": 42, 
+                "text": "ok",
+                "model_version": "gpt-4.1",
+                "tokens": 42,
                 "latency_ms": 12,
                 "structured": {
                     "title": "Seal wear on pump",
@@ -17,8 +18,8 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
                     "evidence_ids": ["DOC-1", "SIG-1"],
                     "immediate_actions": ["Check bearing temp"],
                     "pm_suggestions": ["Increase lube cycle"],
-                    "confidence": 0.82
-                }
+                    "confidence": 0.82,
+                },
             }
 
     written = {}
@@ -33,8 +34,17 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
             "recent_signals": [{"signal_id": "SIG-1"}],
         },
     )
-    monkeypatch.setattr(rca_mod, "send_recommendation", lambda producer, recommendation: sent.setdefault("event", recommendation))
-    monkeypatch.setattr(rca_mod, "write_run_summary", lambda dir_path, run_id, payload: written.setdefault("payload", payload) or str(tmp_path / "summary.json"))
+    monkeypatch.setattr(
+        rca_mod,
+        "send_recommendation",
+        lambda producer, recommendation: sent.setdefault("event", recommendation),
+    )
+    monkeypatch.setattr(
+        rca_mod,
+        "write_run_summary",
+        lambda dir_path, run_id, payload: written.setdefault("payload", payload)
+        or str(tmp_path / "summary.json"),
+    )
 
     result = rca_mod.process_event(
         {"org_id": "O1", "asset_id": "A1", "kind": "alarm", "event_id": "E1"},

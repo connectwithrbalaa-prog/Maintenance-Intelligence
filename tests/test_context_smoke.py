@@ -91,7 +91,13 @@ def test_get_event_context_uses_retriever_and_preserves_recent_order():
             [("WO newest",), ("WO older",)],
             [("temperature", "1h", 71.2, 68.0, 74.5, {"high_temp": True})],
             [
-                ("SIG-2", "temperature", 91.0, dt.datetime(2026, 3, 15, 12, 30), {"event_id": "EVT-1"}),
+                (
+                    "SIG-2",
+                    "temperature",
+                    91.0,
+                    dt.datetime(2026, 3, 15, 12, 30),
+                    {"event_id": "EVT-1"},
+                ),
                 ("SIG-1", "temperature", 89.0, dt.datetime(2026, 3, 15, 12, 15), {}),
             ],
         ]
@@ -112,7 +118,12 @@ def test_get_event_context_uses_retriever_and_preserves_recent_order():
             ]
 
     ctx = get_event_context(
-        {"asset_id": "TEST-ASSET", "kind": "alarm", "summary": "pump vibration high", "details": {"temperature": 88}},
+        {
+            "asset_id": "TEST-ASSET",
+            "kind": "alarm",
+            "summary": "pump vibration high",
+            "details": {"temperature": 88},
+        },
         connection_factory=lambda _dsn: fake_conn,
         retriever_cls=FakeRetriever,
     )
@@ -135,9 +146,24 @@ def test_get_event_context_falls_back_to_doc_chunk_query_when_retriever_fails():
             [],
             [],
             [
-                ("DOC-3", "General manual", "routine inspection checklist", dt.datetime(2026, 3, 15, 12, 35)),
-                ("DOC-1", "Pump alarm playbook", "pump vibration response steps", dt.datetime(2026, 3, 15, 12, 10)),
-                ("DOC-2", "Pump maintenance", "bearing wear and pump vibration guide", dt.datetime(2026, 3, 15, 12, 20)),
+                (
+                    "DOC-3",
+                    "General manual",
+                    "routine inspection checklist",
+                    dt.datetime(2026, 3, 15, 12, 35),
+                ),
+                (
+                    "DOC-1",
+                    "Pump alarm playbook",
+                    "pump vibration response steps",
+                    dt.datetime(2026, 3, 15, 12, 10),
+                ),
+                (
+                    "DOC-2",
+                    "Pump maintenance",
+                    "bearing wear and pump vibration guide",
+                    dt.datetime(2026, 3, 15, 12, 20),
+                ),
             ],
         ]
     )

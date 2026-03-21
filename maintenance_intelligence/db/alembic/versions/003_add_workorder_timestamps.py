@@ -10,18 +10,17 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-
-revision: str = '003_add_workorder_timestamps'
-down_revision: Union[str, None] = '002_pm_proposals'
+revision: str = "003_add_workorder_timestamps"
+down_revision: Union[str, None] = "002_pm_proposals"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-WORKORDER_TABLE = 'workorders'
+WORKORDER_TABLE = "workorders"
 COLUMNS = (
-    ('workorder_created_at', sa.DateTime(timezone=True)),
-    ('handoff_completed_at', sa.DateTime(timezone=True)),
-    ('workorder_completed_at', sa.DateTime(timezone=True)),
+    ("workorder_created_at", sa.DateTime(timezone=True)),
+    ("handoff_completed_at", sa.DateTime(timezone=True)),
+    ("workorder_completed_at", sa.DateTime(timezone=True)),
 )
 
 

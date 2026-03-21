@@ -1,16 +1,16 @@
 import os
-import sys
 from loguru import logger
 from maintenance_intelligence.runner.config import Settings
 
+
 def run():
     """Run database migrations using Alembic."""
+    settings = Settings()
     try:
         from alembic.config import Config
         from alembic import command
 
         # Get database URL
-        settings = Settings()
         db_url = settings.sqlalchemy_url
 
         # Configure Alembic
@@ -25,10 +25,16 @@ def run():
         logger.info({"event": "migration.done"})
 
     except ImportError:
-        logger.warning({"event": "migration.fallback", "reason": "alembic not available, using legacy SQL migrations"})
+        logger.warning(
+            {
+                "event": "migration.fallback",
+                "reason": "alembic not available, using legacy SQL migrations",
+            }
+        )
 
         # Fallback to legacy SQL migrations
-        import glob, psycopg2
+        import glob
+        import psycopg2
 
         DDL_TRACK_TABLE = "mi_schema_migrations"
 
@@ -52,20 +58,25 @@ def run():
             with conn:
                 with conn.cursor() as cur:
                     ensure_track_table(cur)
-                    files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "migrations", "*.sql")))
+                    files = sorted(
+                        glob.glob(os.path.join(os.path.dirname(__file__), "migrations", "*.sql"))
+                    )
                     for f in files:
                         name = os.path.basename(f)
                         if already_applied(cur, name):
-                            logger.info({"event":"migration.skip","file":name})
+                            logger.info({"event": "migration.skip", "file": name})
                             continue
                         with open(f, "r") as fh:
                             sql_text = fh.read()
-                        logger.info({"event":"migration.apply","file":name})
+                        logger.info({"event": "migration.apply", "file": name})
                         apply_sql(cur, sql_text)
-                        cur.execute(f"INSERT INTO {DDL_TRACK_TABLE} (filename) VALUES (%s)", (name,))
-            logger.info({"event":"migration.done"})
+                        cur.execute(
+                            f"INSERT INTO {DDL_TRACK_TABLE} (filename) VALUES (%s)", (name,)
+                        )
+            logger.info({"event": "migration.done"})
         finally:
             conn.close()
+
 
 if __name__ == "__main__":
     run()

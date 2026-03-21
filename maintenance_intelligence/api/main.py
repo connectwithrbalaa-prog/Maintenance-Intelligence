@@ -32,8 +32,10 @@ settings = Settings()
 setup_logger(settings.log_level)
 init_tracing("maintenance-intelligence-api")
 
+
 class TriggerPayload(BaseModel):
     event_id: str
+
 
 @app.post("/api/v1/agents/rca/trigger")
 def trigger_rca(p: TriggerPayload):

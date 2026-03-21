@@ -91,7 +91,8 @@ def test_rca_agent_loop_processes_event_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rca_mod,
         "write_run_summary",
-        lambda dir_path, run_id, payload: written.setdefault("summary", payload) or str(tmp_path / "summary.json"),
+        lambda dir_path, run_id, payload: written.setdefault("summary", payload)
+        or str(tmp_path / "summary.json"),
     )
 
     rca_mod.rca_agent(kafka_bootstrap="kafka:9092")

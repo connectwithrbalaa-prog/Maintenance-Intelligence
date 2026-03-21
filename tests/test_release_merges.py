@@ -75,17 +75,53 @@ def test_merge_pull_requests_dry_run_emits_commands(capsys) -> None:
 
     assert result["pull_request_count"] == 2
     output = capsys.readouterr().out
-    assert "DRY-RUN: gh pr merge 19 --repo connectwithrbalaa-prog/Maintenance-Intelligence --squash --delete-branch --admin" in output
-    assert "DRY-RUN: gh pr merge 20 --repo connectwithrbalaa-prog/Maintenance-Intelligence --squash --delete-branch --admin" in output
+    assert (
+        "DRY-RUN: gh pr merge 19 --repo connectwithrbalaa-prog/Maintenance-Intelligence --squash --delete-branch --admin"
+        in output
+    )
+    assert (
+        "DRY-RUN: gh pr merge 20 --repo connectwithrbalaa-prog/Maintenance-Intelligence --squash --delete-branch --admin"
+        in output
+    )
 
 
 def test_merge_pull_requests_filters_and_batches_fixture_input(tmp_path) -> None:
     pull_request_data = [
-        {"number": 30, "title": "RCA stabilize signals", "state": "open", "base": "main", "labels": ["release", "rca"]},
-        {"number": 31, "title": "RCA harden reports", "state": "open", "base": "main", "labels": ["release", "rca"]},
-        {"number": 32, "title": "RCA improve dashboards", "state": "open", "base": "main", "labels": ["release", "rca"]},
-        {"number": 33, "title": "RCA tune health", "state": "open", "base": "main", "labels": ["release", "rca"]},
-        {"number": 34, "title": "Docs cleanup", "state": "open", "base": "main", "labels": ["docs"]},
+        {
+            "number": 30,
+            "title": "RCA stabilize signals",
+            "state": "open",
+            "base": "main",
+            "labels": ["release", "rca"],
+        },
+        {
+            "number": 31,
+            "title": "RCA harden reports",
+            "state": "open",
+            "base": "main",
+            "labels": ["release", "rca"],
+        },
+        {
+            "number": 32,
+            "title": "RCA improve dashboards",
+            "state": "open",
+            "base": "main",
+            "labels": ["release", "rca"],
+        },
+        {
+            "number": 33,
+            "title": "RCA tune health",
+            "state": "open",
+            "base": "main",
+            "labels": ["release", "rca"],
+        },
+        {
+            "number": 34,
+            "title": "Docs cleanup",
+            "state": "open",
+            "base": "main",
+            "labels": ["docs"],
+        },
     ]
     pull_request_file = tmp_path / "pull-requests.json"
     pull_request_file.write_text(json.dumps(pull_request_data), encoding="utf-8")

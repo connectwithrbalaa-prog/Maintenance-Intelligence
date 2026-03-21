@@ -77,7 +77,11 @@ def test_demo_pm_script_can_use_existing_api(tmp_path) -> None:
         thread.join(timeout=5)
 
     assert result.returncode == 0, result.stderr
-    analyze_body = next(body for method, path, body in requests if method == "POST" and path == "/api/v1/agents/pm/advisor/analyze")
+    analyze_body = next(
+        body
+        for method, path, body in requests
+        if method == "POST" and path == "/api/v1/agents/pm/advisor/analyze"
+    )
     analyze_payload = json.loads(analyze_body)
     assert set(analyze_payload) == {"run_id"}
     assert analyze_payload["run_id"].startswith("DEMO-PM-")
@@ -87,4 +91,6 @@ def test_demo_pm_script_can_use_existing_api(tmp_path) -> None:
     assert '"approved": true' in result.stdout
     assert ("GET", "/api/v1/health", "") in requests
     assert any(path == "/api/v1/agents/pm/advisor/analyze" for _, path, _ in requests)
-    assert any(path == "/api/v1/agents/pm/proposals/demo-proposal/approve" for _, path, _ in requests)
+    assert any(
+        path == "/api/v1/agents/pm/proposals/demo-proposal/approve" for _, path, _ in requests
+    )

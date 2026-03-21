@@ -9,7 +9,6 @@ from loguru import logger
 
 from maintenance_intelligence.runner.config import Settings
 
-
 TERMINAL_WORK_ORDER_STATUSES = {"COMP", "COMPLETE", "COMPLETED", "CLOSE", "CLOSED", "DONE"}
 
 
@@ -171,7 +170,9 @@ def _attempt_entry(
         "attempt_number": attempt_number,
         "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "handoff_state": handoff_state,
-        "result": "failure" if error_message else ("success" if handoff_state == "success" else "pending"),
+        "result": (
+            "failure" if error_message else ("success" if handoff_state == "success" else "pending")
+        ),
         "connector_result": connector_result or {},
         "error_message": error_message or "",
     }

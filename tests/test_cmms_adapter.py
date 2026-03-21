@@ -9,10 +9,14 @@ for name in list(sys.modules):
     if name == "maintenance_intelligence" or name.startswith("maintenance_intelligence."):
         del sys.modules[name]
 
-from maintenance_intelligence.cmms.adapter import CMMSPayloadError, UnsupportedBackendError, create_cmms_adapter
-from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter
-from maintenance_intelligence.cmms.mock import MockCMMSAdapter
-from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.cmms.adapter import (  # noqa: E402
+    CMMSPayloadError,
+    UnsupportedBackendError,
+    create_cmms_adapter,
+)
+from maintenance_intelligence.cmms.maximo import MaximoCMMSAdapter  # noqa: E402
+from maintenance_intelligence.cmms.mock import MockCMMSAdapter  # noqa: E402
+from maintenance_intelligence.runner.config import Settings  # noqa: E402
 
 
 def test_factory_selects_mock_backend(monkeypatch):
@@ -41,7 +45,9 @@ def test_factory_rejects_unknown_backend(monkeypatch):
 def test_mock_adapter_returns_normalized_work_order():
     adapter = MockCMMSAdapter(Settings())
 
-    result = adapter.create_work_order({"id": "REC-12345678", "asset_id": "PUMP-101", "title": "Inspect seal"})
+    result = adapter.create_work_order(
+        {"id": "REC-12345678", "asset_id": "PUMP-101", "title": "Inspect seal"}
+    )
 
     assert result["wo_id"] == "WO-REC-1234"
     assert result["status"] == "DRAFT"
@@ -76,7 +82,11 @@ def test_maximo_adapter_maps_and_parses_response(monkeypatch):
 
     client = FakeClient()
     adapter = MaximoCMMSAdapter(
-        Settings(maximo_base_url="https://maximo.example.test", maximo_site="PLANT1", maximo_api_key="secret"),
+        Settings(
+            maximo_base_url="https://maximo.example.test",
+            maximo_site="PLANT1",
+            maximo_api_key="secret",
+        ),
         client=client,
     )
 

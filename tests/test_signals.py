@@ -1,7 +1,6 @@
-import pytest
 from maintenance_intelligence.services.signals import _detect_anomalies, _compute_rollups
-import psycopg2
 from unittest.mock import MagicMock
+
 
 def test_detect_anomalies():
     # Normal values
@@ -15,6 +14,7 @@ def test_detect_anomalies():
     recent = [1.0] * 10 + [10.0]  # Mean ~1.8, stdev ~2.8, z-score > 3
     anomalies = _detect_anomalies(recent, 10.0)
     assert "z_score_spike" in anomalies
+
 
 def test_compute_rollups():
     # Mock connection and cursor

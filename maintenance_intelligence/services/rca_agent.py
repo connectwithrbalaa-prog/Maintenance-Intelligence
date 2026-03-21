@@ -1,4 +1,10 @@
-import os, json, uuid, datetime as dt, signal, sys, time
+import os
+import json
+import uuid
+import datetime as dt
+import signal
+import sys
+import time
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
@@ -7,7 +13,12 @@ from maintenance_intelligence.genai.gateway import GenAIGateway
 from maintenance_intelligence.runner.summaries import write_run_summary
 from maintenance_intelligence.context.assembler import get_event_context
 import backoff
-from maintenance_intelligence.api.metrics import recommendations_created_total, rca_runs_total, rca_failures_total, rca_duration_seconds
+from maintenance_intelligence.api.metrics import (
+    recommendations_created_total,
+    rca_runs_total,
+    rca_duration_seconds,
+)
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str):
@@ -22,16 +33,18 @@ def create_kafka_consumer(kafka_bootstrap: str):
         auto_commit_interval_ms=5000,
     )
 
+
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_producer(kafka_bootstrap: str):
     """Create Kafka producer with retry logic."""
     return KafkaProducer(
         bootstrap_servers=kafka_bootstrap,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        acks='all',
+        acks="all",
         retries=3,
-        retry_backoff_ms=1000
+        retry_backoff_ms=1000,
     )
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
 def send_recommendation(producer, recommendation):
@@ -52,6 +65,7 @@ def _ordered_unique_strings(values):
         seen.add(candidate)
         ordered.append(candidate)
     return ordered
+
 
 def process_event(evt: dict, settings: Settings, producer, gateway=None):
     if evt.get("kind") not in ("alarm", "anomaly"):
@@ -91,7 +105,11 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
 
     rec_id = str(uuid.uuid4())
     doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
-    signal_ids = [s.get("signal_id") for s in ctx.get("recent_signals", []) if isinstance(s, dict) and s.get("signal_id")]
+    signal_ids = [
+        s.get("signal_id")
+        for s in ctx.get("recent_signals", [])
+        if isinstance(s, dict) and s.get("signal_id")
+    ]
 
     out = {
         "event_type": "recommendation.created",
@@ -101,10 +119,16 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "recommendation": {
             "id": rec_id,
             "asset_id": evt.get("asset_id"),
-            "title": (structured.get("title") or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"),
+            "title": (
+                structured.get("title")
+                or f"Investigate {evt.get('kind')} on asset {evt.get('asset_id')}"
+            ),
             "rationale": rationale,
             "evidence": _ordered_unique_strings(
-                [evt.get("event_id")] + doc_chunk_ids + signal_ids + (structured.get("evidence_ids") or [])
+                [evt.get("event_id")]
+                + doc_chunk_ids
+                + signal_ids
+                + (structured.get("evidence_ids") or [])
             ),
             "model": model_meta,
             "immutable": True,
@@ -130,7 +154,14 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
     }
     write_run_summary(getattr(settings, "run_summary_dir", "outputs"), run_id, summary_payload)
 
-    logger.info({"event": "rca.recommendation.created", "id": rec_id, "model": model_meta, "ctx": out.get("context_meta")})
+    logger.info(
+        {
+            "event": "rca.recommendation.created",
+            "id": rec_id,
+            "model": model_meta,
+            "ctx": out.get("context_meta"),
+        }
+    )
     try:
         rca_runs_total.labels(service="rca_agent").inc()
         rca_duration_seconds.labels(service="rca_agent").observe(max(0.0, time.time() - _t0))
@@ -143,6 +174,7 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
         "summary": summary_payload,
         "context": ctx,
     }
+
 
 def rca_agent(kafka_bootstrap: str = None):
     logger.info({"event": "rca_agent.start"})
@@ -169,8 +201,15 @@ def rca_agent(kafka_bootstrap: str = None):
         prod = create_kafka_producer(kafka_bootstrap)
 
         openai_key = os.getenv("OPENAI_API_KEY")
-        gateway = GenAIGateway(api_key=openai_key, model=getattr(settings, "genai_model", "gpt-4.1"),
-                               timeout_s=getattr(settings, "genai_timeout_s", 25)) if openai_key else None
+        gateway = (
+            GenAIGateway(
+                api_key=openai_key,
+                model=getattr(settings, "genai_model", "gpt-4.1"),
+                timeout_s=getattr(settings, "genai_timeout_s", 25),
+            )
+            if openai_key
+            else None
+        )
 
         for msg in cons:
             if shutdown_requested:
@@ -182,7 +221,13 @@ def rca_agent(kafka_bootstrap: str = None):
                 process_event(evt, settings, prod, gateway=gateway)
 
             except Exception as e:
-                logger.error({"event": "rca_agent.processing_error", "event_id": evt.get("event_id"), "error": str(e)})
+                logger.error(
+                    {
+                        "event": "rca_agent.processing_error",
+                        "event_id": evt.get("event_id"),
+                        "error": str(e),
+                    }
+                )
                 # Continue processing other events
 
     except Exception as e:

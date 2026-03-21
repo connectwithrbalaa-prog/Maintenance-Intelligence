@@ -136,15 +136,27 @@ def test_persist_work_order_uses_guarded_upsert_for_canonical_timestamps():
             "created_at": "2026-03-15T12:00:00Z",
             "handoff_complete": True,
             "response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
-            "raw_response": {"statusdate": "2026-03-15T12:05:00Z", "actfinish": "2026-03-15T13:00:00Z"},
+            "raw_response": {
+                "statusdate": "2026-03-15T12:05:00Z",
+                "actfinish": "2026-03-15T13:00:00Z",
+            },
         },
     )
 
     query, params = fake_connection.executed[0]
     assert "ON CONFLICT (wo_id) DO UPDATE SET" in query
-    assert "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at)" in query
-    assert "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at)" in query
-    assert "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)" in query
+    assert (
+        "workorder_created_at = COALESCE(workorders.workorder_created_at, EXCLUDED.workorder_created_at)"
+        in query
+    )
+    assert (
+        "handoff_completed_at = COALESCE(workorders.handoff_completed_at, EXCLUDED.handoff_completed_at)"
+        in query
+    )
+    assert (
+        "workorder_completed_at = COALESCE(workorders.workorder_completed_at, EXCLUDED.workorder_completed_at)"
+        in query
+    )
     assert params[7] == "2026-03-15T12:00:00Z"
     assert params[8] == "2026-03-15T12:05:00Z"
     assert params[9] == "2026-03-15T13:00:00Z"

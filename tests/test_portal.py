@@ -95,7 +95,12 @@ def test_portal_skips_invalid_json_and_coerces_malformed_nested_fields(tmp_path,
     assert payload[0]["summary"] == ""
     assert payload[0]["hypothesis"] == []
     assert payload[0]["context_meta"] == {}
-    assert payload[0]["model"] == {"name": "", "version": "", "latency_ms": None, "confidence": None}
+    assert payload[0]["model"] == {
+        "name": "",
+        "version": "",
+        "latency_ms": None,
+        "confidence": None,
+    }
 
 
 def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monkeypatch):
@@ -111,7 +116,9 @@ def test_portal_run_detail_returns_422_for_malformed_summary_file(tmp_path, monk
     assert detail.json()["detail"] == "Run summary is malformed"
 
 
-def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(tmp_path, monkeypatch):
+def test_portal_run_detail_sanitizes_partial_payload_and_keeps_predictable_shape(
+    tmp_path, monkeypatch
+):
     run_dir = tmp_path / "portal-outs" / "2026-03-15"
     run_dir.mkdir(parents=True)
     (run_dir / "RUN-PARTIAL.json").write_text(
@@ -218,7 +225,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "admin_retry" in page.text
     assert "Admin retry attempts remaining:" in page.text
     assert "Retrying handoff..." in page.text
-    assert '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.' in page.text
+    assert (
+        '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.'
+        in page.text
+    )
     assert "Retry limit reached" in page.text
     assert "No approval attempt recorded for this run in this browser session." in page.text
     assert "Approve the PM proposal for" in page.text
@@ -229,14 +239,17 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "admin-origin" in page.text
     assert "audit-head" in page.text
     assert "audit-badge actor" in page.text
-    assert "Origin ${escapeHtml(attempt.origin || \"approval\")}" in page.text
-    assert "Actor ${escapeHtml(attempt.approved_by || \"Unknown approver\")}" in page.text
+    assert 'Origin ${escapeHtml(attempt.origin || "approval")}' in page.text
+    assert 'Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}' in page.text
     assert "origin-admin" in page.text
     assert "origin-approval" in page.text
     assert "Load more" in page.text
     assert "Loading more audit..." in page.text
     assert "All recorded audit attempts are visible." in page.text
-    assert "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts." in page.text
+    assert (
+        "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts."
+        in page.text
+    )
     assert "appendApprovalHistoryPage" in page.text
     assert "existingAttempts.concat" in page.text
     assert "history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}" in page.text
@@ -261,16 +274,28 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Loading outcomes trends for the last" in page.text
     assert "Unable to load outcomes trends:" in page.text
     assert "Partial outcomes report:" in page.text
-    assert "No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead." in page.text
+    assert (
+        "No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead."
+        in page.text
+    )
     assert "Workorder volume" in page.text
     assert "Acceptance rate" in page.text
     assert "Peak daily volume" in page.text
-    assert "Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window." in page.text
-    assert "No accept or reject feedback was recorded for this asset in the current window." in page.text
+    assert (
+        "Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window."
+        in page.text
+    )
+    assert (
+        "No accept or reject feedback was recorded for this asset in the current window."
+        in page.text
+    )
     assert "No work orders were recorded for this asset in the current window." in page.text
     assert "No acceptance decisions yet" in page.text
     assert "No work order volume yet" in page.text
     assert "chart-line" in page.text
     assert "chart-dot" in page.text
     assert "buildTrendSegments" in page.text
-    assert "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}" in page.text
+    assert (
+        "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}"
+        in page.text
+    )

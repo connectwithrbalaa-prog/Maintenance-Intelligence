@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_REPO = "connectwithrbalaa-prog/Maintenance-Intelligence"
 DEFAULT_MILESTONE_TITLE = "v0.3.0"
 DEFAULT_MILESTONE_DESCRIPTION = (
@@ -115,7 +114,9 @@ class GitHubCLI:
                 time.sleep(self.backoff_seconds * attempt)
 
         assert last_result is not None
-        raise RuntimeError(last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed")
+        raise RuntimeError(
+            last_result.stderr.strip() or last_result.stdout.strip() or "gh command failed"
+        )
 
     def ensure_milestone(self, repo: str, title: str, description: str) -> None:
         args = [
@@ -138,7 +139,11 @@ class GitHubCLI:
             self._run(args)
         except RuntimeError as error:
             message = str(error).casefold()
-            if "already_exists" in message or "already exists" in message or "validation failed" in message:
+            if (
+                "already_exists" in message
+                or "already exists" in message
+                or "validation failed" in message
+            ):
                 return
             raise
 

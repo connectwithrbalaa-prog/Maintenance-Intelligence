@@ -3,7 +3,6 @@ import datetime as dt
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psycopg2
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -29,7 +28,9 @@ class AnalyzePayload(BaseModel):
 
 
 class ApprovePayload(BaseModel):
-    admin_retry: bool = Field(default=False, description="Whether this approval call is an admin-initiated retry")
+    admin_retry: bool = Field(
+        default=False, description="Whether this approval call is an admin-initiated retry"
+    )
 
 
 connection_factory = with_pg
@@ -47,7 +48,9 @@ def _as_text(value: Any) -> Optional[str]:
     return None
 
 
-def _approval_attempt_metadata(result: Optional[Dict[str, Any]], approved_by: Optional[str], status: str) -> Dict[str, Any]:
+def _approval_attempt_metadata(
+    result: Optional[Dict[str, Any]], approved_by: Optional[str], status: str
+) -> Dict[str, Any]:
     attempted_at = dt.datetime.now(dt.timezone.utc).isoformat()
     return {
         "approval": {
@@ -99,7 +102,13 @@ def _normalize_attempt_entry(value: Any) -> Optional[Dict[str, Any]]:
             result = "failure"
         else:
             result = "pending"
-    if not attempted_at and not approved_by and not approved_at and not connector_result and not error_message:
+    if (
+        not attempted_at
+        and not approved_by
+        and not approved_at
+        and not connector_result
+        and not error_message
+    ):
         return None
     return {
         "attempt_number": attempt_number,
@@ -146,7 +155,9 @@ def _proposal_attempt_limit(settings: Settings) -> int:
 
 
 def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]:
-    attempts = proposal.get("approval_history") or _approval_attempts(proposal.get("metadata") or {})
+    attempts = proposal.get("approval_history") or _approval_attempts(
+        proposal.get("metadata") or {}
+    )
     attempt_count = len(attempts)
     attempts_remaining = max(0, max_attempts - attempt_count)
     retry_allowed = proposal.get("status") != "approved" and attempts_remaining > 0
@@ -191,7 +202,9 @@ def _append_approval_metadata(
     normalized_attempts: List[Dict[str, Any]] = []
     for attempt in attempts:
         handoff_state = _as_text(attempt.get("handoff_state")) or "pending"
-        attempted_at = _as_text(attempt.get("attempted_at")) or dt.datetime.now(dt.timezone.utc).isoformat()
+        attempted_at = (
+            _as_text(attempt.get("attempted_at")) or dt.datetime.now(dt.timezone.utc).isoformat()
+        )
         approved_at = _as_text(attempt.get("approved_at"))
         if approved_at is None and handoff_state == "success":
             approved_at = attempted_at
@@ -203,21 +216,38 @@ def _append_approval_metadata(
                 "approved_at": approved_at,
                 "handoff_state": handoff_state,
                 "origin": _as_text(attempt.get("origin")) or origin,
-                "result": _as_text(attempt.get("result")) or ("success" if handoff_state == "success" else ("failure" if attempt.get("error_message") else "pending")),
-                "connector_result": attempt.get("connector_result") if isinstance(attempt.get("connector_result"), dict) else {},
+                "result": _as_text(attempt.get("result"))
+                or (
+                    "success"
+                    if handoff_state == "success"
+                    else ("failure" if attempt.get("error_message") else "pending")
+                ),
+                "connector_result": (
+                    attempt.get("connector_result")
+                    if isinstance(attempt.get("connector_result"), dict)
+                    else {}
+                ),
                 "error_message": _as_text(attempt.get("error_message")) or "",
             }
         )
     accumulated.extend(normalized_attempts)
-    latest = normalized_attempts[-1] if normalized_attempts else (accumulated[-1] if accumulated else {
-        "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "approved_by": approved_by,
-        "approved_at": None,
-        "handoff_state": "pending",
-        "result": "pending",
-        "connector_result": {},
-        "error_message": "",
-    })
+    latest = (
+        normalized_attempts[-1]
+        if normalized_attempts
+        else (
+            accumulated[-1]
+            if accumulated
+            else {
+                "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "approved_by": approved_by,
+                "approved_at": None,
+                "handoff_state": "pending",
+                "result": "pending",
+                "connector_result": {},
+                "error_message": "",
+            }
+        )
+    )
     approval = {
         "approved_by": latest.get("approved_by"),
         "approved_at": latest.get("approved_at"),
@@ -250,12 +280,20 @@ def _approval_response(
     reused_result: bool = False,
 ) -> JSONResponse:
     approval = _approval_fields(proposal.get("metadata") or {})
-    approval_status = proposal.get("status") or ("approved" if result and result.get("handoff_complete") else "pending")
+    approval_status = proposal.get("status") or (
+        "approved" if result and result.get("handoff_complete") else "pending"
+    )
     approved_by = proposal.get("approved_by") or approval.get("approved_by")
     approved_at = proposal.get("approved_at") or approval.get("approved_at")
     normalized_proposal = {**proposal, "approved_by": approved_by, "approved_at": approved_at}
-    handoff_state = normalized_proposal.get("handoff_state") or approval.get("handoff_state") or ("success" if normalized_proposal.get("status") == "approved" else "pending")
-    attempts = normalized_proposal.get("approval_history") or _approval_attempts(normalized_proposal.get("metadata") or {})
+    handoff_state = (
+        normalized_proposal.get("handoff_state")
+        or approval.get("handoff_state")
+        or ("success" if normalized_proposal.get("status") == "approved" else "pending")
+    )
+    attempts = normalized_proposal.get("approval_history") or _approval_attempts(
+        normalized_proposal.get("metadata") or {}
+    )
     latest_attempt = attempts[0] if attempts else {}
     retry_fields = _retry_fields(normalized_proposal, max_attempts)
     body = {
@@ -320,7 +358,9 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
     metadata = payload.get("metadata") or {}
     approval = _approval_fields(metadata)
     return {
-        "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
+        "proposal_id": payload.get("recommendation_id")
+        or payload.get("run_id")
+        or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
@@ -337,12 +377,18 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
     }
 
 
-def _proposal_record_from_summary(payload: Dict[str, Any], source_path: Path, proposed_by: Optional[str] = None) -> Dict[str, Any]:
+def _proposal_record_from_summary(
+    payload: Dict[str, Any], source_path: Path, proposed_by: Optional[str] = None
+) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
-    rationale = "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal"
+    rationale = (
+        "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal"
+    )
     return {
-        "proposal_id": payload.get("recommendation_id") or payload.get("run_id") or source_path.stem,
+        "proposal_id": payload.get("recommendation_id")
+        or payload.get("run_id")
+        or source_path.stem,
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
@@ -362,7 +408,11 @@ def _proposal_record_from_summary(payload: Dict[str, Any], source_path: Path, pr
 def _build_recommendation(payload: Dict[str, Any]) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
-    rationale = "\n".join(structured.get("hypothesis") or []) or payload.get("summary") or "RCA proposal approval"
+    rationale = (
+        "\n".join(structured.get("hypothesis") or [])
+        or payload.get("summary")
+        or "RCA proposal approval"
+    )
     return {
         "id": payload.get("recommendation_id") or payload.get("run_id"),
         "asset_id": context_meta.get("asset_id"),
@@ -506,7 +556,11 @@ def _load_persisted_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
     conn = _with_proposal_connection()
     try:
         for proposal in _list_persisted_proposals(conn):
-            if proposal_id in {proposal.get("proposal_id"), proposal.get("recommendation_id"), proposal.get("run_id")}:
+            if proposal_id in {
+                proposal.get("proposal_id"),
+                proposal.get("recommendation_id"),
+                proposal.get("run_id"),
+            }:
                 return proposal
     finally:
         conn.close()
@@ -599,7 +653,9 @@ def proposal_history(
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, request: Request, approve_request: ApprovePayload = ApprovePayload()) -> Dict[str, Any]:
+def approve_proposal(
+    proposal_id: str, request: Request, approve_request: ApprovePayload = ApprovePayload()
+) -> Dict[str, Any]:
     found = _find_proposal_payload(proposal_id)
     payload = found["payload"]
     settings = Settings()
@@ -626,15 +682,22 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
     existing_attempts = _approval_attempts((existing or {}).get("metadata") or {})
     attempts_remaining = max(0, max_attempts - len(existing_attempts))
     if attempts_remaining <= 0:
-        raise HTTPException(status_code=409, detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts")
+        raise HTTPException(
+            status_code=409,
+            detail=f"PM proposal reached the maximum of {max_attempts} handoff attempts",
+        )
 
     manual_retry = bool(existing_attempts) and (existing or {}).get("status") != "approved"
     attempt_origin = "admin" if approve_request.admin_retry else "approval"
     if manual_retry:
         if not approve_request.admin_retry:
-            raise HTTPException(status_code=403, detail="Manual retries require an admin or maintainer role")
+            raise HTTPException(
+                status_code=403, detail="Manual retries require an admin or maintainer role"
+            )
         if not _is_admin_role(actor_role):
-            raise HTTPException(status_code=403, detail="Admin retry requires admin or maintainer role")
+            raise HTTPException(
+                status_code=403, detail="Admin retry requires admin or maintainer role"
+            )
 
     if not _recommendation_is_actionable(recommendation):
         raise HTTPException(status_code=422, detail="Proposal payload is malformed")
@@ -650,7 +713,9 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 {"recommendation": recommendation},
                 conn,
                 adapter,
-                retry_attempts=min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining),
+                retry_attempts=min(
+                    max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining
+                ),
                 retry_interval_s=settings.pm_handoff_retry_interval_s,
             )
             status = "approved" if result.get("handoff_complete") else "pending"
@@ -660,7 +725,12 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                 approved_by,
                 result.get("wo_id"),
                 status,
-                _append_approval_metadata(proposal.get("metadata"), approved_by, result.get("_attempts") or [], origin=attempt_origin),
+                _append_approval_metadata(
+                    proposal.get("metadata"),
+                    approved_by,
+                    result.get("_attempts") or [],
+                    origin=attempt_origin,
+                ),
             )
         finally:
             try:
@@ -682,14 +752,22 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             502,
             detail,
@@ -707,14 +785,22 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, exc.attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, exc.attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             503,
             detail,
@@ -733,14 +819,22 @@ def approve_proposal(proposal_id: str, request: Request, approve_request: Approv
                     approved_by,
                     None,
                     "pending",
-                    _append_approval_metadata(proposal.get("metadata"), approved_by, attempts, origin=attempt_origin),
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, attempts, origin=attempt_origin
+                    ),
                 )
             finally:
                 conn.close()
         except Exception:
             pass
         return _approval_response(
-            persisted or {"proposal_id": proposal_id, "status": "pending", "approved_by": approved_by, "approved_at": None},
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
             None,
             503,
             detail,
