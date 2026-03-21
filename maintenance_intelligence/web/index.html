@@ -405,6 +405,24 @@
 			font-size: 11px;
 			text-transform: uppercase;
 			letter-spacing: 0.08em;
+
+		.chip.trend-rising {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.22);
+			color: var(--warn);
+		}
+
+		.chip.trend-falling {
+			background: rgba(14, 124, 102, 0.14);
+			border-color: rgba(14, 124, 102, 0.24);
+			color: var(--accent);
+		}
+
+		.chip.trend-steady {
+			background: rgba(24, 34, 38, 0.06);
+			border-color: rgba(24, 34, 38, 0.12);
+			color: var(--muted);
+		}
 			color: var(--muted);
 			margin-bottom: 8px;
 		}
@@ -511,6 +529,103 @@
 			background: rgba(24, 34, 38, 0.04);
 		}
 
+		.result-banner strong {
+			display: block;
+			font-family: var(--font-display);
+			font-size: 1.05rem;
+			letter-spacing: -0.03em;
+			margin: 0;
+		}
+
+		.approval-banner-head {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			margin-bottom: 12px;
+		}
+
+		.approval-kicker {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 6px 10px;
+			border-radius: 999px;
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			background: rgba(24, 34, 38, 0.08);
+			color: var(--text);
+		}
+
+		.result-banner.success .approval-kicker {
+			background: rgba(14, 124, 102, 0.16);
+			color: var(--accent);
+		}
+
+		.result-banner.warn .approval-kicker {
+			background: rgba(197, 103, 47, 0.16);
+			color: var(--warn);
+		}
+
+		.result-banner.error .approval-kicker {
+			background: rgba(166, 59, 45, 0.16);
+			color: var(--danger);
+		}
+
+		.approval-banner-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+			margin-bottom: 10px;
+		}
+
+		.approval-stat {
+			padding: 10px 12px;
+			border-radius: 14px;
+			background: rgba(255, 255, 255, 0.56);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+		}
+
+		.approval-stat-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 6px;
+		}
+
+		.approval-stat-value {
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+			word-break: break-word;
+		}
+
+		.approval-connector-note {
+			padding: 12px 14px;
+			border-radius: 14px;
+			background: rgba(255, 255, 255, 0.52);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+			margin-bottom: 10px;
+		}
+
+		.approval-connector-title {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 6px;
+		}
+
+		.approval-action-hint {
+			padding: 10px 12px;
+			border-radius: 12px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px solid rgba(24, 34, 38, 0.06);
+		}
+
 		.result-banner.success {
 			background: rgba(14, 124, 102, 0.12);
 			border-color: rgba(14, 124, 102, 0.28);
@@ -534,20 +649,308 @@
 			margin-top: 12px;
 		}
 
-		.audit-item {
+		.feedback-shell {
+			padding: 16px;
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.62);
+			border: 1px solid var(--line);
+		}
+
+		.feedback-head {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 12px;
+		}
+
+		.feedback-form {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.feedback-form label {
+			display: grid;
+			gap: 6px;
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		.feedback-form input,
+		.feedback-form select,
+		.feedback-form textarea {
+			width: 100%;
+			padding: 10px 12px;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: rgba(255, 255, 255, 0.88);
+			font: inherit;
+			color: var(--text);
+		}
+
+		.feedback-form textarea {
+			resize: vertical;
+			min-height: 96px;
+		}
+
+		.feedback-form .feedback-span-2 {
+			grid-column: 1 / -1;
+		}
+
+		.feedback-history {
+			margin-top: 14px;
+		}
+
+		.evidence-shell {
+			padding: 16px;
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.62);
+			border: 1px solid var(--line);
+		}
+
+		.evidence-summary {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-bottom: 12px;
+		}
+
+		.evidence-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.evidence-card {
+			padding: 14px;
+			border-radius: 16px;
+			background: rgba(255, 255, 255, 0.7);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+		}
+
+		.evidence-card h4 {
+			margin: 0 0 10px;
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+		}
+
+		.evidence-list {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			display: grid;
+			gap: 10px;
+		}
+
+		.evidence-item {
+			padding: 12px;
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px solid rgba(24, 34, 38, 0.06);
+		}
+
+		.evidence-item-head {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+			margin-bottom: 8px;
+		}
+
+		.evidence-item-head strong {
+			font-family: var(--font-display);
+			font-size: 0.98rem;
+			letter-spacing: -0.03em;
+		}
+
+		.evidence-stat-row {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 8px;
+		}
+
+		.evidence-empty {
+			padding: 14px;
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px dashed rgba(24, 34, 38, 0.12);
+			color: var(--muted);
+		}
+
+		.compare-shell {
+			padding: 16px;
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.62);
+			border: 1px solid var(--line);
+		}
+
+		.compare-controls {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 12px;
+			align-items: end;
+			margin-bottom: 14px;
+		}
+
+		.compare-controls label {
+			display: grid;
+			gap: 6px;
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		.compare-controls select {
+			width: 100%;
+			padding: 10px 12px;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: rgba(255, 255, 255, 0.88);
+			font: inherit;
+			color: var(--text);
+		}
+
+		.compare-summary-grid,
+		.compare-delta-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.compare-summary-grid {
+			margin-bottom: 12px;
+		}
+
+		.compare-card {
+			padding: 14px;
+			border-radius: 16px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+		}
+
+		.compare-card strong {
+			display: block;
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+			margin-bottom: 8px;
+		}
+
+		.compare-delta-card {
+			padding: 14px;
+			border-radius: 16px;
+			background: rgba(255, 255, 255, 0.7);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+		}
+
+		.compare-delta-card h4 {
+			margin: 0 0 10px;
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+		}
+
+		.compare-delta-columns {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+		}
+
+		.compare-delta-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 6px;
+		}
+
+		.compare-delta-list {
+			margin: 0;
+			padding-left: 18px;
+			color: var(--muted);
+			line-height: 1.55;
+		}
+
+		.compare-delta-list li + li {
+			margin-top: 6px;
+		}
+
+		.compare-empty {
+			padding: 14px;
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.04);
+			border: 1px dashed rgba(24, 34, 38, 0.12);
+			color: var(--muted);
+		}
+
+		.compare-status {
+			display: inline-flex;
+			align-items: center;
+			padding: 8px 10px;
+			border-radius: 999px;
+			background: rgba(24, 34, 38, 0.06);
+			border: 1px solid rgba(24, 34, 38, 0.08);
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.feedback-item {
 			padding: 12px 0;
 			border-bottom: 1px solid rgba(29, 42, 45, 0.08);
 		}
 
-		.audit-item:last-child {
+		.feedback-item:last-child {
 			border-bottom: 0;
+		}
+
+		.feedback-item-head {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+			margin-bottom: 6px;
+		}
+
+		.feedback-action-accept {
+			background: rgba(14, 124, 102, 0.12);
+			border-color: rgba(14, 124, 102, 0.24);
+			color: var(--accent);
+		}
+
+		.feedback-action-reject {
+			background: rgba(166, 59, 45, 0.12);
+			border-color: rgba(166, 59, 45, 0.24);
+			color: var(--danger);
+		}
+
+		.feedback-action-edited {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.24);
+			color: var(--warn);
+		}
+
+		.audit-item {
+			list-style: none;
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(29, 42, 45, 0.08);
+			background: rgba(255, 255, 255, 0.62);
+		}
+
+		.audit-item + .audit-item {
+			margin-top: 10px;
 		}
 
 		.audit-item.admin-origin {
 			background: linear-gradient(90deg, rgba(14, 124, 102, 0.08), transparent 78%);
-			border-radius: 14px;
-			padding: 12px;
-			margin-left: -12px;
+			border-color: rgba(14, 124, 102, 0.16);
 		}
 
 		.audit-head {
@@ -556,6 +959,40 @@
 			gap: 8px;
 			align-items: center;
 			margin-bottom: 6px;
+		}
+
+		.audit-state {
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+		}
+
+		.audit-detail-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 8px;
+			margin-top: 10px;
+		}
+
+		.audit-detail {
+			padding: 10px 12px;
+			border-radius: 12px;
+			background: rgba(24, 34, 38, 0.04);
+		}
+
+		.audit-detail-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 4px;
+		}
+
+		.audit-history-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 10px;
 		}
 
 		.audit-badge {
@@ -594,28 +1031,200 @@
 			border-radius: 18px;
 			background: rgba(255, 255, 255, 0.62);
 			border: 1px solid var(--line);
+			animation: outcomesPanelEnter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 		}
 
-		.outcomes-toolbar {
-			display: flex;
-			flex-wrap: wrap;
+		.triage-panel,
+		.handoff-panel,
+		.follow-panel {
+			padding: 16px;
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.62);
+			border: 1px solid var(--line);
+			animation: outcomesPanelEnter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+		}
+
+		.triage-summary,
+		.handoff-summary,
+		.follow-summary {
+			display: grid;
+			grid-template-columns: minmax(220px, 0.95fr) minmax(0, 1.25fr);
 			gap: 12px;
-			align-items: end;
-			justify-content: space-between;
+			align-items: stretch;
 			margin-bottom: 14px;
 		}
 
-		.outcomes-toolbar label {
+		.triage-hero,
+		.handoff-hero,
+		.follow-hero {
+			padding: 16px 18px;
+			border-radius: 18px;
+			background: linear-gradient(135deg, rgba(197, 103, 47, 0.16), rgba(197, 103, 47, 0.05));
+			border: 1px solid rgba(197, 103, 47, 0.2);
+		}
+
+		.handoff-hero {
+			background: linear-gradient(135deg, rgba(29, 42, 45, 0.12), rgba(29, 42, 45, 0.04));
+			border-color: rgba(29, 42, 45, 0.14);
+		}
+
+		.follow-hero {
+			background: linear-gradient(135deg, rgba(14, 124, 102, 0.14), rgba(14, 124, 102, 0.04));
+			border-color: rgba(14, 124, 102, 0.16);
+		}
+
+		.triage-hero-label,
+		.handoff-hero-label,
+		.follow-hero-label {
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+			margin-bottom: 8px;
+		}
+
+		.triage-hero-value,
+		.handoff-hero-value,
+		.follow-hero-value {
+			font-family: var(--font-display);
+			font-size: clamp(1.8rem, 3vw, 2.4rem);
+			line-height: 0.96;
+			letter-spacing: -0.05em;
+			margin-bottom: 8px;
+		}
+
+		.triage-hero-meta,
+		.handoff-hero-meta,
+		.follow-hero-meta {
+					.follow-stage-list {
+						list-style: none;
+						padding: 0;
+						margin: 14px 0 0;
+						display: grid;
+						gap: 10px;
+					}
+
+					.follow-stage {
+						padding: 14px;
+						border-radius: 16px;
+						border: 1px solid rgba(29, 42, 45, 0.08);
+						background: rgba(255, 255, 255, 0.78);
+					}
+
+					.follow-stage-head {
+						display: flex;
+						justify-content: space-between;
+						gap: 12px;
+						align-items: start;
+						margin-bottom: 8px;
+					}
+
+					.follow-stage-label {
+						font-family: var(--font-display);
+						font-size: 1.05rem;
+						letter-spacing: -0.03em;
+					}
+
+			font-size: 13px;
+			line-height: 1.5;
+			color: var(--muted);
+		}
+
+		.triage-list,
+		.handoff-list {
+			list-style: none;
+			padding: 0;
+			margin: 0;
 			display: grid;
-			gap: 6px;
+			gap: 10px;
+		}
+
+		.triage-item,
+		.handoff-item {
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(29, 42, 45, 0.08);
+			background: rgba(255, 255, 255, 0.78);
+		}
+
+		.triage-item.current-asset {
+			background: linear-gradient(135deg, rgba(14, 124, 102, 0.11), rgba(14, 124, 102, 0.03));
+			border-color: rgba(14, 124, 102, 0.18);
+		}
+
+		.handoff-item.current-proposal {
+			background: linear-gradient(135deg, rgba(197, 103, 47, 0.12), rgba(197, 103, 47, 0.04));
+			border-color: rgba(197, 103, 47, 0.2);
+		}
+
+		.triage-item-head,
+		.handoff-item-head {
+			display: flex;
+			justify-content: space-between;
+			gap: 12px;
+			align-items: start;
+			margin-bottom: 8px;
+		}
+
+		.triage-rank,
+		.handoff-rank {
+			font-family: var(--font-display);
+			font-size: 1.15rem;
+			letter-spacing: -0.04em;
+		}
+
+		.triage-meta,
+		.handoff-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 8px;
+		}
+
+		.outcomes-toolbar {
+			display: grid;
+			gap: 14px;
+			margin-bottom: 14px;
+		}
+
+		.outcomes-controls {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+			padding: 14px;
+			border-radius: 16px;
+			border: 1px solid rgba(14, 124, 102, 0.12);
+			background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(14, 124, 102, 0.05));
+			opacity: 0;
+			transform: translateY(8px);
+			animation: outcomesPanelReveal 180ms cubic-bezier(0.22, 1, 0.36, 1) 35ms both;
+		}
+
+		.outcomes-control {
+			display: grid;
+			gap: 8px;
+		}
+
+		.outcomes-control-head {
+			display: grid;
+			gap: 4px;
+		}
+
+		.outcomes-control-label {
 			font-size: 11px;
 			letter-spacing: 0.08em;
 			text-transform: uppercase;
 			color: var(--muted);
 		}
 
+		.outcomes-control-hint {
+			font-size: 13px;
+			line-height: 1.45;
+			color: var(--muted);
+		}
+
 		.outcomes-toolbar select {
-			min-width: 220px;
+			width: 100%;
 			padding: 10px 12px;
 			border: 1px solid var(--line);
 			border-radius: 12px;
@@ -624,25 +1233,141 @@
 			color: var(--text);
 		}
 
-		.outcomes-summary {
+		.handoff-age-chips {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 8px;
-			align-items: center;
+		}
+
+		.handoff-age-chips button {
+			padding: 8px 10px;
+			border-radius: 999px;
+			border: 1px solid rgba(24, 34, 38, 0.12);
+			background: rgba(24, 34, 38, 0.05);
+			font: inherit;
+			font-size: 12px;
+			cursor: pointer;
+			color: var(--muted);
+		}
+
+		.handoff-age-chips button[aria-pressed="true"] {
+			background: rgba(14, 124, 102, 0.15);
+			color: var(--text);
+			border-color: rgba(14, 124, 102, 0.38);
+		}
+
+		.outcomes-summary {
+			display: grid;
+			grid-template-columns: minmax(220px, 0.95fr) minmax(0, 1.25fr);
+			gap: 12px;
+			align-items: stretch;
+		}
+
+		.outcomes-hero-kpi {
+			padding: 16px 18px;
+			border-radius: 18px;
+			background: linear-gradient(135deg, rgba(14, 124, 102, 0.16), rgba(14, 124, 102, 0.06));
+			border: 1px solid rgba(14, 124, 102, 0.22);
+			transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+			opacity: 0;
+			transform: translateY(8px);
+			animation: outcomesPanelReveal 180ms cubic-bezier(0.22, 1, 0.36, 1) 85ms both;
+		}
+
+		.outcomes-hero-kpi:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 14px 28px rgba(14, 124, 102, 0.10);
+		}
+
+		.outcomes-hero-label {
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+			margin-bottom: 8px;
+		}
+
+		.outcomes-hero-value {
+			font-family: var(--font-display);
+			font-size: clamp(2rem, 3vw, 2.8rem);
+			line-height: 0.96;
+			letter-spacing: -0.05em;
+			margin-bottom: 8px;
+		}
+
+		.outcomes-hero-meta {
+			font-size: 13px;
+			line-height: 1.5;
+			color: var(--muted);
+		}
+
+		.outcomes-chip-row {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-content: start;
+			opacity: 0;
+			transform: translateY(8px);
+			animation: outcomesPanelReveal 180ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
 		}
 
 		.outcomes-note {
-			padding: 10px 12px;
+			display: flex;
+			gap: 12px;
+			align-items: start;
+			padding: 12px 14px;
 			border-radius: 12px;
 			background: rgba(24, 34, 38, 0.05);
+			border: 1px solid rgba(24, 34, 38, 0.08);
 			color: var(--muted);
 			font-size: 13px;
 			line-height: 1.5;
+			transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+			opacity: 0;
+			transform: translateY(8px);
+			animation: outcomesPanelReveal 180ms cubic-bezier(0.22, 1, 0.36, 1) 135ms both;
+		}
+
+		.outcomes-note-badge {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 76px;
+			padding: 6px 10px;
+			border-radius: 999px;
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			background: rgba(24, 34, 38, 0.08);
+			color: var(--text);
+		}
+
+		.outcomes-note-title {
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+			color: var(--text);
+			margin-bottom: 2px;
+		}
+
+		.outcomes-note-body {
+			color: var(--muted);
 		}
 
 		.outcomes-note.warn {
 			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.18);
 			color: var(--warn);
+		}
+
+		.outcomes-note.warn .outcomes-note-badge {
+			background: rgba(197, 103, 47, 0.16);
+			color: var(--warn);
+		}
+
+		.outcomes-note.warn .outcomes-note-title,
+		.outcomes-note.warn .outcomes-note-body {
+			color: inherit;
 		}
 
 		.outcomes-chart-grid {
@@ -657,6 +1382,20 @@
 			border-radius: 16px;
 			background: rgba(255, 255, 255, 0.78);
 			border: 1px solid var(--line);
+			transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+			opacity: 0;
+			transform: translateY(8px);
+			animation: outcomesPanelReveal 180ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both;
+		}
+
+		.chart-card:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 14px 28px rgba(24, 34, 38, 0.08);
+			border-color: rgba(14, 124, 102, 0.16);
+		}
+
+		.outcomes-chart-grid .chart-card:nth-child(2) {
+			animation-delay: 190ms;
 		}
 
 		.chart-head {
@@ -772,6 +1511,45 @@
 			}
 		}
 
+		@keyframes outcomesPanelEnter {
+			from {
+				opacity: 0;
+				transform: translateY(6px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
+		}
+
+		@keyframes outcomesPanelReveal {
+			from {
+				opacity: 0;
+				transform: translateY(8px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.outcomes-panel,
+			.triage-panel,
+			.handoff-panel,
+			.follow-panel,
+			.outcomes-controls,
+			.outcomes-hero-kpi,
+			.outcomes-chip-row,
+			.outcomes-note,
+			.chart-card {
+				animation: none;
+				transition: none;
+				opacity: 1;
+				transform: none;
+			}
+		}
+
 		@media (max-width: 1040px) {
 			.hero,
 			.layout,
@@ -780,6 +1558,12 @@
 			}
 
 			.outcomes-chart-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.triage-summary,
+			.handoff-summary,
+			.follow-summary {
 				grid-template-columns: 1fr;
 			}
 
@@ -801,7 +1585,8 @@
 
 			.hero-metrics,
 			.metadata-grid,
-			.detail-grid {
+			.detail-grid,
+			.feedback-form {
 				grid-template-columns: 1fr;
 			}
 
@@ -814,13 +1599,25 @@
 			}
 
 			.outcomes-toolbar {
-				flex-direction: column;
-				align-items: stretch;
+				gap: 12px;
+			}
+
+			.outcomes-controls,
+			.outcomes-summary,
+			.evidence-grid,
+			.compare-summary-grid,
+			.compare-delta-grid,
+			.compare-delta-columns {
+				grid-template-columns: 1fr;
 			}
 
 			.outcomes-toolbar select {
 				min-width: 0;
 				width: 100%;
+			}
+
+			.compare-controls {
+				grid-template-columns: 1fr;
 			}
 		}
 	</style>
@@ -927,12 +1724,43 @@
 			runs: [],
 			filteredRuns: [],
 			selectedRunId: null,
+			selectedCompareRunIdByRunId: new Map(),
 			detailsById: new Map(),
+			feedbackByRunId: new Map(),
+			feedbackErrorByRunId: new Map(),
+			feedbackDraftByRunId: new Map(),
+			feedbackLoadingByRunId: new Set(),
+			feedbackSubmittingByRunId: new Set(),
+			evidenceByAssetId: new Map(),
+			evidenceErrorByAssetId: new Map(),
+			evidenceLoadingByAssetId: new Set(),
+			compareLoadingByRunId: new Set(),
+			compareErrorByRunId: new Map(),
 			approvalResultsById: new Map(),
 			approvalInFlightById: new Set(),
 			approvalHistoryById: new Map(),
 			auditLoadingById: new Set(),
+			selectedOutcomeScopeByRunId: new Map(),
 			selectedOutcomeAssetByRunId: new Map(),
+			selectedOutcomeUserByRunId: new Map(),
+			selectedOutcomeOrgByRunId: new Map(),
+			handoffExceptions: {
+				report: null,
+				loading: false,
+				error: "",
+				limit: 6,
+				view: "all",
+				sort: "priority",
+				ageBucket: "all",
+				actionInFlightByProposalId: new Set(),
+				lastActionByProposalId: new Map(),
+			},
+			triage: {
+				report: null,
+				loading: false,
+				error: "",
+				limit: 6,
+			},
 			outcomes: {
 				report: null,
 				loading: false,
@@ -1002,6 +1830,84 @@
 			}
 		}
 
+		function handoffQueuePreferencesStorageKey(identity = state.session) {
+			const subject = asString(identity?.subject || "portal.user").trim().toLowerCase() || "portal.user";
+			const role = asString(identity?.role || "planner").trim().toLowerCase() || "planner";
+			const orgId = asString(identity?.orgId || "demo-org").trim().toLowerCase() || "demo-org";
+			return `miPortalHandoffPrefs:${subject}:${role}:${orgId}`;
+		}
+
+		function normalizeHandoffQueueView(view) {
+			const nextView = asString(view || "").toLowerCase();
+			if (["all", "admin-retry", "connector-failure", "limit-reached", "aging-risk"].includes(nextView)) {
+				return nextView;
+			}
+			return "all";
+		}
+
+		function normalizeHandoffQueueSort(sortMode) {
+			return asString(sortMode || "").toLowerCase() === "age" ? "age" : "priority";
+		}
+
+		function normalizeHandoffQueueAgeBucket(ageBucket) {
+			const nextBucket = asString(ageBucket || "").toLowerCase();
+			if (["all", "fresh", "sla-watch", "aging-risk"].includes(nextBucket)) {
+				return nextBucket;
+			}
+			return "all";
+		}
+
+		function normalizeHandoffQueueLimit(limitValue) {
+			const nextLimit = asNumber(limitValue) ?? Number.parseInt(asString(limitValue || ""), 10);
+			if ([3, 6, 10].includes(nextLimit)) {
+				return nextLimit;
+			}
+			return 6;
+		}
+
+		function readHandoffQueuePreferences(identity = state.session) {
+			const fallback = {
+				view: "all",
+				sort: "priority",
+				ageBucket: "all",
+				limit: 6,
+			};
+			try {
+				const raw = window.localStorage.getItem(handoffQueuePreferencesStorageKey(identity));
+				if (!raw) {
+					return fallback;
+				}
+				const parsed = asObject(JSON.parse(raw));
+				return {
+					view: normalizeHandoffQueueView(parsed.view),
+					sort: normalizeHandoffQueueSort(parsed.sort),
+					ageBucket: normalizeHandoffQueueAgeBucket(parsed.ageBucket),
+					limit: normalizeHandoffQueueLimit(parsed.limit),
+				};
+			} catch (error) {
+				void error;
+				return fallback;
+			}
+		}
+
+		function applyHandoffQueuePreferences(preferences) {
+			const nextPreferences = asObject(preferences);
+			state.handoffExceptions.view = normalizeHandoffQueueView(nextPreferences.view || state.handoffExceptions.view);
+			state.handoffExceptions.sort = normalizeHandoffQueueSort(nextPreferences.sort || state.handoffExceptions.sort);
+			state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(nextPreferences.ageBucket || state.handoffExceptions.ageBucket);
+			state.handoffExceptions.limit = normalizeHandoffQueueLimit(nextPreferences.limit ?? state.handoffExceptions.limit);
+		}
+
+		function writeHandoffQueuePreferences(identity = state.session) {
+			const payload = {
+				view: normalizeHandoffQueueView(state.handoffExceptions.view),
+				sort: normalizeHandoffQueueSort(state.handoffExceptions.sort),
+				ageBucket: normalizeHandoffQueueAgeBucket(state.handoffExceptions.ageBucket),
+				limit: normalizeHandoffQueueLimit(state.handoffExceptions.limit),
+			};
+			window.localStorage.setItem(handoffQueuePreferencesStorageKey(identity), JSON.stringify(payload));
+		}
+
 		function syncIdentityInputs(identity = state.session) {
 			elements.identitySubjectInput.value = identity.subject || "portal.user";
 			elements.identityRoleSelect.value = identity.role || "planner";
@@ -1036,6 +1942,7 @@
 		async function refreshIdentity() {
 			const localIdentity = readPortalIdentity();
 			state.session = localIdentity;
+			applyHandoffQueuePreferences(readHandoffQueuePreferences(localIdentity));
 			renderIdentityPanel();
 			try {
 				const whoami = await fetchJson("/api/v1/whoami", { headers: portalIdentityHeaders() });
@@ -1049,6 +1956,7 @@
 					devMode: localIdentity.devMode || user.auth_source === "dev-header",
 				};
 				writePortalIdentity(state.session);
+				applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 				renderIdentityPanel();
 				if (state.selectedRunId) {
 					const selected = state.detailsById.get(state.selectedRunId);
@@ -1164,6 +2072,531 @@
 			};
 		}
 
+		function normalizeFeedbackItem(item) {
+			const source = asObject(item);
+			return {
+				feedback_id: asString(source.feedback_id),
+				run_id: asString(source.run_id),
+				recommendation_id: asString(source.recommendation_id),
+				org_id: asString(source.org_id),
+				asset_id: asString(source.asset_id),
+				action: asString(source.action, "unknown") || "unknown",
+				changes: asObject(source.changes),
+				reason: asString(source.reason),
+				user_id: asString(source.user_id),
+				created_at: asString(source.created_at),
+			};
+		}
+
+		function normalizeEvidenceSummary(summary) {
+			const source = asObject(summary);
+			return {
+				asset_id: asString(source.asset_id),
+				recent_signals: Array.isArray(source.recent_signals)
+					? source.recent_signals.map((signal) => {
+						const item = asObject(signal);
+						return {
+							signal_id: asString(item.signal_id),
+							signal_type: asString(item.signal_type, "Unknown signal") || "Unknown signal",
+							value: typeof item.value === "number" && Number.isFinite(item.value) ? item.value : asString(item.value),
+							unit: asString(item.unit),
+							timestamp: asString(item.timestamp),
+							metadata: asObject(item.metadata),
+						};
+					})
+					: [],
+				rollups: Array.isArray(source.rollups)
+					? source.rollups.map((rollup) => {
+						const item = asObject(rollup);
+						return {
+							signal_type: asString(item.signal_type, "Unknown signal") || "Unknown signal",
+							period: asString(item.period, "Latest") || "Latest",
+							mean: typeof item.mean === "number" && Number.isFinite(item.mean) ? item.mean : null,
+							min: typeof item.min === "number" && Number.isFinite(item.min) ? item.min : null,
+							max: typeof item.max === "number" && Number.isFinite(item.max) ? item.max : null,
+							anomalies: asObject(item.anomalies),
+							end_time: asString(item.end_time),
+						};
+					})
+					: [],
+			};
+		}
+
+		function defaultFeedbackDraft() {
+			return {
+				action: "accept",
+				reason: "",
+				editedTitle: "",
+				editedActions: "",
+			};
+		}
+
+		function getFeedbackDraft(runId) {
+			if (!state.feedbackDraftByRunId.has(runId)) {
+				state.feedbackDraftByRunId.set(runId, defaultFeedbackDraft());
+			}
+			return state.feedbackDraftByRunId.get(runId);
+		}
+
+		function updateFeedbackDraft(runId, nextDraft) {
+			state.feedbackDraftByRunId.set(runId, {
+				...defaultFeedbackDraft(),
+				...getFeedbackDraft(runId),
+				...nextDraft,
+			});
+		}
+
+		function buildFeedbackChanges(draft) {
+			const changes = {};
+			const editedTitle = asString(draft.editedTitle).trim();
+			const editedActions = asString(draft.editedActions)
+				.split(/\n+/)
+				.map((item) => item.trim())
+				.filter(Boolean);
+			if (editedTitle) {
+				changes.title = editedTitle;
+			}
+			if (editedActions.length) {
+				changes.immediate_actions = editedActions;
+			}
+			return changes;
+		}
+
+		function feedbackCounts(feedbackItems) {
+			return feedbackItems.reduce((counts, item) => {
+				const key = item.action || "unknown";
+				counts[key] = (counts[key] || 0) + 1;
+				return counts;
+			}, { accept: 0, reject: 0, edited: 0 });
+		}
+
+		function formatMeasurementValue(value, unit = "") {
+			if (typeof value === "number" && Number.isFinite(value)) {
+				const formatted = Number.isInteger(value)
+					? String(value)
+					: value.toFixed(Math.abs(value) >= 10 ? 1 : 2).replace(/\.0+$|(?<=\.[0-9])0+$/g, "");
+				return unit ? `${formatted} ${unit}` : formatted;
+			}
+			const text = asString(value, "-");
+			return unit && text !== "-" ? `${text} ${unit}` : text;
+		}
+
+		function evidenceFlags(metadata) {
+			const direct = asObject(metadata);
+			const nested = asObject(direct.anomalies);
+			const flagEntries = [
+				...Object.entries(direct),
+				...Object.entries(nested),
+			].filter(([key, value]) => key !== "anomalies" && Boolean(value));
+			return [...new Set(flagEntries.map(([key]) => key.replaceAll("_", " ")))];
+		}
+
+		function renderEvidenceFlagRow(flags) {
+			if (!flags.length) {
+				return "";
+			}
+			return `<div class="chips">${flags.map((flag) => `<span class="chip">${escapeHtml(flag)}</span>`).join("")}</div>`;
+		}
+
+		function compareEvidenceValues(currentValue, previousValue) {
+			if (typeof currentValue !== "number" || !Number.isFinite(currentValue)) {
+				return null;
+			}
+			if (typeof previousValue !== "number" || !Number.isFinite(previousValue)) {
+				return null;
+			}
+			const baseline = Math.max(Math.abs(previousValue), 1);
+			const delta = currentValue - previousValue;
+			const deltaRatio = Math.abs(delta) / baseline;
+			if (deltaRatio < 0.05) {
+				return { label: "Trend steady", className: "trend-steady" };
+			}
+			if (delta > 0) {
+				return { label: "Trend rising", className: "trend-rising" };
+			}
+			return { label: "Trend easing", className: "trend-falling" };
+		}
+
+		function latestEvidenceTrend(signal, evidence) {
+			const recentSignals = Array.isArray(evidence?.recent_signals) ? evidence.recent_signals : [];
+			const currentTimestamp = new Date(signal?.timestamp || 0).getTime();
+			const previousSignal = recentSignals
+				.filter((candidate) => candidate.signal_type === signal?.signal_type && candidate.signal_id !== signal?.signal_id)
+				.sort((left, right) => new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime())
+				.find((candidate) => new Date(candidate.timestamp || 0).getTime() <= currentTimestamp);
+			return compareEvidenceValues(signal?.value, previousSignal?.value);
+		}
+
+		function rollupEvidenceTrend(rollup, evidence) {
+			const recentSignals = Array.isArray(evidence?.recent_signals) ? evidence.recent_signals : [];
+			const latestSignal = recentSignals
+				.filter((candidate) => candidate.signal_type === rollup?.signal_type)
+				.sort((left, right) => new Date(right.timestamp || 0).getTime() - new Date(left.timestamp || 0).getTime())[0];
+			return compareEvidenceValues(latestSignal?.value, rollup?.mean);
+		}
+
+		function renderEvidenceTrendChip(trend) {
+			if (!trend?.label) {
+				return "";
+			}
+			return `<span class="chip ${escapeHtml(trend.className || "trend-steady")}">${escapeHtml(trend.label)}</span>`;
+		}
+
+		function syncFeedbackDraftFromDom(runId) {
+			if (!runId) {
+				return;
+			}
+			const feedbackActionSelect = document.getElementById("feedbackActionSelect");
+			const feedbackReasonInput = document.getElementById("feedbackReasonInput");
+			const feedbackTitleInput = document.getElementById("feedbackTitleInput");
+			const feedbackActionsInput = document.getElementById("feedbackActionsInput");
+			if (!feedbackActionSelect && !feedbackReasonInput && !feedbackTitleInput && !feedbackActionsInput) {
+				return;
+			}
+			updateFeedbackDraft(runId, {
+				action: feedbackActionSelect ? feedbackActionSelect.value : undefined,
+				reason: feedbackReasonInput ? feedbackReasonInput.value : undefined,
+				editedTitle: feedbackTitleInput ? feedbackTitleInput.value : undefined,
+				editedActions: feedbackActionsInput ? feedbackActionsInput.value : undefined,
+			});
+		}
+
+		function renderEvidencePanel(run) {
+			const assetId = asString(asObject(run?.context_meta).asset_id);
+			if (!assetId) {
+				return `
+					<div class="evidence-shell">
+						<div class="evidence-empty">
+							<strong>No asset evidence link yet</strong>
+							<p class="muted">This run does not include an asset_id, so live signals cannot be fetched.</p>
+						</div>
+					</div>
+				`;
+			}
+			const evidence = state.evidenceByAssetId.get(assetId) || null;
+			const evidenceLoading = state.evidenceLoadingByAssetId.has(assetId);
+			const evidenceError = state.evidenceErrorByAssetId.get(assetId) || "";
+			if (evidenceLoading && !evidence) {
+				return `
+					<div class="evidence-shell">
+						<div class="evidence-empty">
+							<strong>Loading live evidence</strong>
+							<p class="muted">Fetching recent signals and rollups for ${escapeHtml(assetId)}.</p>
+						</div>
+					</div>
+				`;
+			}
+			if (evidenceError && !evidence) {
+				return `
+					<div class="evidence-shell">
+						<div class="evidence-empty">
+							<strong>Evidence unavailable</strong>
+							<p class="muted">${escapeHtml(evidenceError)}</p>
+						</div>
+					</div>
+				`;
+			}
+			const recentSignals = Array.isArray(evidence?.recent_signals) ? evidence.recent_signals : [];
+			const rollups = Array.isArray(evidence?.rollups) ? evidence.rollups : [];
+			if (!recentSignals.length && !rollups.length) {
+				return `
+					<div class="evidence-shell">
+						<div class="evidence-empty">
+							<strong>No live signal evidence yet</strong>
+							<p class="muted">This asset does not have recent signals or rollups available right now.</p>
+						</div>
+					</div>
+				`;
+			}
+			return `
+				<div class="evidence-shell">
+					<div class="evidence-summary">
+						<span class="chip">Asset ${escapeHtml(assetId)}</span>
+						<span class="chip">Recent signals ${escapeHtml(recentSignals.length)}</span>
+						<span class="chip">Rollups ${escapeHtml(rollups.length)}</span>
+						${evidenceLoading ? '<span class="chip">Refreshing evidence</span>' : ''}
+					</div>
+					<div class="evidence-grid">
+						<div class="evidence-card">
+							<h4>Recent signals</h4>
+							${recentSignals.length ? `<ol class="evidence-list">${recentSignals.map((signal) => `
+								<li class="evidence-item">
+									${(() => {
+										const trend = latestEvidenceTrend(signal, evidence);
+										return trend ? `<div class="chips">${renderEvidenceTrendChip(trend)}</div>` : "";
+									})()}
+									<div class="evidence-item-head">
+										<strong>${escapeHtml(signal.signal_type)}</strong>
+										<span class="chip">${escapeHtml(formatMeasurementValue(signal.value, signal.unit))}</span>
+										<span class="chip">${escapeHtml(formatDate(signal.timestamp) || 'Unknown time')}</span>
+									</div>
+									${renderEvidenceFlagRow(evidenceFlags(signal.metadata))}
+									<p class="footer-note">Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6</p>
+								</li>
+							`).join('')}</ol>` : `<p class="muted">No recent signals were returned for this asset.</p>`}
+						</div>
+						<div class="evidence-card">
+							<h4>Rollup summary</h4>
+							${rollups.length ? `<ol class="evidence-list">${rollups.map((rollup) => `
+								<li class="evidence-item">
+									${(() => {
+										const trend = rollupEvidenceTrend(rollup, evidence);
+										return trend ? `<div class="chips">${renderEvidenceTrendChip(trend)}</div>` : "";
+									})()}
+									<div class="evidence-item-head">
+										<strong>${escapeHtml(rollup.signal_type)}</strong>
+										<span class="chip">${escapeHtml(rollup.period)}</span>
+										<span class="chip">${escapeHtml(formatDate(rollup.end_time) || 'Latest')}</span>
+									</div>
+									<div class="evidence-stat-row">
+										<span class="chip">Mean ${escapeHtml(formatMeasurementValue(rollup.mean))}</span>
+										<span class="chip">Min ${escapeHtml(formatMeasurementValue(rollup.min))}</span>
+										<span class="chip">Max ${escapeHtml(formatMeasurementValue(rollup.max))}</span>
+									</div>
+									${renderEvidenceFlagRow(evidenceFlags(rollup.anomalies))}
+								</li>
+							`).join('')}</ol>` : `<p class="muted">No rollups were returned for this asset.</p>`}
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		function comparisonCandidates(run) {
+			const currentAssetId = asString(asObject(run?.context_meta).asset_id);
+			return [...state.runs]
+				.filter((candidate) => candidate.run_id && candidate.run_id !== run?.run_id)
+				.sort((left, right) => {
+					const leftAssetId = asString(asObject(left?.context_meta).asset_id);
+					const rightAssetId = asString(asObject(right?.context_meta).asset_id);
+					const leftMatchesAsset = currentAssetId && leftAssetId === currentAssetId ? 0 : 1;
+					const rightMatchesAsset = currentAssetId && rightAssetId === currentAssetId ? 0 : 1;
+					if (leftMatchesAsset !== rightMatchesAsset) {
+						return leftMatchesAsset - rightMatchesAsset;
+					}
+					const leftUpdated = new Date(left.updated_at || 0).getTime();
+					const rightUpdated = new Date(right.updated_at || 0).getTime();
+					if (leftUpdated !== rightUpdated) {
+						return rightUpdated - leftUpdated;
+					}
+					return left.run_id.localeCompare(right.run_id);
+				});
+		}
+
+		function preferredCompareRunId(run) {
+			const candidates = comparisonCandidates(run);
+			const savedCompareRunId = state.selectedCompareRunIdByRunId.get(run?.run_id);
+			if (savedCompareRunId && candidates.some((candidate) => candidate.run_id === savedCompareRunId)) {
+				return savedCompareRunId;
+			}
+			return candidates[0]?.run_id || "";
+		}
+
+		function compareListValues(baseItems, candidateItems) {
+			const baseSet = new Set(asStringList(baseItems));
+			const candidateSet = new Set(asStringList(candidateItems));
+			return {
+				added: [...baseSet].filter((item) => !candidateSet.has(item)),
+				removed: [...candidateSet].filter((item) => !baseSet.has(item)),
+			};
+		}
+
+		function formatConfidenceDelta(currentConfidence, compareConfidence) {
+			if (typeof currentConfidence !== "number" || Number.isNaN(currentConfidence) || typeof compareConfidence !== "number" || Number.isNaN(compareConfidence)) {
+				return "Confidence delta unavailable";
+			}
+			const delta = Math.round((currentConfidence - compareConfidence) * 100);
+			const prefix = delta > 0 ? "+" : "";
+			return `${prefix}${delta} pts vs compare run`;
+		}
+
+		function formatCountDelta(currentCount, compareCount) {
+			const delta = currentCount - compareCount;
+			const prefix = delta > 0 ? "+" : "";
+			return `${prefix}${delta}`;
+		}
+
+		function renderCompareDeltaList(items, emptyText) {
+			if (!items.length) {
+				return `<p class="muted tiny">${escapeHtml(emptyText)}</p>`;
+			}
+			return `<ol class="compare-delta-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`;
+		}
+
+		function renderComparePanel(run) {
+			const candidates = comparisonCandidates(run);
+			if (!candidates.length) {
+				return `
+					<div class="compare-shell">
+						<div class="compare-empty">
+							<strong>No compare candidates yet</strong>
+							<p class="muted">Load at least one more RCA run to compare confidence drift and action changes.</p>
+						</div>
+					</div>
+				`;
+			}
+
+			const selectedCompareRunId = preferredCompareRunId(run);
+			const compareRun = selectedCompareRunId ? state.detailsById.get(selectedCompareRunId) || null : null;
+			const compareLoading = state.compareLoadingByRunId.has(run.run_id);
+			const compareError = state.compareErrorByRunId.get(run.run_id) || "";
+			const currentFeedbackCounts = feedbackCounts(state.feedbackByRunId.get(run.run_id) || []);
+			const compareFeedbackCounts = compareRun ? feedbackCounts(state.feedbackByRunId.get(compareRun.run_id) || []) : { accept: 0, reject: 0, edited: 0 };
+			const currentTitle = run.title || asObject(run.structured).title || "Untitled recommendation";
+			const compareTitle = compareRun ? (compareRun.title || asObject(compareRun.structured).title || "Untitled recommendation") : "";
+
+			if (selectedCompareRunId && !compareRun && !compareLoading && !compareError) {
+				void ensureCompareRunData(run, selectedCompareRunId);
+			}
+
+			if (!compareRun) {
+				const emptyState = compareError
+					? `<div class="compare-empty"><strong>Compare run unavailable</strong><p class="muted">${escapeHtml(compareError)}</p></div>`
+					: `<div class="compare-empty"><strong>Loading compare run</strong><p class="muted">Fetching detail and feedback history for ${escapeHtml(selectedCompareRunId)}.</p></div>`;
+				return `
+					<div class="compare-shell">
+						<div class="compare-controls">
+							<label>
+								<span>Compare against</span>
+								<select id="compareRunSelect">
+									${candidates.map((candidate) => `<option value="${escapeHtml(candidate.run_id)}" ${candidate.run_id === selectedCompareRunId ? "selected" : ""}>${escapeHtml(candidate.title || candidate.run_id)} · ${escapeHtml(candidate.run_id)}</option>`).join("")}
+								</select>
+							</label>
+							<span class="compare-status">${compareLoading ? "Loading compare data" : "Compare detail pending"}</span>
+						</div>
+						${emptyState}
+					</div>
+				`;
+			}
+
+			const hypothesisDelta = compareListValues(run.hypothesis, compareRun.hypothesis);
+			const immediateActionDelta = compareListValues(run.immediate_actions, compareRun.immediate_actions);
+			const pmSuggestionDelta = compareListValues(run.pm_suggestions, compareRun.pm_suggestions);
+			const compareAssetId = asString(asObject(compareRun.context_meta).asset_id) || "Unscoped asset";
+			const titleDrift = currentTitle === compareTitle ? "Title aligned with compare run" : `Title changed from ${compareTitle}`;
+
+			return `
+				<div class="compare-shell">
+					<div class="compare-controls">
+						<label>
+							<span>Compare against</span>
+							<select id="compareRunSelect">
+								${candidates.map((candidate) => `<option value="${escapeHtml(candidate.run_id)}" ${candidate.run_id === selectedCompareRunId ? "selected" : ""}>${escapeHtml(candidate.title || candidate.run_id)} · ${escapeHtml(candidate.run_id)}</option>`).join("")}
+							</select>
+						</label>
+						<span class="compare-status">${compareLoading ? "Refreshing compare data" : "Compare ready"}</span>
+					</div>
+					<div class="compare-summary-grid">
+						<div class="compare-card">
+							<strong>Confidence drift</strong>
+							<div class="chips">
+								<span class="chip">Current ${escapeHtml(formatConfidence(run.confidence))}</span>
+								<span class="chip">Compare ${escapeHtml(formatConfidence(compareRun.confidence))}</span>
+								<span class="chip">${escapeHtml(formatConfidenceDelta(run.confidence, compareRun.confidence))}</span>
+							</div>
+							<p class="footer-note">${escapeHtml(compareAssetId)} · ${escapeHtml(compareRun.run_id)}</p>
+						</div>
+						<div class="compare-card">
+							<strong>Drift snapshot</strong>
+							<div class="chips">
+								<span class="chip">${escapeHtml(titleDrift)}</span>
+								<span class="chip">Accept ${escapeHtml(formatCountDelta(currentFeedbackCounts.accept, compareFeedbackCounts.accept))}</span>
+								<span class="chip">Reject ${escapeHtml(formatCountDelta(currentFeedbackCounts.reject, compareFeedbackCounts.reject))}</span>
+								<span class="chip">Edited ${escapeHtml(formatCountDelta(currentFeedbackCounts.edited, compareFeedbackCounts.edited))}</span>
+							</div>
+							<p class="footer-note">Feedback deltas compare this run against the selected peer.</p>
+						</div>
+					</div>
+					<div class="compare-delta-grid">
+						<div class="compare-delta-card">
+							<h4>Hypothesis changes</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(hypothesisDelta.added, "No new hypotheses against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(hypothesisDelta.removed, "No hypotheses were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Immediate action changes</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(immediateActionDelta.added, "No new immediate actions against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(immediateActionDelta.removed, "No immediate actions were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>PM suggestion changes</h4>
+							<div class="compare-delta-columns">
+								<div>
+									<div class="compare-delta-label">New in current run</div>
+									${renderCompareDeltaList(pmSuggestionDelta.added, "No new PM suggestions against the compare run.")}
+								</div>
+								<div>
+									<div class="compare-delta-label">Only in compare run</div>
+									${renderCompareDeltaList(pmSuggestionDelta.removed, "No PM suggestions were dropped from the compare run.")}
+								</div>
+							</div>
+						</div>
+						<div class="compare-delta-card">
+							<h4>Compare summary</h4>
+							<p class="muted">${escapeHtml(compareRun.summary || asObject(compareRun.structured).summary || "Compare run summary is unavailable.")}</p>
+							<p class="footer-note">Current title: ${escapeHtml(currentTitle)}</p>
+							<p class="footer-note">Compare title: ${escapeHtml(compareTitle)}</p>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		async function ensureRunDetail(runId) {
+			if (!runId) {
+				return null;
+			}
+			if (state.detailsById.has(runId)) {
+				return state.detailsById.get(runId);
+			}
+			const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`);
+			const normalized = normalizeRun(detail);
+			state.detailsById.set(runId, normalized);
+			return normalized;
+		}
+
+		async function ensureCompareRunData(primaryRun, compareRunId) {
+			if (!primaryRun?.run_id || !compareRunId) {
+				return;
+			}
+			state.compareLoadingByRunId.add(primaryRun.run_id);
+			state.compareErrorByRunId.delete(primaryRun.run_id);
+			if (state.selectedRunId === primaryRun.run_id) {
+				renderDetail(primaryRun);
+			}
+			try {
+				const compareRun = await ensureRunDetail(compareRunId);
+				if (compareRun && !state.feedbackByRunId.has(compareRun.run_id)) {
+					await loadFeedbackHistory(compareRun);
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown compare error";
+				state.compareErrorByRunId.set(primaryRun.run_id, message);
+			} finally {
+				state.compareLoadingByRunId.delete(primaryRun.run_id);
+				const currentSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) || primaryRun : primaryRun;
+				if (state.selectedRunId === primaryRun.run_id) {
+					renderDetail(currentSelectedRun);
+				}
+			}
+		}
+
 		function formatDate(timestamp) {
 			if (!timestamp) {
 				return "-";
@@ -1202,11 +2635,15 @@
 		}
 
 		function sortAssetIds(assetIds, preferredAssetId = "") {
-			return [...assetIds].sort((left, right) => {
-				if (left === preferredAssetId) {
+			return sortEntityIds(assetIds, preferredAssetId);
+		}
+
+		function sortEntityIds(entityIds, preferredEntityId = "") {
+			return [...entityIds].sort((left, right) => {
+				if (left === preferredEntityId) {
 					return -1;
 				}
-				if (right === preferredAssetId) {
+				if (right === preferredEntityId) {
 					return 1;
 				}
 				return left.localeCompare(right);
@@ -1225,6 +2662,1028 @@
 			return assetIds[0] || "";
 		}
 
+		const OUTCOME_SCOPE_CONFIG = {
+			asset: {
+				label: "Asset",
+				metricsKey: "asset_metrics",
+				selectorLabel: "Asset selector",
+				entityHint: "Start with the asset tied to this run, or compare another asset that already has live trend data.",
+				entityNoun: "asset",
+				selectorAria: "Select asset trend series",
+				sourceLabel: "Source outcomes.asset_metrics",
+				volumeMetricKey: "workorder_volume",
+				acceptanceMetricKey: "acceptance_rate",
+				volumeTitle: "Workorder volume",
+				emptyStateTitle: "No asset trends yet",
+				emptyState: "This outcomes window does not have asset trend lines yet. Try another scope or check back after fresh work orders land.",
+				emptyVolumeSummary: "No work orders were recorded for this asset in the current window.",
+				emptyAcceptanceSummary: "No accept or reject feedback was recorded for this asset in the current window.",
+				emptyVolumeLabel: "No work order volume yet",
+				emptyAcceptanceLabel: "No acceptance decisions yet",
+				preferredEntityId(run) {
+					return asString(asObject(run?.context_meta).asset_id);
+				},
+				selectedMap() {
+					return state.selectedOutcomeAssetByRunId;
+				},
+				topKey: "top_assets_by_wo_volume",
+				topIdKey: "asset_id",
+				topLabel: "Top volume",
+				fallbackMessage(expectedId, selectedId) {
+					return `The run points to ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live asset instead.`;
+				},
+			},
+			user: {
+				label: "Operator",
+				metricsKey: "user_metrics",
+				selectorLabel: "Operator selector",
+				entityHint: "Follow the signed-in operator first, or switch to another operator with recorded feedback activity.",
+				entityNoun: "operator",
+				selectorAria: "Select operator trend series",
+				sourceLabel: "Source outcomes.user_metrics",
+				volumeMetricKey: "feedback_volume",
+				acceptanceMetricKey: "acceptance_rate_series",
+				volumeTitle: "Feedback volume",
+				emptyStateTitle: "No operator trends yet",
+				emptyState: "No operator trend lines are ready for this window yet. This is expected until feedback starts landing for named operators.",
+				emptyVolumeSummary: "No feedback was recorded for this operator in the current window.",
+				emptyAcceptanceSummary: "No accept or reject decisions were recorded for this operator in the current window.",
+				emptyVolumeLabel: "No feedback yet",
+				emptyAcceptanceLabel: "No acceptance decisions yet",
+				preferredEntityId() {
+					return asString(state.session.subject);
+				},
+				selectedMap() {
+					return state.selectedOutcomeUserByRunId;
+				},
+				topKey: "top_users_by_feedback",
+				topIdKey: "user_id",
+				topLabel: "Top contributor",
+				fallbackMessage(expectedId, selectedId) {
+					return `This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead.`;
+				},
+			},
+			org: {
+				label: "Org",
+				metricsKey: "org_metrics",
+				selectorLabel: "Org selector",
+				entityHint: "Start with the current organization, or compare another org that already has live feedback activity.",
+				entityNoun: "organization",
+				selectorAria: "Select org trend series",
+				sourceLabel: "Source outcomes.org_metrics",
+				volumeMetricKey: "feedback_volume",
+				acceptanceMetricKey: "acceptance_rate_series",
+				volumeTitle: "Feedback volume",
+				emptyStateTitle: "No organization trends yet",
+				emptyState: "No organization trend lines are ready for this window yet. This view will fill in as cross-team feedback activity arrives.",
+				emptyVolumeSummary: "No feedback was recorded for this organization in the current window.",
+				emptyAcceptanceSummary: "No accept or reject decisions were recorded for this organization in the current window.",
+				emptyVolumeLabel: "No feedback yet",
+				emptyAcceptanceLabel: "No acceptance decisions yet",
+				preferredEntityId() {
+					return asString(state.session.orgId);
+				},
+				selectedMap() {
+					return state.selectedOutcomeOrgByRunId;
+				},
+				topKey: "top_orgs_by_feedback",
+				topIdKey: "org_id",
+				topLabel: "Top contributor",
+				fallbackMessage(expectedId, selectedId) {
+					return `This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead.`;
+				},
+			},
+		};
+
+		function renderOutcomesNote(badge, title, body, className = "") {
+			return `
+				<div class="outcomes-note ${className}">
+					<span class="outcomes-note-badge">${escapeHtml(badge)}</span>
+					<div>
+						<div class="outcomes-note-title">${escapeHtml(title)}</div>
+						<div class="outcomes-note-body">${escapeHtml(body)}</div>
+					</div>
+				</div>
+			`;
+		}
+
+		function parseTimestamp(timestamp) {
+			if (!timestamp) {
+				return null;
+			}
+			const parsed = new Date(typeof timestamp === "number" ? timestamp * 1000 : timestamp);
+			return Number.isNaN(parsed.getTime()) ? null : parsed;
+		}
+
+		function formatElapsed(startTimestamp, endTimestamp) {
+			const start = parseTimestamp(startTimestamp);
+			const end = parseTimestamp(endTimestamp);
+			if (!start || !end) {
+				return "-";
+			}
+			const totalMinutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+			const days = Math.floor(totalMinutes / (24 * 60));
+			const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+			const minutes = totalMinutes % 60;
+			if (days > 0) {
+				return `${days}d ${hours}h`;
+			}
+			if (hours > 0) {
+				return `${hours}h ${minutes}m`;
+			}
+			return `${minutes}m`;
+		}
+
+		function formatMinutesAsDuration(totalMinutes) {
+			if (typeof totalMinutes !== "number" || Number.isNaN(totalMinutes) || totalMinutes < 0) {
+				return "-";
+			}
+			const days = Math.floor(totalMinutes / (24 * 60));
+			const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+			const minutes = totalMinutes % 60;
+			if (days > 0) {
+				return `${days}d ${hours}h`;
+			}
+			if (hours > 0) {
+				return `${hours}h ${minutes}m`;
+			}
+			return `${minutes}m`;
+		}
+
+		function elapsedMinutesSince(timestamp) {
+			const parsed = parseTimestamp(timestamp);
+			if (!parsed) {
+				return null;
+			}
+			return Math.max(0, Math.round((Date.now() - parsed.getTime()) / 60000));
+		}
+
+		function agingDescriptor(timestamp) {
+			const elapsedMinutes = elapsedMinutesSince(timestamp);
+			if (elapsedMinutes === null) {
+				return {
+					label: "No timestamp",
+					className: "trend-steady",
+					elapsedMinutes: null,
+					detail: "No recent attempt timestamp is available yet.",
+				};
+			}
+			if (elapsedMinutes >= 24 * 60) {
+				return {
+					label: "Aging risk",
+					className: "trend-rising",
+					elapsedMinutes,
+					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
+				};
+			}
+			if (elapsedMinutes >= 6 * 60) {
+				return {
+					label: "SLA watch",
+					className: "trend-rising",
+					elapsedMinutes,
+					detail: `Waiting ${formatMinutesAsDuration(elapsedMinutes)} since the last recorded handoff attempt.`,
+				};
+			}
+			return {
+				label: "Fresh",
+				className: "trend-falling",
+				elapsedMinutes,
+				detail: `Last attempt was ${formatMinutesAsDuration(elapsedMinutes)} ago.`,
+			};
+		}
+
+		function normalizeHandoffProposal(proposal) {
+			const attempts = Array.isArray(proposal?.approval_history) ? proposal.approval_history : [];
+			const latestAttempt = Object.keys(asObject(proposal?.last_attempt_info)).length
+				? asObject(proposal.last_attempt_info)
+				: asObject(attempts[0]);
+			const attemptCount = asNumber(proposal?.attempt_count) || attempts.length;
+			const maxAttempts = asNumber(proposal?.max_attempts) || Math.max(attemptCount, 0);
+			const attemptsRemaining = typeof proposal?.attempts_remaining === "number"
+				? proposal.attempts_remaining
+				: Math.max(0, maxAttempts - attemptCount);
+			const updatedAt = proposal?.updated_at || latestAttempt.attempted_at || 0;
+			const updatedSortTime = new Date(typeof updatedAt === "number" ? updatedAt * 1000 : updatedAt).getTime() || 0;
+			return {
+				proposalId: asString(proposal?.proposal_id || proposal?.recommendation_id || proposal?.run_id),
+				runId: asString(proposal?.run_id),
+				assetId: asString(proposal?.asset_id),
+				workOrderId: asString(asObject(proposal?.work_order_snapshot).wo_id || proposal?.work_order_id),
+				title: asString(proposal?.title) || "Untitled PM proposal",
+				status: asString(proposal?.status || "pending").toLowerCase(),
+				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
+				attemptCount,
+				attemptsRemaining,
+				maxAttempts,
+				retryAllowed: Boolean(proposal?.retry_allowed),
+				adminRetryRequired: Boolean(proposal?.admin_retry_required),
+				approvedBy: asString(latestAttempt.approved_by || proposal?.approved_by),
+				lastAttemptAt: asString(latestAttempt.attempted_at),
+				lastMessage: asString(latestAttempt.error_message || asObject(latestAttempt.connector_result).message),
+				updatedSortTime,
+			};
+		}
+
+		function describeHandoffException(proposal) {
+			const normalized = normalizeHandoffProposal(proposal);
+			if (!normalized.proposalId || normalized.status === "approved" || !normalized.attemptCount) {
+				return null;
+			}
+			if (!normalized.retryAllowed && normalized.attemptsRemaining <= 0) {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
+				return {
+					...normalized,
+					priority: 400 + normalized.attemptCount,
+					classification: "limit-reached",
+					badge: "Limit",
+					headline: "Retry limit reached",
+					toneClass: "trend-rising",
+					detail: `${normalized.proposalId} exhausted ${normalized.maxAttempts} handoff attempts and now needs connector cleanup before another push.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
+					ageDetail: aging.detail,
+				};
+			}
+			if (normalized.handoffState === "failure") {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
+				return {
+					...normalized,
+					priority: 340 + normalized.attemptCount,
+					classification: "connector-failure",
+					badge: "Failure",
+					headline: normalized.adminRetryRequired ? "Admin retry required" : "Connector failure",
+					toneClass: "trend-rising",
+					detail: `${normalized.proposalId} failed on the last connector attempt and has ${normalized.attemptsRemaining} retries left.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
+					ageDetail: aging.detail,
+				};
+			}
+			if (normalized.retryAllowed && normalized.adminRetryRequired) {
+				const aging = agingDescriptor(normalized.lastAttemptAt);
+				return {
+					...normalized,
+					priority: 260 + normalized.attemptCount,
+					classification: "admin-retry",
+					badge: "Retry",
+					headline: "Admin retry required",
+					toneClass: "trend-steady",
+					detail: `${normalized.proposalId} is waiting on an admin or maintainer retry after ${normalized.attemptCount} attempt${normalized.attemptCount === 1 ? "" : "s"}.`,
+					ageLabel: aging.label,
+					ageClass: aging.className,
+					ageMinutes: aging.elapsedMinutes,
+					ageDetail: aging.detail,
+				};
+			}
+			return null;
+		}
+
+		function handoffExceptionRows(report) {
+			const proposals = Array.isArray(report) ? report : [];
+			return proposals
+				.map((proposal) => describeHandoffException(proposal))
+				.filter(Boolean);
+		}
+
+		function handoffRowMatchesView(row, view) {
+			if (view === "admin-retry") {
+				return row.classification === "admin-retry";
+			}
+			if (view === "connector-failure") {
+				return row.classification === "connector-failure";
+			}
+			if (view === "limit-reached") {
+				return row.classification === "limit-reached";
+			}
+			if (view === "aging-risk") {
+				return row.ageLabel === "SLA watch" || row.ageLabel === "Aging risk";
+			}
+			return true;
+		}
+
+		function handoffViewLabel(view) {
+			if (view === "admin-retry") {
+				return "Admin retries";
+			}
+			if (view === "connector-failure") {
+				return "Connector failures";
+			}
+			if (view === "limit-reached") {
+				return "Retry limits";
+			}
+			if (view === "aging-risk") {
+				return "SLA watch";
+			}
+			return "All exceptions";
+		}
+
+		function handoffAgeBucketLabel(ageBucket) {
+			if (ageBucket === "fresh") {
+				return "Fresh";
+			}
+			if (ageBucket === "sla-watch") {
+				return "SLA watch";
+			}
+			if (ageBucket === "aging-risk") {
+				return "Aging risk";
+			}
+			return "All ages";
+		}
+
+		function handoffSortLabel(sort) {
+			if (sort === "age") {
+				return "Oldest first";
+			}
+			return "Priority first";
+		}
+
+		function handoffRowMatchesAgeBucket(row, ageBucket) {
+			if (ageBucket === "fresh") {
+				return row.ageLabel === "Fresh" || row.ageLabel === "No timestamp";
+			}
+			if (ageBucket === "sla-watch") {
+				return row.ageLabel === "SLA watch";
+			}
+			if (ageBucket === "aging-risk") {
+				return row.ageLabel === "Aging risk";
+			}
+			return true;
+		}
+
+		function handoffRowsForDisplay(exceptionRows) {
+			const view = state.handoffExceptions.view;
+			const sortMode = state.handoffExceptions.sort;
+			const ageBucket = state.handoffExceptions.ageBucket;
+			const rows = exceptionRows
+				.filter((row) => handoffRowMatchesView(row, view))
+				.filter((row) => handoffRowMatchesAgeBucket(row, ageBucket))
+				.sort((left, right) => {
+					if (sortMode === "age") {
+						if ((right.ageMinutes || 0) !== (left.ageMinutes || 0)) {
+							return (right.ageMinutes || 0) - (left.ageMinutes || 0);
+						}
+						return right.updatedSortTime - left.updatedSortTime;
+					}
+					if (right.priority !== left.priority) {
+						return right.priority - left.priority;
+					}
+					return right.updatedSortTime - left.updatedSortTime;
+				});
+			return rows.slice(0, state.handoffExceptions.limit);
+		}
+
+		function handoffRetriesRemaining(exceptionRows) {
+			return exceptionRows.reduce((total, row) => total + Math.max(0, asNumber(row.attemptsRemaining)), 0);
+		}
+
+		function handoffLongestWait(exceptionRows) {
+			const max = exceptionRows.reduce((best, row) => {
+				const mins = typeof row.ageMinutes === "number" ? row.ageMinutes : -1;
+				return mins > best ? mins : best;
+			}, -1);
+			return max >= 0 ? formatMinutesAsDuration(max) : "-";
+		}
+
+		function handoffVisibleClasses(exceptionRows) {
+			const labelsByClass = {
+				"admin-retry": "Admin",
+				"connector-failure": "Connector",
+				"limit-reached": "Limit",
+			};
+			const present = new Set(exceptionRows.map((row) => asString(row.classification)));
+			const ordered = ["admin-retry", "connector-failure", "limit-reached"]
+				.filter((key) => present.has(key))
+				.map((key) => labelsByClass[key]);
+			return ordered.length ? ordered.join("/") : "none";
+		}
+
+		function handoffAgingRiskCount(exceptionRows) {
+			return exceptionRows.filter((row) => row.ageLabel === "SLA watch" || row.ageLabel === "Aging risk").length;
+		}
+
+		function handoffLeadAgeLabel(exceptionRows) {
+			return asString(exceptionRows[0]?.ageLabel) || "-";
+		}
+
+		function handoffCurrentRankLabel(run, exceptionRows) {
+			const proposalId = asString(run?.recommendation_id || run?.run_id);
+			if (!proposalId) {
+				return "clear";
+			}
+			const rank = exceptionRows.findIndex((row) => row.proposalId === proposalId) + 1;
+			return rank ? `#${rank}` : "clear";
+		}
+
+		function handoffCurrentProposalRow(run, exceptionRows) {
+			const proposalId = asString(run?.recommendation_id || run?.run_id);
+			if (!proposalId) {
+				return { currentProposalId: "", currentProposalRow: null, currentProposalRank: 0 };
+			}
+			const currentProposalRank = exceptionRows.findIndex((row) => row.proposalId === proposalId) + 1;
+			return {
+				currentProposalId: proposalId,
+				currentProposalRow: currentProposalRank ? exceptionRows[currentProposalRank - 1] : null,
+				currentProposalRank,
+			};
+		}
+
+		function handoffQueueActionState(row) {
+			const inFlight = state.handoffExceptions.actionInFlightByProposalId.has(row.proposalId);
+			const isAdmin = portalUserIsAdmin();
+			const retryEligible = Boolean(row.retryAllowed && row.adminRetryRequired && row.attemptsRemaining > 0);
+			return {
+				inFlight,
+				isAdmin,
+				retryEligible,
+				retryEnabled: retryEligible && isAdmin && !inFlight,
+			};
+		}
+
+		function handoffQueueActionMessage(row) {
+			const message = state.handoffExceptions.lastActionByProposalId.get(row.proposalId);
+			return asString(message);
+		}
+
+		async function submitHandoffQueueRetry(row) {
+			if (!row?.proposalId || !portalUserIsAdmin()) {
+				return;
+			}
+			if (!window.confirm(`Admin retry the PM handoff for ${row.proposalId}? ${row.attemptsRemaining} attempts remaining.`)) {
+				return;
+			}
+			state.handoffExceptions.actionInFlightByProposalId.add(row.proposalId);
+			state.handoffExceptions.lastActionByProposalId.set(row.proposalId, "Admin retry in progress...");
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(row.proposalId)}/approve`, { admin_retry: true });
+				state.handoffExceptions.lastActionByProposalId.set(row.proposalId, approval?.detail || `Admin retry submitted for ${row.proposalId}.`);
+				resetHandoffExceptionsReport();
+				await ensureHandoffExceptionsReport();
+				const refreshedSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (refreshedSelectedRun && (refreshedSelectedRun.recommendation_id === row.proposalId || refreshedSelectedRun.run_id === row.runId)) {
+					await loadApprovalHistory(refreshedSelectedRun, { page: 1, size: 3 });
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown retry error";
+				state.handoffExceptions.lastActionByProposalId.set(row.proposalId, message);
+			} finally {
+				state.handoffExceptions.actionInFlightByProposalId.delete(row.proposalId);
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		function followThroughProposalForRun(run, proposalsReport) {
+			const proposalId = asString(run?.recommendation_id || run?.run_id);
+			if (!proposalId) {
+				return null;
+			}
+			const proposals = Array.isArray(proposalsReport) ? proposalsReport : [];
+			return proposals.find((proposal) => {
+				const candidateId = asString(proposal?.proposal_id || proposal?.recommendation_id || proposal?.run_id);
+				return candidateId === proposalId;
+			}) || null;
+		}
+
+		function normalizeFollowThroughProposal(proposal) {
+			const workOrderSnapshot = asObject(proposal?.work_order_snapshot);
+			const latestAttempt = asObject(proposal?.last_attempt_info);
+			const attemptCount = asNumber(proposal?.attempt_count) || 0;
+			const maxAttempts = asNumber(proposal?.max_attempts) || Math.max(attemptCount, 0);
+			const attemptsRemaining = typeof proposal?.attempts_remaining === "number" ? proposal.attempts_remaining : Math.max(0, maxAttempts - attemptCount);
+			return {
+				proposalId: asString(proposal?.proposal_id || proposal?.recommendation_id || proposal?.run_id),
+				title: asString(proposal?.title) || "Untitled PM proposal",
+				status: asString(proposal?.status || "pending").toLowerCase(),
+				handoffState: asString(proposal?.handoff_state || latestAttempt.handoff_state || proposal?.status || "pending").toLowerCase(),
+				approvedBy: asString(proposal?.approved_by || latestAttempt.approved_by),
+				approvedAt: asString(proposal?.approved_at),
+				attemptCount,
+				attemptsRemaining,
+				maxAttempts,
+				retryAllowed: Boolean(proposal?.retry_allowed),
+				adminRetryRequired: Boolean(proposal?.admin_retry_required),
+				lastAttemptAt: asString(latestAttempt.attempted_at),
+				lastMessage: asString(latestAttempt.error_message || asObject(latestAttempt.connector_result).message),
+				workOrderId: asString(workOrderSnapshot.wo_id || proposal?.work_order_id),
+				workOrderStatus: asString(workOrderSnapshot.status || asObject(workOrderSnapshot.metadata).status || ""),
+				workOrderCreatedAt: asString(workOrderSnapshot.workorder_created_at),
+				handoffCompletedAt: asString(workOrderSnapshot.handoff_completed_at),
+				workOrderCompletedAt: asString(workOrderSnapshot.workorder_completed_at),
+			};
+		}
+
+		function currentFollowThroughPhase(followThrough) {
+			if (followThrough.workOrderCompletedAt) {
+				return {
+					label: "Work order completed",
+					detail: `${followThrough.workOrderId || "This work order"} closed in ${formatElapsed(followThrough.workOrderCreatedAt || followThrough.handoffCompletedAt, followThrough.workOrderCompletedAt)}.`,
+					badge: "Closed",
+					className: "trend-falling",
+				};
+			}
+			if (followThrough.workOrderId) {
+				return {
+					label: "Draft work order created",
+					detail: `${followThrough.workOrderId} is ${followThrough.workOrderStatus || "open"}${followThrough.workOrderCreatedAt ? ` since ${formatDate(followThrough.workOrderCreatedAt)}` : ""}.`,
+					badge: "Open",
+					className: "trend-steady",
+				};
+			}
+			if (followThrough.adminRetryRequired) {
+				return {
+					label: "Admin retry required",
+					detail: `${followThrough.proposalId} is waiting on an admin or maintainer retry after ${followThrough.attemptCount} attempt${followThrough.attemptCount === 1 ? "" : "s"}.`,
+					badge: "Retry",
+					className: "trend-rising",
+				};
+			}
+			if (followThrough.handoffState === "failure") {
+				return {
+					label: "Connector handoff failed",
+					detail: `${followThrough.proposalId} failed on the latest connector attempt${followThrough.attemptsRemaining ? ` and has ${followThrough.attemptsRemaining} retr${followThrough.attemptsRemaining === 1 ? "y" : "ies"} left` : ""}.`,
+					badge: "Blocked",
+					className: "trend-rising",
+				};
+			}
+			if (followThrough.attemptCount > 0) {
+				return {
+					label: "Connector handoff pending",
+					detail: `${followThrough.proposalId} has been approved into the PM handoff flow and is still waiting for a linked work order record.`,
+					badge: "Pending",
+					className: "trend-steady",
+				};
+			}
+			return {
+				label: "Approval pending",
+				detail: `${followThrough.proposalId} has not been approved into the PM handoff flow yet.`,
+				badge: "Queued",
+				className: "trend-steady",
+			};
+		}
+
+		function followThroughStages(followThrough) {
+			return [
+				{
+					label: "Approval",
+					status: followThrough.approvedAt ? "Approved" : (followThrough.attemptCount ? "Attempted" : "Waiting"),
+					detail: followThrough.approvedAt
+						? `Approved by ${followThrough.approvedBy || "Unknown approver"} at ${formatDate(followThrough.approvedAt)}.`
+						: (followThrough.attemptCount
+							? `Latest attempt ${formatDate(followThrough.lastAttemptAt)} by ${followThrough.approvedBy || "Unknown approver"}.`
+							: "No approval or retry attempt is recorded for this proposal yet."),
+					className: followThrough.approvedAt ? "trend-falling" : "trend-steady",
+				},
+				{
+					label: "CMMS handoff",
+					status: followThrough.handoffCompletedAt ? "Complete" : (followThrough.handoffState === "failure" ? "Blocked" : (followThrough.attemptCount ? "Pending" : "Not started")),
+					detail: followThrough.handoffCompletedAt
+						? `Connector handoff completed at ${formatDate(followThrough.handoffCompletedAt)}.`
+						: (followThrough.lastMessage || "No connector outcome has been recorded yet."),
+					className: followThrough.handoffCompletedAt ? "trend-falling" : (followThrough.handoffState === "failure" ? "trend-rising" : "trend-steady"),
+				},
+				{
+					label: "Work order creation",
+					status: followThrough.workOrderId ? (followThrough.workOrderStatus || "Created") : "Not created",
+					detail: followThrough.workOrderId
+						? `${followThrough.workOrderId}${followThrough.workOrderCreatedAt ? ` opened ${formatDate(followThrough.workOrderCreatedAt)}` : " is linked without a create timestamp yet."}`
+						: "No linked work order has been recorded for this proposal yet.",
+					className: followThrough.workOrderId ? "trend-falling" : "trend-steady",
+				},
+				{
+					label: "Work order completion",
+					status: followThrough.workOrderCompletedAt ? "Complete" : (followThrough.workOrderId ? "Open" : "Not started"),
+					detail: followThrough.workOrderCompletedAt
+						? `Completed at ${formatDate(followThrough.workOrderCompletedAt)} after ${formatElapsed(followThrough.workOrderCreatedAt || followThrough.handoffCompletedAt, followThrough.workOrderCompletedAt)}.`
+						: (followThrough.workOrderId
+							? `${followThrough.workOrderId} is still ${followThrough.workOrderStatus || "open"}.`
+							: "Completion tracking starts after a linked work order is created."),
+					className: followThrough.workOrderCompletedAt ? "trend-falling" : "trend-steady",
+				},
+			];
+		}
+
+		function renderFollowThroughPanel(run) {
+			if (state.handoffExceptions.loading) {
+				return `
+					<div class="follow-panel">
+						${renderOutcomesNote("Loading", "Loading follow-through snapshot", "Checking the current PM proposal for approval, handoff, and linked work order progress.")}
+					</div>
+				`;
+			}
+			if (state.handoffExceptions.error) {
+				return `
+					<div class="follow-panel">
+						${renderOutcomesNote("Heads up", "Follow-through unavailable", `We could not load PM follow-through right now: ${state.handoffExceptions.error}`, "warn")}
+					</div>
+				`;
+			}
+			const proposal = followThroughProposalForRun(run, state.handoffExceptions.report);
+			if (!proposal) {
+				return `
+					<div class="follow-panel">
+						${renderOutcomesNote("Waiting", "No follow-through recorded yet", "Approve or retry the current PM proposal to start tracking CMMS handoff and work order lifecycle progress here.")}
+					</div>
+				`;
+			}
+			const followThrough = normalizeFollowThroughProposal(proposal);
+			const phase = currentFollowThroughPhase(followThrough);
+			const stages = followThroughStages(followThrough);
+			const aging = agingDescriptor(followThrough.lastAttemptAt || followThrough.approvedAt);
+			const leadTimeChip = followThrough.workOrderCreatedAt && followThrough.approvedAt
+				? `Approval to work order ${formatElapsed(followThrough.approvedAt, followThrough.workOrderCreatedAt)}`
+				: (followThrough.workOrderCompletedAt && followThrough.workOrderCreatedAt
+					? `Cycle ${formatElapsed(followThrough.workOrderCreatedAt, followThrough.workOrderCompletedAt)}`
+					: "");
+			const noteMarkup = followThrough.workOrderCompletedAt
+				? renderOutcomesNote("Closed", "Work order follow-through complete", `${followThrough.workOrderId || "The linked work order"} has completed its lifecycle for this recommendation.`)
+				: (followThrough.workOrderId
+					? renderOutcomesNote("Open", "Work order is active", `${followThrough.workOrderId} is linked to this recommendation and is still moving through the CMMS lifecycle.`)
+					: renderOutcomesNote(aging.label, "Still waiting on downstream follow-through", `${phase.detail} ${aging.detail}`, phase.className === "trend-rising" ? "warn" : ""));
+			return `
+				<div class="follow-panel">
+					<div class="follow-summary">
+						<div class="follow-hero">
+							<div class="follow-hero-label">Current proposal follow-through</div>
+							<div class="follow-hero-value">${escapeHtml(phase.label)}</div>
+							<div class="follow-hero-meta">${phase.detail}</div>
+						</div>
+						<div class="outcomes-chip-row">
+							<span class="chip">Source /api/v1/agents/pm/proposals</span>
+							<span class="chip">Proposal ${escapeHtml(followThrough.proposalId)}</span>
+							<span class="chip">Work order ${escapeHtml(followThrough.workOrderId || "-")}</span>
+							<span class="chip ${escapeHtml(phase.className)}">${escapeHtml(phase.badge)}</span>
+							${!followThrough.workOrderCompletedAt ? `<span class="chip ${escapeHtml(aging.className)}">${escapeHtml(aging.label)}</span>` : ""}
+							${leadTimeChip ? `<span class="chip">${escapeHtml(leadTimeChip)}</span>` : ""}
+						</div>
+					</div>
+					${noteMarkup}
+					<ol class="follow-stage-list">${stages.map((stage) => `
+						<li class="follow-stage">
+							<div class="follow-stage-head">
+								<div class="follow-stage-label">${escapeHtml(stage.label)}</div>
+								<span class="chip ${escapeHtml(stage.className)}">${escapeHtml(stage.status)}</span>
+							</div>
+							<div class="muted">${stage.detail}</div>
+						</li>
+					`).join("")}</ol>
+				</div>
+			`;
+		}
+
+		function renderHandoffExceptionsPanel(run) {
+			const allExceptionRows = handoffExceptionRows(state.handoffExceptions.report);
+			const exceptionRows = handoffRowsForDisplay(allExceptionRows);
+			const filteredOutCount = Math.max(0, allExceptionRows.length - exceptionRows.length);
+			const retriesRemaining = handoffRetriesRemaining(exceptionRows);
+			const longestWait = handoffLongestWait(exceptionRows);
+			const visibleClasses = handoffVisibleClasses(exceptionRows);
+			const agingRiskCount = handoffAgingRiskCount(exceptionRows);
+			const leadAgeLabel = handoffLeadAgeLabel(exceptionRows);
+			const currentRankLabel = handoffCurrentRankLabel(run, exceptionRows);
+			const ageBucketFilterMarkup = `
+				<div class="outcomes-chip-row" aria-label="Handoff queue age filters">
+					<button type="button" class="chip" data-handoff-age-bucket="all" aria-pressed="${state.handoffExceptions.ageBucket === "all" ? "true" : "false"}">All ages</button>
+					<button type="button" class="chip" data-handoff-age-bucket="fresh" aria-pressed="${state.handoffExceptions.ageBucket === "fresh" ? "true" : "false"}">Fresh</button>
+					<button type="button" class="chip" data-handoff-age-bucket="sla-watch" aria-pressed="${state.handoffExceptions.ageBucket === "sla-watch" ? "true" : "false"}">SLA watch</button>
+					<button type="button" class="chip" data-handoff-age-bucket="aging-risk" aria-pressed="${state.handoffExceptions.ageBucket === "aging-risk" ? "true" : "false"}">Aging risk</button>
+				</div>
+			`;
+			const controlsMarkup = `
+				<div class="outcomes-controls" aria-label="Handoff queue controls">
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Queue view</div>
+							<div class="outcomes-control-hint">Focus this list on retry approvals, exhausted limits, or stale items.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffViewSelect" aria-label="Handoff queue view">
+								<option value="all" ${state.handoffExceptions.view === "all" ? "selected" : ""}>All exceptions</option>
+								<option value="admin-retry" ${state.handoffExceptions.view === "admin-retry" ? "selected" : ""}>Admin retries only</option>
+								<option value="connector-failure" ${state.handoffExceptions.view === "connector-failure" ? "selected" : ""}>Connector failures only</option>
+								<option value="limit-reached" ${state.handoffExceptions.view === "limit-reached" ? "selected" : ""}>Retry limits only</option>
+								<option value="aging-risk" ${state.handoffExceptions.view === "aging-risk" ? "selected" : ""}>SLA watch and aging risk</option>
+							</select>
+						</div>
+					</div>
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Sort order</div>
+							<div class="outcomes-control-hint">Sort by urgency score or by longest waiting handoff age.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffSortSelect" aria-label="Handoff queue sort">
+								<option value="priority" ${state.handoffExceptions.sort === "priority" ? "selected" : ""}>Priority first</option>
+								<option value="age" ${state.handoffExceptions.sort === "age" ? "selected" : ""}>Oldest waiting first</option>
+							</select>
+							<button type="button" id="handoffPreferencesResetButton" aria-label="Reset handoff queue preferences">Reset to defaults</button>
+						</div>
+					</div>
+					<div class="outcomes-control">
+						<div class="outcomes-control-head">
+							<div class="outcomes-control-label">Rows shown</div>
+							<div class="outcomes-control-hint">Control how many queue rows are visible while triaging.</div>
+						</div>
+						<div class="outcomes-toolbar">
+							<select id="handoffLimitSelect" aria-label="Handoff queue rows shown">
+								<option value="3" ${state.handoffExceptions.limit === 3 ? "selected" : ""}>Top 3</option>
+								<option value="6" ${state.handoffExceptions.limit === 6 ? "selected" : ""}>Top 6</option>
+								<option value="10" ${state.handoffExceptions.limit === 10 ? "selected" : ""}>Top 10</option>
+							</select>
+						</div>
+					</div>
+				</div>
+				${ageBucketFilterMarkup}
+			`;
+			if (state.handoffExceptions.loading) {
+				return `
+					<div class="handoff-panel">
+						${renderOutcomesNote("Loading", "Loading handoff exceptions", `Scanning the top ${state.handoffExceptions.limit} PM proposals for retries, failures, and exhausted attempts.`)}
+					</div>
+				`;
+			}
+			if (state.handoffExceptions.error) {
+				return `
+					<div class="handoff-panel">
+						${renderOutcomesNote("Heads up", "Handoff exceptions unavailable", `We could not load the PM handoff queue right now: ${state.handoffExceptions.error}`, "warn")}
+					</div>
+				`;
+			}
+			if (!allExceptionRows.length) {
+				return `
+					<div class="handoff-panel">
+						${renderOutcomesNote("Clear", "No handoff exceptions right now", "There are no PM proposals waiting on retry, escalation, or connector cleanup right now.")}
+					</div>
+				`;
+			}
+			if (!exceptionRows.length) {
+				const viewEmptyMessages = {
+					"connector-failure": {
+						title: "No connector failures in this filter",
+						detail: "No proposals currently show connector-failure handoffs in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"admin-retry": {
+						title: "No admin retries waiting",
+						detail: "No proposals are currently waiting on an admin retry in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"limit-reached": {
+						title: "No retry limits hit",
+						detail: "No proposals have exhausted their retry limit in this view. Try All exceptions or broaden the age filter to continue triage.",
+					},
+					"aging-risk": {
+						title: "No aging risk or SLA watch items",
+						detail: "No proposals in this view currently exceed the SLA watch threshold. Try All ages with All exceptions to see the full queue.",
+					},
+				};
+				const viewMsg = viewEmptyMessages[state.handoffExceptions.view] || {
+					title: "No exceptions in this filter",
+					detail: "Try All ages with All exceptions to inspect the full queue.",
+				};
+				const filteredTitle = viewMsg.title;
+				const filteredDetail = viewMsg.detail;
+				return `
+					<div class="handoff-panel">
+						<div class="handoff-summary">
+							<div class="handoff-hero">
+								<div class="handoff-hero-label">Current proposal exception state</div>
+								<div class="handoff-hero-value">Filtered</div>
+								<div class="handoff-hero-meta">No handoff exceptions match the current queue filters. Adjust view or aging chips to continue triage.</div>
+							</div>
+							<div class="outcomes-chip-row">
+								<span class="chip">Queue size ${escapeHtml(allExceptionRows.length)}</span>
+								<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
+								<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
+								<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
+								<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
+								<span class="chip">Longest wait ${escapeHtml(longestWait)}</span>
+								<span class="chip">Visible classes ${escapeHtml(visibleClasses)}</span>
+								<span class="chip">Aging risk ${escapeHtml(agingRiskCount)}</span>
+								<span class="chip">Lead age ${escapeHtml(leadAgeLabel)}</span>
+								<span class="chip">Current rank ${escapeHtml(currentRankLabel)}</span>
+								<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>
+							</div>
+						</div>
+						${controlsMarkup}
+						${renderOutcomesNote("Filtered", filteredTitle, filteredDetail)}
+					</div>
+				`;
+			}
+			const { currentProposalId, currentProposalRow, currentProposalRank } = handoffCurrentProposalRow(run, exceptionRows);
+			const leadProposal = exceptionRows[0] || {};
+			const heroValue = currentProposalRow ? currentProposalRow.headline : "Clear";
+			const heroMeta = currentProposalRow
+				? currentProposalRow.detail
+				: `${escapeHtml(currentProposalId || "Current proposal")} does not currently need retry or escalation.`;
+			const noteMarkup = currentProposalRow
+				? (currentProposalRank === 1
+					? renderOutcomesNote("Priority", "Current proposal needs attention first", `${escapeHtml(currentProposalId)} is the most urgent PM handoff exception in the queue.`)
+					: renderOutcomesNote("Focus", "More urgent handoffs exist", `${escapeHtml(leadProposal.proposalId || "Another proposal")} currently ranks above ${escapeHtml(currentProposalId)} in the exceptions queue.`))
+				: renderOutcomesNote("Clear", "Current proposal is clear", "Use this queue to pull forward PM handoffs that need retry, admin intervention, or connector cleanup.");
+			return `
+				<div class="handoff-panel">
+					<div class="handoff-summary">
+						<div class="handoff-hero">
+							<div class="handoff-hero-label">Current proposal exception state</div>
+							<div class="handoff-hero-value">${escapeHtml(heroValue)}</div>
+							<div class="handoff-hero-meta">${heroMeta}</div>
+						</div>
+						<div class="outcomes-chip-row">
+							<span class="chip">Queue size ${escapeHtml(exceptionRows.length)}</span>
+							<span class="chip">Showing top ${escapeHtml(state.handoffExceptions.limit)}</span>
+							<span class="chip">Source /api/v1/agents/pm/proposals</span>
+							<span class="chip">View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}</span>
+							<span class="chip">Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}</span>
+							<span class="chip">Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}</span>
+							<span class="chip">Retries remaining ${escapeHtml(retriesRemaining)}</span>
+							<span class="chip">Longest wait ${escapeHtml(longestWait)}</span>
+							<span class="chip">Visible classes ${escapeHtml(visibleClasses)}</span>
+							<span class="chip">Aging risk ${escapeHtml(agingRiskCount)}</span>
+							<span class="chip">Lead age ${escapeHtml(leadAgeLabel)}</span>
+							<span class="chip">Current rank ${escapeHtml(currentRankLabel)}</span>
+							<span class="chip">Lead proposal ${escapeHtml(leadProposal.proposalId || "-")}</span>
+							<span class="chip">Lead state ${escapeHtml(leadProposal.headline || "-")}</span>
+							${filteredOutCount ? `<span class="chip">Filtered out ${escapeHtml(filteredOutCount)}</span>` : ""}
+						</div>
+					</div>
+					${controlsMarkup}
+					${noteMarkup}
+					<ol class="handoff-list">${exceptionRows.map((row, index) => `
+						${(() => {
+							const actionState = handoffQueueActionState(row);
+							const actionMessage = handoffQueueActionMessage(row);
+							return `
+						<li class="handoff-item ${row.proposalId === currentProposalId ? "current-proposal" : ""}">
+							<div class="handoff-item-head">
+								<div>
+									<div class="handoff-rank">#${escapeHtml(index + 1)} · ${escapeHtml(row.proposalId)}</div>
+									<div class="footer-note">${escapeHtml(row.title)} · Asset ${escapeHtml(row.assetId || "-")} · Last attempt ${escapeHtml(formatDate(row.lastAttemptAt) || "-")}</div>
+								</div>
+								<span class="chip ${escapeHtml(row.toneClass)}">${escapeHtml(row.headline)}</span>
+							</div>
+							<div class="muted">${row.detail}</div>
+							<div class="handoff-meta">
+								<span class="chip">Attempts ${escapeHtml(row.attemptCount)} of ${escapeHtml(row.maxAttempts)}</span>
+								<span class="chip">Retries remaining ${escapeHtml(row.attemptsRemaining)}</span>
+								${row.workOrderId ? `<span class="chip">Work order ${escapeHtml(row.workOrderId)}</span>` : ""}
+								${row.ageLabel ? `<span class="chip ${escapeHtml(row.ageClass || "trend-steady")}">${escapeHtml(row.ageLabel)}</span>` : ""}
+								${typeof row.ageMinutes === "number" ? `<span class="chip">Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}</span>` : ""}
+								${row.approvedBy ? `<span class="chip">Last actor ${escapeHtml(row.approvedBy)}</span>` : ""}
+								${row.lastMessage ? `<span class="chip">${escapeHtml(row.lastMessage)}</span>` : ""}
+								${row.proposalId === currentProposalId ? '<span class="chip trend-rising">Current run proposal</span>' : ""}
+							</div>
+							${row.ageDetail ? `<div class="footer-note">${escapeHtml(row.ageDetail)}</div>` : ""}
+							<div class="pm-actions">
+								<button
+									type="button"
+									data-handoff-retry-proposal-id="${escapeHtml(row.proposalId)}"
+									${actionState.retryEnabled ? "" : "disabled"}
+								>${escapeHtml(actionState.inFlight ? "Running admin retry..." : "Run admin retry")}</button>
+								${!actionState.isAdmin && actionState.retryEligible ? '<span class="muted tiny">Admin role required for retry.</span>' : ''}
+								${row.runId ? `<button type="button" data-handoff-focus-run-id="${escapeHtml(row.runId)}">Open follow-through</button>` : ""}
+								<a href="/api/v1/agents/pm/proposals/${encodeURIComponent(row.proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">Open audit trail</a>
+							</div>
+							${actionMessage ? `<div class="footer-note">${escapeHtml(actionMessage)}</div>` : ""}
+						</li>
+						`;
+						})()}
+					`).join("")}</ol>
+				</div>
+			`;
+		}
+
+		function triageCurrentAssetRow(run, triageRows) {
+			const assetId = asString(asObject(run?.context_meta).asset_id);
+			if (!assetId) {
+				return { currentAssetId: "", currentAssetRow: null, currentAssetRank: 0 };
+			}
+			const currentAssetRank = triageRows.findIndex((row) => asString(row.asset_id) === assetId) + 1;
+			return {
+				currentAssetId: assetId,
+				currentAssetRow: currentAssetRank ? triageRows[currentAssetRank - 1] : null,
+				currentAssetRank,
+			};
+		}
+
+		function renderTriagePanel(run) {
+			const triageRows = Array.isArray(state.triage.report) ? state.triage.report : [];
+			if (state.triage.loading) {
+				return `
+					<div class="triage-panel">
+						${renderOutcomesNote("Loading", "Loading triage queue", `Ranking the top ${state.triage.limit} assets by recent event and work order pressure.`)}
+					</div>
+				`;
+			}
+			if (state.triage.error) {
+				return `
+					<div class="triage-panel">
+						${renderOutcomesNote("Heads up", "Triage queue unavailable", `We could not load the bad-actor queue right now: ${state.triage.error}`, "warn")}
+					</div>
+				`;
+			}
+			if (!triageRows.length) {
+				return `
+					<div class="triage-panel">
+						${renderOutcomesNote("Quiet window", "No triage pressure yet", "There are no ranked assets in the current bad-actor window yet. The queue will populate as events and work orders accumulate.")}
+					</div>
+				`;
+			}
+			const { currentAssetId, currentAssetRow, currentAssetRank } = triageCurrentAssetRow(run, triageRows);
+			const leadAsset = triageRows[0] || {};
+			const heroValue = currentAssetRank ? `#${currentAssetRank}` : "Out of queue";
+			const heroMeta = currentAssetRank
+				? `${escapeHtml(currentAssetId)} is ranked ${escapeHtml(`#${currentAssetRank}`)} with score ${escapeHtml(currentAssetRow?.score ?? "-")}.`
+				: `${escapeHtml(currentAssetId || "Current asset")} is not in the top ${escapeHtml(state.triage.limit)} bad actors right now.`;
+			const noteMarkup = currentAssetRank
+				? (currentAssetRank === 1
+					? renderOutcomesNote("Priority", "Current asset leads the queue", `${escapeHtml(currentAssetId)} is the top-ranked asset by recent event and work order pressure.`)
+					: renderOutcomesNote("Focus", "Higher-pressure assets exist", `${escapeHtml(leadAsset.asset_id || "Another asset")} currently ranks above ${escapeHtml(currentAssetId)} in the triage queue.`))
+				: renderOutcomesNote("Info", "Current asset is outside the top queue", "Use this list to pull forward the assets with the highest recent event and work order pressure first.");
+			return `
+				<div class="triage-panel">
+					<div class="triage-summary">
+						<div class="triage-hero">
+							<div class="triage-hero-label">Current asset queue rank</div>
+							<div class="triage-hero-value">${escapeHtml(heroValue)}</div>
+							<div class="triage-hero-meta">${heroMeta}</div>
+						</div>
+						<div class="outcomes-chip-row">
+							<span class="chip">Queue size ${escapeHtml(triageRows.length)}</span>
+							<span class="chip">Source /api/v1/reports/bad-actors</span>
+							<span class="chip">Lead asset ${escapeHtml(leadAsset.asset_id || "-")}</span>
+							<span class="chip">Lead score ${escapeHtml(leadAsset.score ?? "-")}</span>
+						</div>
+					</div>
+					${noteMarkup}
+					<ol class="triage-list">${triageRows.map((row, index) => `
+						<li class="triage-item ${asString(row.asset_id) === currentAssetId ? "current-asset" : ""}">
+							<div class="triage-item-head">
+								<div>
+									<div class="triage-rank">#${escapeHtml(index + 1)} · ${escapeHtml(row.asset_id || "Unknown asset")}</div>
+									<div class="footer-note">Latest severity ${escapeHtml(row.latest_severity || "unknown")} · Last event ${escapeHtml(formatDate(row.last_event_at) || "-")}</div>
+								</div>
+								<span class="chip ${asString(row.asset_id) === currentAssetId ? "trend-falling" : ""}">Score ${escapeHtml(row.score ?? 0)}</span>
+							</div>
+							<div class="triage-meta">
+								<span class="chip">Events 90d ${escapeHtml(row.events_90d ?? 0)}</span>
+								<span class="chip">Workorders 90d ${escapeHtml(row.workorders_90d ?? 0)}</span>
+								${asString(row.asset_id) === currentAssetId ? '<span class="chip trend-falling">Current run asset</span>' : ""}
+							</div>
+						</li>
+					`).join("")}</ol>
+				</div>
+			`;
+		}
+
+		function availableOutcomeScopes(report) {
+			return Object.entries(OUTCOME_SCOPE_CONFIG)
+				.filter(([, config]) => Object.keys(asObject(report?.[config.metricsKey])).length)
+				.map(([scope]) => scope);
+		}
+
+		function preferredOutcomeScope(run, report) {
+			const availableScopes = availableOutcomeScopes(report);
+			const savedScope = state.selectedOutcomeScopeByRunId.get(run?.run_id);
+			if (savedScope && availableScopes.includes(savedScope)) {
+				return savedScope;
+			}
+			if (availableScopes.includes("asset")) {
+				return "asset";
+			}
+			if (availableScopes.includes("user")) {
+				return "user";
+			}
+			if (availableScopes.includes("org")) {
+				return "org";
+			}
+			return availableScopes[0] || "asset";
+		}
+
+		function preferredOutcomeEntityId(run, scope, entityIds) {
+			const config = OUTCOME_SCOPE_CONFIG[scope] || OUTCOME_SCOPE_CONFIG.asset;
+			const selectionMap = config.selectedMap();
+			const savedEntityId = selectionMap.get(run?.run_id);
+			if (savedEntityId && entityIds.includes(savedEntityId)) {
+				return savedEntityId;
+			}
+			const preferredId = config.preferredEntityId(run);
+			if (preferredId && entityIds.includes(preferredId)) {
+				return preferredId;
+			}
+			return entityIds[0] || "";
+		}
+
+		function rememberOutcomeEntity(runId, scope, entityId) {
+			const config = OUTCOME_SCOPE_CONFIG[scope] || OUTCOME_SCOPE_CONFIG.asset;
+			config.selectedMap().set(runId, entityId);
+		}
+
 		function metricValues(points) {
 			return points
 				.map((point) => asNumber(point?.value))
@@ -1241,12 +3700,12 @@
 			return `${Math.round(value)}`;
 		}
 
-		function chartSummary(points, metricName) {
+		function chartSummary(points, metricName, options = {}) {
 			const values = metricValues(points);
 			if (!values.length) {
 				return metricName === "acceptance_rate"
-					? "No accept or reject feedback was recorded for this asset in the current window."
-					: "No work orders were recorded for this asset in the current window.";
+					? (options.emptyAcceptanceSummary || "No accept or reject feedback was recorded for this asset in the current window.")
+					: (options.emptyVolumeSummary || "No work orders were recorded for this asset in the current window.");
 			}
 			const peak = Math.max(...values);
 			const low = Math.min(...values);
@@ -1305,15 +3764,15 @@
 			return { segments, lastPoint };
 		}
 
-		function renderTrendChartSvg(points, metricName, color) {
+		function renderTrendChartSvg(points, metricName, color, options = {}) {
 			const width = 340;
 			const height = 160;
 			const padding = 16;
 			const { segments, lastPoint } = buildTrendSegments(points, width, height, padding);
 			if (!segments.length) {
 				const emptyLabel = metricName === "acceptance_rate"
-					? "No acceptance decisions yet"
-					: "No work order volume yet";
+					? (options.emptyAcceptanceLabel || "No acceptance decisions yet")
+					: (options.emptyVolumeLabel || "No work order volume yet");
 				return `<div class="chart-empty">${escapeHtml(emptyLabel)}</div>`;
 			}
 			const firstLabel = asString(points[0]?.date, "-");
@@ -1337,18 +3796,18 @@
 			`;
 		}
 
-		function renderTrendCard(title, metricName, points, color) {
+		function renderTrendCard(title, metricName, points, color, options = {}) {
 			const latestValue = latestTrendValue(points);
 			return `
 				<article class="chart-card">
 					<div class="chart-head">
 						<div>
 							<div class="chart-title">${escapeHtml(title)}</div>
-							<div class="chart-meta">${escapeHtml(chartSummary(points, metricName))}</div>
+							<div class="chart-meta">${escapeHtml(chartSummary(points, metricName, options))}</div>
 						</div>
 						<div class="chart-stat">${escapeHtml(formatTrendValue(latestValue, metricName))}</div>
 					</div>
-					${renderTrendChartSvg(points, metricName, color)}
+					${renderTrendChartSvg(points, metricName, color, options)}
 				</article>
 			`;
 		}
@@ -1359,60 +3818,215 @@
 			if (state.outcomes.loading) {
 				return `
 					<div class="outcomes-panel">
-						<div class="outcomes-note">Loading outcomes trends for the last ${escapeHtml(outcomesWindow)} days.</div>
+						${renderOutcomesNote("Loading", "Loading outcomes", `Pulling the last ${outcomesWindow} days of trends for this run.`)}
 					</div>
 				`;
 			}
 			if (state.outcomes.error) {
 				return `
 					<div class="outcomes-panel">
-						<div class="outcomes-note warn">Unable to load outcomes trends: ${escapeHtml(state.outcomes.error)}</div>
+						${renderOutcomesNote("Heads up", "Outcomes unavailable", `We could not load outcomes trends right now: ${state.outcomes.error}`, "warn")}
 					</div>
 				`;
 			}
-			const assetMetrics = asObject(report.asset_metrics);
-			const runAssetId = asString(asObject(run.context_meta).asset_id);
-			const assetIds = sortAssetIds(Object.keys(assetMetrics), runAssetId);
-			if (!assetIds.length) {
+			const availableScopes = availableOutcomeScopes(report);
+			if (!availableScopes.length) {
 				return `
 					<div class="outcomes-panel">
-						<div class="outcomes-note">No asset trend data is available yet for the current outcomes window.</div>
+						${renderOutcomesNote("Quiet window", "No live trends yet", "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive.")}
 					</div>
 				`;
 			}
-			const selectedAssetId = preferredOutcomeAsset(run, assetIds);
-			state.selectedOutcomeAssetByRunId.set(run.run_id, selectedAssetId);
-			const selectedMetrics = asObject(assetMetrics[selectedAssetId]);
-			const workorderSeries = asPointList(selectedMetrics.workorder_volume);
-			const acceptanceSeries = asPointList(selectedMetrics.acceptance_rate);
+			const selectedScope = preferredOutcomeScope(run, report);
+			state.selectedOutcomeScopeByRunId.set(run.run_id, selectedScope);
+			const config = OUTCOME_SCOPE_CONFIG[selectedScope] || OUTCOME_SCOPE_CONFIG.asset;
+			const metricsByEntity = asObject(report[config.metricsKey]);
+			const expectedEntityId = config.preferredEntityId(run);
+			const entityIds = sortEntityIds(Object.keys(metricsByEntity), expectedEntityId);
+			if (!entityIds.length) {
+				return `
+					<div class="outcomes-panel">
+						${renderOutcomesNote("Quiet window", config.emptyStateTitle || `No ${config.entityNoun} trends yet`, config.emptyState)}
+					</div>
+				`;
+			}
+			const selectedEntityId = preferredOutcomeEntityId(run, selectedScope, entityIds);
+			rememberOutcomeEntity(run.run_id, selectedScope, selectedEntityId);
+			const selectedMetrics = asObject(metricsByEntity[selectedEntityId]);
+			const volumeSeries = asPointList(selectedMetrics[config.volumeMetricKey]);
+			const acceptanceSeries = asPointList(selectedMetrics[config.acceptanceMetricKey]);
+			const selectedAcceptanceRate = asNumber(selectedMetrics.acceptance_rate);
+			const selectedFeedbackTotal = asNumber(selectedMetrics.feedback_total);
+			const topRows = Array.isArray(report[config.topKey]) ? report[config.topKey] : [];
+			const topContributor = topRows[0] && topRows[0][config.topIdKey] ? topRows[0] : null;
 			const warnings = asStringList(report.warnings).slice(0, 2);
+			const primaryKpiValue = typeof selectedAcceptanceRate === "number"
+				? formatTrendValue(selectedAcceptanceRate, "acceptance_rate")
+				: "Waiting";
+			const primaryKpiMeta = typeof selectedAcceptanceRate === "number"
+				? `Decision quality across the last ${outcomesWindow} days.`
+				: config.emptyAcceptanceSummary;
 			const warningMarkup = [
-				report.status === "partial" ? `
-					<div class="outcomes-note warn">Partial outcomes report: ${escapeHtml(warnings[0] || "one or more metric queries degraded, so this panel may be incomplete.")}</div>
-				` : "",
-				runAssetId && selectedAssetId !== runAssetId ? `
-					<div class="outcomes-note">No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead.</div>
-				` : "",
+				report.status === "partial"
+					? renderOutcomesNote("Heads up", "Partial report", warnings[0] || "One or more outcomes queries degraded, so this panel may be missing some detail.", "warn")
+					: "",
+				expectedEntityId && selectedEntityId !== expectedEntityId
+					? renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))
+					: "",
 			].filter(Boolean).join("");
 			return `
 				<div class="outcomes-panel">
 					<div class="outcomes-toolbar">
-						<label>
-							Asset selector
-							<select id="outcomesAssetSelect" aria-label="Select asset trend series">
-								${assetIds.map((assetId) => `<option value="${escapeHtml(assetId)}" ${assetId === selectedAssetId ? "selected" : ""}>${escapeHtml(assetId)}</option>`).join("")}
-							</select>
-						</label>
+						<div class="outcomes-controls">
+							<label class="outcomes-control">
+								<span class="outcomes-control-head">
+									<span class="outcomes-control-label">Scope</span>
+									<span class="outcomes-control-hint">Switch between asset, operator, and org lenses without leaving the run view.</span>
+								</span>
+								<select id="outcomesScopeSelect" aria-label="Select analytics scope">
+									${availableScopes.map((scope) => `<option value="${escapeHtml(scope)}" ${scope === selectedScope ? "selected" : ""}>${escapeHtml((OUTCOME_SCOPE_CONFIG[scope] || {}).label || scope)}</option>`).join("")}
+								</select>
+							</label>
+							<label class="outcomes-control">
+								<span class="outcomes-control-head">
+									<span class="outcomes-control-label">Entity</span>
+									<span class="outcomes-control-hint">${escapeHtml(config.entityHint)}</span>
+								</span>
+								<select id="outcomesEntitySelect" aria-label="${escapeHtml(config.selectorAria)}">
+									${entityIds.map((entityId) => `<option value="${escapeHtml(entityId)}" ${entityId === selectedEntityId ? "selected" : ""}>${escapeHtml(entityId)}</option>`).join("")}
+								</select>
+							</label>
+						</div>
 						<div class="outcomes-summary">
-							<span class="chip">Last ${escapeHtml(outcomesWindow)} days</span>
-							<span class="chip">Source outcomes.asset_metrics</span>
+							<div class="outcomes-hero-kpi">
+								<div id="outcomesPrimaryKpiLabel" class="outcomes-hero-label">Acceptance rate</div>
+								<div id="outcomesPrimaryKpiValue" class="outcomes-hero-value">${escapeHtml(primaryKpiValue)}</div>
+								<div class="outcomes-hero-meta">${escapeHtml(primaryKpiMeta)}</div>
+							</div>
+							<div class="outcomes-chip-row">
+								<span class="chip">Scope ${escapeHtml(config.label)}</span>
+								<span class="chip">Current ${escapeHtml(selectedEntityId)}</span>
+								<span class="chip">Last ${escapeHtml(outcomesWindow)} days</span>
+								<span class="chip">${escapeHtml(config.sourceLabel)}</span>
+								${typeof selectedFeedbackTotal === "number" ? `<span class="chip">Feedback total ${escapeHtml(selectedFeedbackTotal)}</span>` : ""}
+								${topContributor ? `<span class="chip">${escapeHtml(config.topLabel)} ${escapeHtml(topContributor[config.topIdKey])}</span>` : ""}
+							</div>
 						</div>
 					</div>
 					${warningMarkup}
 					<div class="outcomes-chart-grid">
-						${renderTrendCard("Workorder volume", "workorder_volume", workorderSeries, "#0e7c66")}
-						${renderTrendCard("Acceptance rate", "acceptance_rate", acceptanceSeries, "#c5672f")}
+						${renderTrendCard(config.volumeTitle, "workorder_volume", volumeSeries, "#0e7c66", {
+							emptyVolumeSummary: config.emptyVolumeSummary,
+							emptyVolumeLabel: config.emptyVolumeLabel,
+						})}
+						${renderTrendCard("Acceptance rate", "acceptance_rate", acceptanceSeries, "#c5672f", {
+							emptyAcceptanceSummary: config.emptyAcceptanceSummary,
+							emptyAcceptanceLabel: config.emptyAcceptanceLabel,
+						})}
 					</div>
+				</div>
+			`;
+		}
+
+		function renderFeedbackChanges(changes) {
+			const entries = Object.entries(asObject(changes));
+			if (!entries.length) {
+				return "";
+			}
+			return `
+				<div class="chips">${entries.map(([key, value]) => {
+					const label = Array.isArray(value) ? value.join(", ") : (value && typeof value === "object" ? JSON.stringify(value) : value);
+					return `<span class="chip">${escapeHtml(key)}: ${escapeHtml(label)}</span>`;
+				}).join("")}</div>
+			`;
+		}
+
+		function renderFeedbackHistory(run) {
+			const feedbackItems = Array.isArray(state.feedbackByRunId.get(run.run_id))
+				? state.feedbackByRunId.get(run.run_id)
+				: [];
+			const feedbackLoading = state.feedbackLoadingByRunId.has(run.run_id);
+			const feedbackError = state.feedbackErrorByRunId.get(run.run_id) || "";
+			if (feedbackLoading && !feedbackItems.length) {
+				return `<div class="outcomes-note">Loading feedback history...</div>`;
+			}
+			if (feedbackError && !feedbackItems.length) {
+				return `<div class="outcomes-note warn">Unable to load feedback history: ${escapeHtml(feedbackError)}</div>`;
+			}
+			if (!feedbackItems.length) {
+				return `<p class="muted">No operator feedback recorded yet for this run.</p>`;
+			}
+			return `
+				<ol class="list feedback-history">${feedbackItems.map((item) => `
+					<li class="feedback-item">
+						<div class="feedback-item-head">
+							<span class="audit-badge feedback-action-${escapeHtml((item.action || "unknown").toLowerCase())}">${escapeHtml(item.action || "unknown")}</span>
+							<span class="audit-badge actor">Actor ${escapeHtml(item.user_id || "Unknown operator")}</span>
+							<span class="audit-badge">${escapeHtml(formatDate(item.created_at) || "Unknown time")}</span>
+						</div>
+						${item.reason ? `<div class="footer-note">${escapeHtml(item.reason)}</div>` : ""}
+						${renderFeedbackChanges(item.changes)}
+					</li>
+				`).join("")}</ol>
+			`;
+		}
+
+		function renderFeedbackPanel(run) {
+			const feedbackItems = Array.isArray(state.feedbackByRunId.get(run.run_id))
+				? state.feedbackByRunId.get(run.run_id)
+				: [];
+			const counts = feedbackCounts(feedbackItems);
+			const draft = getFeedbackDraft(run.run_id);
+			const feedbackSubmitting = state.feedbackSubmittingByRunId.has(run.run_id);
+			const feedbackLoading = state.feedbackLoadingByRunId.has(run.run_id);
+			const feedbackError = state.feedbackErrorByRunId.get(run.run_id) || "";
+			const actor = state.session.subject || "portal.user";
+			const actorOrg = state.session.orgId || "demo-org";
+			const recommendationId = run.recommendation_id || run.run_id;
+			return `
+				<div class="feedback-shell">
+					<div class="feedback-head">
+						<div class="chips">
+							<span class="chip">Recommendation ${escapeHtml(recommendationId)}</span>
+							<span class="chip">Accept ${escapeHtml(counts.accept || 0)}</span>
+							<span class="chip">Reject ${escapeHtml(counts.reject || 0)}</span>
+							<span class="chip">Edited ${escapeHtml(counts.edited || 0)}</span>
+						</div>
+						<span class="muted tiny">Feedback is submitted as ${escapeHtml(actor)} · Org ${escapeHtml(actorOrg)}</span>
+					</div>
+					${feedbackError ? `<div class="outcomes-note warn">Unable to load feedback history: ${escapeHtml(feedbackError)}</div>` : ""}
+					<form id="feedbackForm" class="feedback-form">
+						<label>
+							Feedback decision
+							<select id="feedbackActionSelect" aria-label="Feedback decision">
+								<option value="accept" ${draft.action === "accept" ? "selected" : ""}>Accept</option>
+								<option value="reject" ${draft.action === "reject" ? "selected" : ""}>Reject</option>
+								<option value="edited" ${draft.action === "edited" ? "selected" : ""}>Edited</option>
+							</select>
+						</label>
+						<label>
+							Edited title (optional)
+							<input id="feedbackTitleInput" type="text" value="${escapeHtml(draft.editedTitle)}" placeholder="Provide a replacement title when the recommendation should change">
+						</label>
+						<label class="feedback-span-2">
+							Reason or field note
+							<textarea id="feedbackReasonInput" placeholder="Explain why this run was accepted, rejected, or edited.">${escapeHtml(draft.reason)}</textarea>
+						</label>
+						<label class="feedback-span-2">
+							Edited immediate actions (optional)
+							<textarea id="feedbackActionsInput" placeholder="Enter one action per line when the operator wants to adjust the prescribed next steps.">${escapeHtml(draft.editedActions)}</textarea>
+						</label>
+						<div class="pm-actions feedback-span-2">
+							<button id="feedbackSubmitButton" type="submit" ${feedbackSubmitting ? "disabled" : ""}>${escapeHtml(feedbackSubmitting ? "Saving feedback..." : "Submit feedback")}</button>
+							<span class="muted tiny">Edited title and immediate actions are only sent when you fill them in.</span>
+						</div>
+					</form>
+					<div class="section-head feedback-history">
+						<h3>Feedback history</h3>
+						<span class="muted tiny">Normalized from /api/v1/rca/feedback?run_id=${encodeURIComponent(run.run_id)}&limit=12</span>
+					</div>
+					${feedbackLoading && feedbackItems.length ? `<div class="outcomes-note">Loading feedback history...</div>` : ""}
+					${renderFeedbackHistory(run)}
 				</div>
 			`;
 		}
@@ -1541,6 +4155,8 @@
 				return;
 			}
 
+			syncFeedbackDraftFromDom(run.run_id);
+
 			const status = normalizeStatus(run.status);
 			const structured = asObject(run.structured);
 			const contextMeta = asObject(run.context_meta);
@@ -1601,6 +4217,14 @@
 					</div>
 
 					<div class="section">
+						<div class="section-head">
+							<h3>Live evidence</h3>
+							<span class="muted tiny">Recent signals and rollups for the asset tied to this RCA run.</span>
+						</div>
+						${renderEvidencePanel(run)}
+					</div>
+
+					<div class="section">
 						<h3>Hypotheses</h3>
 						${renderList(run.hypothesis, "No hypotheses were stored for this run.")}
 					</div>
@@ -1617,14 +4241,49 @@
 							<button id="approvePmButton" type="button" ${(canApprove && retryState.enabled) ? "" : "disabled"}>
 								${escapeHtml(buttonLabel)}
 							</button>
-							<span class="muted tiny">${escapeHtml(actionHint)}</span>
+							<span class="muted tiny approval-action-hint">${escapeHtml(actionHint)}</span>
 						</div>
 						${renderApprovalBanner(approvalResult)}
 					</div>
 
 					<div class="section">
-						<h3>Approval history</h3>
+						<div class="section-head">
+							<h3>Run comparison</h3>
+							<span class="muted tiny">Check confidence drift, feedback deltas, and action-set changes against another run.</span>
+						</div>
+						${renderComparePanel(run)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Feedback loop</h3>
+							<span class="muted tiny">Submit operator feedback to improve future RCA runs.</span>
+						</div>
+						${renderFeedbackPanel(run)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Approval history</h3>
+							<span class="muted tiny">Trace every approval and retry attempt without leaving the run view.</span>
+						</div>
 						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Recommendation follow-through snapshot</h3>
+							<span class="muted tiny">Track whether the current PM proposal is still waiting on approval, sitting in handoff, or already moving through a work order lifecycle.</span>
+						</div>
+						${renderFollowThroughPanel(run)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Handoff exceptions queue</h3>
+							<span class="muted tiny">Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish.</span>
+						</div>
+						${renderHandoffExceptionsPanel(run)}
 					</div>
 
 					<div class="section">
@@ -1633,6 +4292,14 @@
 							<span class="muted tiny">Compact outcomes view for demos in the portal.</span>
 						</div>
 						${renderOutcomesPanel(run)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Asset triage queue</h3>
+							<span class="muted tiny">Rank nearby bad actors so operators can pull the highest-pressure assets forward first.</span>
+						</div>
+						${renderTriagePanel(run)}
 					</div>
 
 					<div class="section">
@@ -1652,6 +4319,53 @@
 				});
 			}
 
+			const feedbackActionSelect = document.getElementById("feedbackActionSelect");
+			const compareRunSelect = document.getElementById("compareRunSelect");
+			const feedbackReasonInput = document.getElementById("feedbackReasonInput");
+			const feedbackTitleInput = document.getElementById("feedbackTitleInput");
+			const feedbackActionsInput = document.getElementById("feedbackActionsInput");
+			const feedbackForm = document.getElementById("feedbackForm");
+			if (compareRunSelect) {
+				compareRunSelect.addEventListener("change", async () => {
+					const compareRunId = compareRunSelect.value;
+					if (!compareRunId) {
+						state.selectedCompareRunIdByRunId.delete(run.run_id);
+						state.compareErrorByRunId.delete(run.run_id);
+						renderDetail(run);
+						return;
+					}
+					state.selectedCompareRunIdByRunId.set(run.run_id, compareRunId);
+					await ensureCompareRunData(run, compareRunId);
+				});
+			}
+
+			if (feedbackActionSelect) {
+				feedbackActionSelect.addEventListener("change", () => {
+					updateFeedbackDraft(run.run_id, { action: feedbackActionSelect.value });
+				});
+			}
+			if (feedbackReasonInput) {
+				feedbackReasonInput.addEventListener("input", () => {
+					updateFeedbackDraft(run.run_id, { reason: feedbackReasonInput.value });
+				});
+			}
+			if (feedbackTitleInput) {
+				feedbackTitleInput.addEventListener("input", () => {
+					updateFeedbackDraft(run.run_id, { editedTitle: feedbackTitleInput.value });
+				});
+			}
+			if (feedbackActionsInput) {
+				feedbackActionsInput.addEventListener("input", () => {
+					updateFeedbackDraft(run.run_id, { editedActions: feedbackActionsInput.value });
+				});
+			}
+			if (feedbackForm) {
+				feedbackForm.addEventListener("submit", async (event) => {
+					event.preventDefault();
+					await submitFeedback(run);
+				});
+			}
+
 			const loadMoreButton = document.getElementById("loadMoreAuditButton");
 			if (loadMoreButton && approvalHistory?.has_more && !auditBusy) {
 				loadMoreButton.addEventListener("click", () => {
@@ -1659,10 +4373,87 @@
 				});
 			}
 
-			const outcomesAssetSelect = document.getElementById("outcomesAssetSelect");
-			if (outcomesAssetSelect) {
-				outcomesAssetSelect.addEventListener("change", () => {
-					state.selectedOutcomeAssetByRunId.set(run.run_id, outcomesAssetSelect.value);
+			elements.detailView.querySelectorAll("[data-handoff-retry-proposal-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const proposalId = asString(button.getAttribute("data-handoff-retry-proposal-id"));
+					if (!proposalId) {
+						return;
+					}
+					const row = handoffExceptionRows(state.handoffExceptions.report).find((candidate) => candidate.proposalId === proposalId);
+					if (!row) {
+						return;
+					}
+					await submitHandoffQueueRetry(row);
+				});
+			});
+
+			elements.detailView.querySelectorAll("[data-handoff-focus-run-id]").forEach((button) => {
+				button.addEventListener("click", async () => {
+					const targetRunId = asString(button.getAttribute("data-handoff-focus-run-id"));
+					if (!targetRunId) {
+						return;
+					}
+					await selectRun(targetRunId);
+				});
+			});
+
+			const handoffViewSelect = document.getElementById("handoffViewSelect");
+			if (handoffViewSelect) {
+				handoffViewSelect.addEventListener("change", () => {
+					state.handoffExceptions.view = normalizeHandoffQueueView(handoffViewSelect.value);
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
+			const handoffSortSelect = document.getElementById("handoffSortSelect");
+			if (handoffSortSelect) {
+				handoffSortSelect.addEventListener("change", () => {
+					state.handoffExceptions.sort = normalizeHandoffQueueSort(handoffSortSelect.value);
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
+			const handoffLimitSelect = document.getElementById("handoffLimitSelect");
+			if (handoffLimitSelect) {
+				handoffLimitSelect.addEventListener("change", () => {
+					state.handoffExceptions.limit = normalizeHandoffQueueLimit(handoffLimitSelect.value);
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
+			elements.detailView.querySelectorAll("[data-handoff-age-bucket]").forEach((button) => {
+				button.addEventListener("click", () => {
+					state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(button.getAttribute("data-handoff-age-bucket"));
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			});
+
+			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
+			if (handoffPreferencesResetButton) {
+				handoffPreferencesResetButton.addEventListener("click", () => {
+					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
+					writeHandoffQueuePreferences();
+					renderDetail(run);
+				});
+			}
+
+			const outcomesScopeSelect = document.getElementById("outcomesScopeSelect");
+			if (outcomesScopeSelect) {
+				outcomesScopeSelect.addEventListener("change", () => {
+					state.selectedOutcomeScopeByRunId.set(run.run_id, outcomesScopeSelect.value);
+					renderDetail(run);
+				});
+			}
+
+			const outcomesEntitySelect = document.getElementById("outcomesEntitySelect");
+			if (outcomesEntitySelect) {
+				outcomesEntitySelect.addEventListener("change", () => {
+					const activeScope = outcomesScopeSelect ? outcomesScopeSelect.value : (state.selectedOutcomeScopeByRunId.get(run.run_id) || "asset");
+					rememberOutcomeEntity(run.run_id, activeScope, outcomesEntitySelect.value);
 					renderDetail(run);
 				});
 			}
@@ -1670,6 +4461,42 @@
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
 			}
+			if (!state.handoffExceptions.report && !state.handoffExceptions.loading && !state.handoffExceptions.error) {
+				void ensureHandoffExceptionsReport();
+			}
+			if (!state.triage.report && !state.triage.loading && !state.triage.error) {
+				void ensureTriageReport();
+			}
+		}
+
+		async function ensureHandoffExceptionsReport() {
+			if (state.handoffExceptions.loading || state.handoffExceptions.report) {
+				return;
+			}
+			state.handoffExceptions.loading = true;
+			state.handoffExceptions.error = "";
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals");
+			} catch (error) {
+				state.handoffExceptions.error = error instanceof Error ? error.message : "Unknown handoff queue error";
+			} finally {
+				state.handoffExceptions.loading = false;
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		function resetHandoffExceptionsReport() {
+			state.handoffExceptions.report = null;
+			state.handoffExceptions.error = "";
+			state.handoffExceptions.loading = false;
+			state.handoffExceptions.actionInFlightByProposalId.clear();
 		}
 
 		async function ensureOutcomesReport() {
@@ -1699,6 +4526,35 @@
 			state.outcomes.report = null;
 			state.outcomes.error = "";
 			state.outcomes.loading = false;
+		}
+
+		async function ensureTriageReport() {
+			if (state.triage.loading || state.triage.report) {
+				return;
+			}
+			state.triage.loading = true;
+			state.triage.error = "";
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				state.triage.report = await fetchJson(`/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}`);
+			} catch (error) {
+				state.triage.error = error instanceof Error ? error.message : "Unknown triage error";
+			} finally {
+				state.triage.loading = false;
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		function resetTriageReport() {
+			state.triage.report = null;
+			state.triage.error = "";
+			state.triage.loading = false;
 		}
 
 		function getRetryState(result, history) {
@@ -1742,6 +4598,7 @@
 				return `<p class="muted tiny">No approval attempt recorded for this run in this browser session.</p>`;
 			}
 			const tone = result.approved ? "success" : result.status === "pending" ? "warn" : "error";
+			const toneLabel = result.approved ? "Approved" : result.status === "pending" ? "Pending" : "Needs attention";
 			const workOrderId = result.work_order?.wo_id || result.proposal?.work_order_id || "-";
 			const approvedBy = result.approved_by || result.proposal?.approved_by || "Unknown approver";
 			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
@@ -1757,10 +4614,34 @@
 				: `Retry limit reached at ${result.max_attempts || attemptCount || 0} attempts.`;
 			return `
 				<div class="result-banner ${tone}">
-					<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
-					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Attempt state: ${escapeHtml(result.attempt_status || result.handoff_state || "unknown")} · ${escapeHtml(attemptSummary)}</div>
-					<div class="footer-note">Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
-					<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Connector: ${escapeHtml(connectorStatus)} · ${escapeHtml(connectorMessage)}</div>
+					<div class="approval-banner-head">
+						<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
+						<span class="approval-kicker">${escapeHtml(toneLabel)}</span>
+					</div>
+					<div class="approval-banner-grid">
+						<div class="approval-stat">
+							<div class="approval-stat-label">Attempt state</div>
+							<div class="approval-stat-value">${escapeHtml(result.attempt_status || result.handoff_state || "unknown")}</div>
+						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Attempt summary</div>
+							<div class="approval-stat-value">${escapeHtml(attemptSummary)}</div>
+						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Approved by</div>
+							<div class="approval-stat-value">${escapeHtml(approvedBy)}</div>
+						</div>
+						<div class="approval-stat">
+							<div class="approval-stat-label">Work order</div>
+							<div class="approval-stat-value">${escapeHtml(workOrderId)}</div>
+						</div>
+					</div>
+					<div class="approval-connector-note">
+						<div class="approval-connector-title">Latest connector outcome</div>
+						<div>${escapeHtml(connectorMessage)}</div>
+						<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Connector: ${escapeHtml(connectorStatus)}</div>
+					</div>
+					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Approved at: ${escapeHtml(approvedAt)}</div>
 					<div class="footer-note">${escapeHtml(retryLine)}</div>
 					<div class="footer-note">${escapeHtml(reuseLine)}</div>
 				</div>
@@ -1783,17 +4664,38 @@
 				<ol class="list">${attempts.map((attempt) => `
 					<li class="audit-item ${(attempt.origin || "approval") === "admin" ? "admin-origin" : ""}">
 						<div class="audit-head">
-							<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
+							<strong class="audit-state">${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
 							<span class="audit-badge actor">Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}</span>
 							<span class="audit-badge origin-${escapeHtml((attempt.origin || "approval").toLowerCase())}">Origin ${escapeHtml(attempt.origin || "approval")}</span>
 						</div>
-						<div class="footer-note">Attempt ${escapeHtml(attempt.attempt_number || "?")} · ${escapeHtml(attempt.attempted_at || "Unknown time")}</div>
-						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
-						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
+						<div class="audit-detail-grid">
+							<div class="audit-detail">
+								<div class="audit-detail-label">Attempt</div>
+								<div>Attempt ${escapeHtml(attempt.attempt_number || "?")}</div>
+							</div>
+							<div class="audit-detail">
+								<div class="audit-detail-label">Attempted at</div>
+								<div>${escapeHtml(attempt.attempted_at || "Unknown time")}</div>
+							</div>
+							${attempt.connector_result?.message ? `
+								<div class="audit-detail">
+									<div class="audit-detail-label">Connector message</div>
+									<div>${escapeHtml(attempt.connector_result.message)}</div>
+								</div>
+							` : ""}
+							${attempt.error_message ? `
+								<div class="audit-detail">
+									<div class="audit-detail-label">Error</div>
+									<div>${escapeHtml(attempt.error_message)}</div>
+								</div>
+							` : ""}
+						</div>
 					</li>
 					`).join("")}</ol>
-				<p class="footer-note">Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts.</p>
-				<p class="footer-note">Retries remaining: ${escapeHtml(history.attempts_remaining ?? 0)} of ${escapeHtml(history.max_attempts ?? attempts.length)}</p>
+				<div class="audit-history-meta">
+					<span class="chip">Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts</span>
+					<span class="chip">Retries remaining: ${escapeHtml(history.attempts_remaining ?? 0)} of ${escapeHtml(history.max_attempts ?? attempts.length)}</span>
+				</div>
 				<div class="pm-actions">
 					${loadMore}
 					<span class="muted tiny">Paged audit uses the same normalized approval history API.</span>
@@ -1898,6 +4800,97 @@
 			return body;
 		}
 
+		async function loadFeedbackHistory(run, options = {}) {
+			if (!run?.run_id) {
+				return;
+			}
+			if (!options.force && state.feedbackByRunId.has(run.run_id)) {
+				return;
+			}
+			state.feedbackLoadingByRunId.add(run.run_id);
+			state.feedbackErrorByRunId.delete(run.run_id);
+			if (state.selectedRunId === run.run_id) {
+				renderDetail(run);
+			}
+			try {
+				const feedback = await fetchJson(`/api/v1/rca/feedback?run_id=${encodeURIComponent(run.run_id)}&limit=12`, {
+					headers: portalIdentityHeaders(),
+				});
+				state.feedbackByRunId.set(
+					run.run_id,
+					Array.isArray(feedback) ? feedback.map((item) => normalizeFeedbackItem(item)) : []
+				);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown feedback error";
+				state.feedbackErrorByRunId.set(run.run_id, message);
+			} finally {
+				state.feedbackLoadingByRunId.delete(run.run_id);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
+			}
+		}
+
+		async function loadEvidenceSummary(run, options = {}) {
+			const assetId = asString(asObject(run?.context_meta).asset_id);
+			if (!assetId) {
+				return;
+			}
+			if (!options.force && state.evidenceByAssetId.has(assetId)) {
+				return;
+			}
+			state.evidenceLoadingByAssetId.add(assetId);
+			state.evidenceErrorByAssetId.delete(assetId);
+			if (state.selectedRunId === run.run_id) {
+				renderDetail(run);
+			}
+			try {
+				const evidence = await fetchJson(`/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6`, {
+					headers: portalIdentityHeaders(),
+				});
+				state.evidenceByAssetId.set(assetId, normalizeEvidenceSummary(evidence));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown evidence error";
+				state.evidenceErrorByAssetId.set(assetId, message);
+			} finally {
+				state.evidenceLoadingByAssetId.delete(assetId);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
+			}
+		}
+
+		async function submitFeedback(run) {
+			if (!run?.run_id) {
+				return;
+			}
+			syncFeedbackDraftFromDom(run.run_id);
+			const draft = getFeedbackDraft(run.run_id);
+			const changes = buildFeedbackChanges(draft);
+			state.feedbackSubmittingByRunId.add(run.run_id);
+			state.feedbackErrorByRunId.delete(run.run_id);
+			renderDetail(run);
+			try {
+				await postJson("/api/v1/rca/feedback", {
+					run_id: run.run_id,
+					recommendation_id: run.recommendation_id || undefined,
+					action: draft.action,
+					reason: asString(draft.reason).trim() || undefined,
+					changes: Object.keys(changes).length ? changes : undefined,
+				});
+				state.feedbackDraftByRunId.set(run.run_id, defaultFeedbackDraft());
+				await loadFeedbackHistory(run, { force: true });
+				resetOutcomesReport();
+				void ensureOutcomesReport();
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown feedback error";
+				state.feedbackErrorByRunId.set(run.run_id, message);
+			} finally {
+				state.feedbackSubmittingByRunId.delete(run.run_id);
+				renderDetail(run);
+			}
+		}
+
 		async function approveRun(run, retryState = getRetryState(state.approvalResultsById.get(run?.run_id), state.approvalHistoryById.get(run?.run_id)), options = {}) {
 			if (!run?.run_id) {
 				return;
@@ -1918,6 +4911,8 @@
 				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, adminRetry ? { admin_retry: true } : {});
 				state.approvalResultsById.set(run.run_id, approval);
 				await loadApprovalHistory({ ...run, recommendation_id: proposalId });
+				resetHandoffExceptionsReport();
+				void ensureHandoffExceptionsReport();
 				renderDetail({
 					...run,
 					approved_by: approval.proposal?.approved_by || approval.approved_by,
@@ -1943,6 +4938,8 @@
 					work_order: {},
 				});
 				await loadApprovalHistory(run);
+				resetHandoffExceptionsReport();
+				void ensureHandoffExceptionsReport();
 				renderDetail(run);
 			} finally {
 				state.approvalInFlightById.delete(run.run_id);
@@ -2061,6 +5058,17 @@
 			if (state.detailsById.has(runId)) {
 				const cached = state.detailsById.get(runId);
 				renderDetail(cached);
+				const compareRunId = preferredCompareRunId(cached);
+				if (compareRunId) {
+					void ensureCompareRunData(cached, compareRunId);
+				}
+				const assetId = asString(asObject(cached.context_meta).asset_id);
+				if (assetId && !state.evidenceByAssetId.has(assetId)) {
+					void loadEvidenceSummary(cached);
+				}
+				if (!state.feedbackByRunId.has(runId)) {
+					await loadFeedbackHistory(cached);
+				}
 				if (!state.approvalHistoryById.has(runId)) {
 					await loadApprovalHistory(cached);
 				}
@@ -2078,10 +5086,14 @@
 			`;
 
 			try {
-				const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`);
-				const normalized = normalizeRun(detail);
-				state.detailsById.set(runId, normalized);
+				const normalized = await ensureRunDetail(runId);
 				renderDetail(normalized);
+				const compareRunId = preferredCompareRunId(normalized);
+				if (compareRunId) {
+					void ensureCompareRunData(normalized, compareRunId);
+				}
+				void loadEvidenceSummary(normalized);
+				await loadFeedbackHistory(normalized);
 				await loadApprovalHistory(normalized);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Unknown error";
@@ -2092,7 +5104,14 @@
 		elements.searchInput.addEventListener("input", applyFilter);
 		elements.refreshButton.addEventListener("click", async () => {
 			state.detailsById.clear();
+			state.feedbackByRunId.clear();
+			state.feedbackErrorByRunId.clear();
+			state.evidenceByAssetId.clear();
+			state.evidenceErrorByAssetId.clear();
+			state.evidenceLoadingByAssetId.clear();
+			resetHandoffExceptionsReport();
 			resetOutcomesReport();
+			resetTriageReport();
 			await loadRuns();
 		});
 		elements.identityControls.addEventListener("submit", async (event) => {
@@ -2106,11 +5125,13 @@
 				authSource: state.session.authSource || "local-storage",
 			};
 			writePortalIdentity(state.session);
+			applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 			renderIdentityPanel();
 			await refreshIdentity();
 		});
 
 		state.session = readPortalIdentity();
+		applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 		renderIdentityPanel();
 		refreshIdentity();
 		loadRuns();

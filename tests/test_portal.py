@@ -225,6 +225,17 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "admin_retry" in page.text
     assert "Admin retry attempts remaining:" in page.text
     assert "Retrying handoff..." in page.text
+    assert "Recommendation follow-through snapshot" in page.text
+    assert "renderFollowThroughPanel" in page.text
+    assert "Current proposal follow-through" in page.text
+    assert "Work order completion" in page.text
+    assert "Run comparison" in page.text
+    assert "Compare against" in page.text
+    assert "Confidence drift" in page.text
+    assert (
+        "Check confidence drift, feedback deltas, and action-set changes against another run."
+        in page.text
+    )
     assert (
         '${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.'
         in page.text
@@ -247,39 +258,251 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Loading more audit..." in page.text
     assert "All recorded audit attempts are visible." in page.text
     assert (
-        "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts."
+        "Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts"
         in page.text
     )
     assert "appendApprovalHistoryPage" in page.text
     assert "existingAttempts.concat" in page.text
     assert "history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}" in page.text
-    assert "Attempt state:" in page.text
+    assert "Attempt state" in page.text
     assert "Reused existing CMMS handoff result." in page.text
     assert "Fresh handoff result." in page.text
     assert "Last attempt:" in page.text
     assert "Attempt ${attemptNumber} of ${attemptCount}" in page.text
     assert "Retries remaining:" in page.text
     assert "Connector:" in page.text
+    assert "Latest connector outcome" in page.text
+    assert "Trace every approval and retry attempt without leaving the run view." in page.text
+    assert "Handoff exceptions queue" in page.text
+    assert (
+        "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish."
+        in page.text
+    )
+    assert "Current proposal exception state" in page.text
+    assert "Loading handoff exceptions" in page.text
+    assert "Handoff exceptions unavailable" in page.text
+    assert "No handoff exceptions right now" in page.text
+    assert (
+        "There are no PM proposals waiting on retry, escalation, or connector cleanup right now."
+        in page.text
+    )
+    assert "Current proposal needs attention first" in page.text
+    assert "More urgent handoffs exist" in page.text
+    assert "Current proposal is clear" in page.text
+    assert "Source /api/v1/agents/pm/proposals" in page.text
+    assert "Current run proposal" in page.text
+    assert "normalizeHandoffProposal" in page.text
+    assert "describeHandoffException" in page.text
+    assert "renderHandoffExceptionsPanel" in page.text
+    assert "ensureHandoffExceptionsReport" in page.text
+    assert "resetHandoffExceptionsReport" in page.text
+    assert "submitHandoffQueueRetry" in page.text
+    assert "Run admin retry" in page.text
+    assert "Open follow-through" in page.text
+    assert "Open audit trail" in page.text
+    assert "Queue view" in page.text
+    assert "Sort order" in page.text
+    assert "Handoff queue view" in page.text
+    assert "Handoff queue sort" in page.text
+    assert "Handoff queue rows shown" in page.text
+    assert "Rows shown" in page.text
+    assert "Top 3" in page.text
+    assert "Top 6" in page.text
+    assert "Top 10" in page.text
+    assert "Showing top ${escapeHtml(state.handoffExceptions.limit)}" in page.text
+    assert "All exceptions" in page.text
+    assert "Admin retries only" in page.text
+    assert "Connector failures only" in page.text
+    assert "Retry limits only" in page.text
+    assert "Oldest waiting first" in page.text
+    assert "No exceptions in this filter" in page.text
+    assert "Filtered out" in page.text
+    assert "Connector failures" in page.text
+    assert "View ${escapeHtml(handoffViewLabel(state.handoffExceptions.view))}" in page.text
+    assert "Age ${escapeHtml(formatMinutesAsDuration(row.ageMinutes))}" in page.text
+    assert "handoffRowMatchesView" in page.text
+    assert "handoffRowsForDisplay" in page.text
+    assert "handoffViewLabel" in page.text
+    assert "handoffViewSelect" in page.text
+    assert "handoffSortSelect" in page.text
+    assert "miPortalHandoffPrefs:" in page.text
+    assert "readHandoffQueuePreferences" in page.text
+    assert "writeHandoffQueuePreferences" in page.text
+    assert "applyHandoffQueuePreferences" in page.text
+    assert "handoffQueuePreferencesStorageKey" in page.text
+    assert "normalizeHandoffQueueView" in page.text
+    assert "normalizeHandoffQueueSort" in page.text
+    assert "normalizeHandoffQueueAgeBucket" in page.text
+    assert "normalizeHandoffQueueLimit" in page.text
+    assert "handoffAgeBucketLabel" in page.text
+    assert "handoffRowMatchesAgeBucket" in page.text
+    assert "Handoff queue age filters" in page.text
+    assert "data-handoff-age-bucket" in page.text
+    assert (
+        "Age filter ${escapeHtml(handoffAgeBucketLabel(state.handoffExceptions.ageBucket))}"
+        in page.text
+    )
+    assert "Sort ${escapeHtml(handoffSortLabel(state.handoffExceptions.sort))}" in page.text
+    assert "Retries remaining ${escapeHtml(retriesRemaining)}" in page.text
+    assert "Longest wait ${escapeHtml(longestWait)}" in page.text
+    assert "Visible classes ${escapeHtml(visibleClasses)}" in page.text
+    assert "Aging risk ${escapeHtml(agingRiskCount)}" in page.text
+    assert "Lead age ${escapeHtml(leadAgeLabel)}" in page.text
+    assert "Current rank ${escapeHtml(currentRankLabel)}" in page.text
+    assert "handoffSortLabel" in page.text
+    assert "handoffRetriesRemaining" in page.text
+    assert "handoffLongestWait" in page.text
+    assert "handoffVisibleClasses" in page.text
+    assert "handoffAgingRiskCount" in page.text
+    assert "handoffLeadAgeLabel" in page.text
+    assert "handoffCurrentRankLabel" in page.text
+    assert "No connector failures in this filter" in page.text
+    assert "No proposals currently show connector-failure handoffs in this view." in page.text
+    assert "No admin retries waiting" in page.text
+    assert "No proposals are currently waiting on an admin retry in this view." in page.text
+    assert "No retry limits hit" in page.text
+    assert "No proposals have exhausted their retry limit in this view." in page.text
+    assert "No aging risk or SLA watch items" in page.text
+    assert "No proposals in this view currently exceed the SLA watch threshold." in page.text
+    assert "Priority first" in page.text
+    assert "Oldest first" in page.text
+    assert "Reset to defaults" in page.text
+    assert "Reset handoff queue preferences" in page.text
+    assert "handoffPreferencesResetButton" in page.text
+    assert "Admin role required for retry." in page.text
+    assert "data-handoff-retry-proposal-id" in page.text
+    assert "data-handoff-focus-run-id" in page.text
+    assert (
+        'state.handoffExceptions.report = await fetchJson("/api/v1/agents/pm/proposals")'
+        in page.text
+    )
+    assert "Live evidence" in page.text
+    assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
+    assert "No asset evidence link yet" in page.text
+    assert "This run does not include an asset_id, so live signals cannot be fetched." in page.text
+    assert "Loading live evidence" in page.text
+    assert "Evidence unavailable" in page.text
+    assert "No live signal evidence yet" in page.text
+    assert "This asset does not have recent signals or rollups available right now." in page.text
+    assert "Recent signals" in page.text
+    assert "Rollup summary" in page.text
+    assert "No recent signals were returned for this asset." in page.text
+    assert "No rollups were returned for this asset." in page.text
+    assert "Trend steady" in page.text
+    assert "Trend rising" in page.text
+    assert "Trend easing" in page.text
+    assert "compareEvidenceValues" in page.text
+    assert "latestEvidenceTrend" in page.text
+    assert "rollupEvidenceTrend" in page.text
+    assert "renderEvidenceTrendChip" in page.text
+    assert (
+        "Signal ${escapeHtml(signal.signal_id || 'unlabeled')} · Source /api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6"
+        in page.text
+    )
+    assert "renderEvidencePanel" in page.text
+    assert "loadEvidenceSummary" in page.text
+    assert "evidenceByAssetId" in page.text
+    assert "evidenceLoadingByAssetId" in page.text
+    assert "evidenceErrorByAssetId" in page.text
+    assert "/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
+    assert "Asset triage queue" in page.text
+    assert (
+        "Rank nearby bad actors so operators can pull the highest-pressure assets forward first."
+        in page.text
+    )
+    assert "Current asset queue rank" in page.text
+    assert "Loading triage queue" in page.text
+    assert "Triage queue unavailable" in page.text
+    assert "No triage pressure yet" in page.text
+    assert (
+        "There are no ranked assets in the current bad-actor window yet. The queue will populate as events and work orders accumulate."
+        in page.text
+    )
+    assert "Current asset leads the queue" in page.text
+    assert "Higher-pressure assets exist" in page.text
+    assert "Current asset is outside the top queue" in page.text
+    assert "Source /api/v1/reports/bad-actors" in page.text
+    assert "Current run asset" in page.text
+    assert "triageCurrentAssetRow" in page.text
+    assert "renderTriagePanel" in page.text
+    assert "ensureTriageReport" in page.text
+    assert "resetTriageReport" in page.text
+    assert "/api/v1/reports/bad-actors?limit=${encodeURIComponent(state.triage.limit)}" in page.text
     assert "Asset trend snapshot" in page.text
     assert "Compact outcomes view for demos in the portal." in page.text
-    assert "outcomesAssetSelect" in page.text
+    assert "outcomesScopeSelect" in page.text
+    assert "Select analytics scope" in page.text
+    assert "outcomesEntitySelect" in page.text
     assert "Select asset trend series" in page.text
+    assert "Select operator trend series" in page.text
+    assert "Select org trend series" in page.text
+    assert "Scope" in page.text
+    assert "Entity" in page.text
     assert "Asset selector" in page.text
+    assert "Operator selector" in page.text
+    assert "Org selector" in page.text
     assert "Source outcomes.asset_metrics" in page.text
+    assert "Source outcomes.user_metrics" in page.text
+    assert "Source outcomes.org_metrics" in page.text
+    assert "selectedOutcomeScopeByRunId" in page.text
+    assert "selectedOutcomeUserByRunId" in page.text
+    assert "selectedOutcomeOrgByRunId" in page.text
+    assert "outcomesPrimaryKpiLabel" in page.text
+    assert "outcomesPrimaryKpiValue" in page.text
+    assert "Scope ${escapeHtml(config.label)}" in page.text
+    assert "Current ${escapeHtml(selectedEntityId)}" in page.text
+    assert "Feedback total ${escapeHtml(selectedFeedbackTotal)}" in page.text
+    assert "Top contributor" in page.text
+    assert "Top volume" in page.text
     assert "Last ${escapeHtml(outcomesWindow)} days" in page.text
     assert "renderOutcomesPanel" in page.text
     assert "ensureOutcomesReport" in page.text
     assert "resetOutcomesReport" in page.text
-    assert "No asset trend data is available yet for the current outcomes window." in page.text
-    assert "Loading outcomes trends for the last" in page.text
-    assert "Unable to load outcomes trends:" in page.text
-    assert "Partial outcomes report:" in page.text
     assert (
-        "No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead."
+        "Switch between asset, operator, and org lenses without leaving the run view." in page.text
+    )
+    assert (
+        "Start with the asset tied to this run, or compare another asset that already has live trend data."
+        in page.text
+    )
+    assert (
+        "Follow the signed-in operator first, or switch to another operator with recorded feedback activity."
+        in page.text
+    )
+    assert (
+        "Start with the current organization, or compare another org that already has live feedback activity."
+        in page.text
+    )
+    assert "No live trends yet" in page.text
+    assert (
+        "There are no asset, operator, or organization trend lines for this outcomes window yet. The panel will fill in as work orders and feedback arrive."
+        in page.text
+    )
+    assert "No operator trends yet" in page.text
+    assert "No organization trends yet" in page.text
+    assert "Loading outcomes" in page.text
+    assert "Pulling the last" in page.text
+    assert "Outcomes unavailable" in page.text
+    assert "We could not load outcomes trends right now:" in page.text
+    assert "Partial report" in page.text
+    assert "Showing the nearest live series" in page.text
+    assert (
+        'renderOutcomesNote("Info", "Showing the nearest live series", config.fallbackMessage(expectedEntityId, selectedEntityId))'
+        in page.text
+    )
+    assert (
+        "This view defaults to operator ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live operator instead."
+        in page.text
+    )
+    assert (
+        "This view defaults to organization ${escapeHtml(expectedId)}, but this window only has trend lines for ${escapeHtml(selectedId)}. You are looking at the closest live organization instead."
         in page.text
     )
     assert "Workorder volume" in page.text
+    assert "Feedback volume" in page.text
     assert "Acceptance rate" in page.text
+    assert "Decision quality across the last ${outcomesWindow} days." in page.text
+    assert "Waiting" in page.text
     assert "Peak daily volume" in page.text
     assert (
         "Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window."
@@ -290,8 +513,19 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
         in page.text
     )
     assert "No work orders were recorded for this asset in the current window." in page.text
+    assert "No feedback was recorded for this operator in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this operator in the current window."
+        in page.text
+    )
+    assert "No feedback was recorded for this organization in the current window." in page.text
+    assert (
+        "No accept or reject decisions were recorded for this organization in the current window."
+        in page.text
+    )
     assert "No acceptance decisions yet" in page.text
     assert "No work order volume yet" in page.text
+    assert "No feedback yet" in page.text
     assert "chart-line" in page.text
     assert "chart-dot" in page.text
     assert "buildTrendSegments" in page.text
@@ -299,3 +533,32 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
         "/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}"
         in page.text
     )
+
+
+def test_portal_index_includes_feedback_loop_controls():
+    client = TestClient(app)
+
+    page = client.get("/portal")
+    assert page.status_code == 200
+    assert "Feedback loop" in page.text
+    assert "Submit operator feedback to improve future RCA runs." in page.text
+    assert "Feedback decision" in page.text
+    assert "Reason or field note" in page.text
+    assert "Edited title (optional)" in page.text
+    assert "Edited immediate actions (optional)" in page.text
+    assert "Submit feedback" in page.text
+    assert "Saving feedback..." in page.text
+    assert "Feedback is submitted as" in page.text
+    assert "No operator feedback recorded yet for this run." in page.text
+    assert "Loading feedback history..." in page.text
+    assert "Unable to load feedback history:" in page.text
+    assert "Accept ${escapeHtml(counts.accept || 0)}" in page.text
+    assert "Reject ${escapeHtml(counts.reject || 0)}" in page.text
+    assert "Edited ${escapeHtml(counts.edited || 0)}" in page.text
+    assert "loadFeedbackHistory" in page.text
+    assert "submitFeedback" in page.text
+    assert "feedbackByRunId" in page.text
+    assert "feedbackDraftByRunId" in page.text
+    assert "feedbackSubmittingByRunId" in page.text
+    assert "/api/v1/rca/feedback?run_id=${encodeURIComponent(run.run_id)}&limit=12" in page.text
+    assert 'await postJson("/api/v1/rca/feedback"' in page.text
