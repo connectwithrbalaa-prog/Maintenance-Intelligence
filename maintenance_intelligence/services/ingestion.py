@@ -3,13 +3,17 @@ import signal
 import sys
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
+import time
 import psycopg2
 from loguru import logger
 import backoff
 from maintenance_intelligence.api.metrics import events_ingested_total
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
-from maintenance_intelligence.services.connectivity import open_central_connection, safe_close_connection
+from maintenance_intelligence.services.connectivity import (
+    open_central_connection,
+    safe_close_connection,
+)
 
 
 @backoff.on_exception(backoff.expo, psycopg2.Error, max_tries=5, max_time=60)
@@ -55,6 +59,7 @@ def store_event(conn, evt):
                 ),
             )
 
+
 def _replay_buffered_events(conn, edge_buffer: EdgeEventBuffer, batch_size: int) -> dict:
     replayed_total = 0
     while edge_buffer.buffered_event_count() > 0:
@@ -80,7 +85,11 @@ def _connect_edge_central(pg_dsn: str, settings: Settings, edge_buffer: EdgeEven
 def ingestion(kafka_bootstrap: str, pg_dsn: str):
     logger.info({"event": "ingestion.start", "kafka_bootstrap": kafka_bootstrap})
     settings = Settings()
-    edge_buffer = EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events) if settings.edge_mode_enabled else None
+    edge_buffer = (
+        EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events)
+        if settings.edge_mode_enabled
+        else None
+    )
 
     # Graceful shutdown handling
     shutdown_requested = False
@@ -117,28 +126,53 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                         logger.info({"event": "ingestion.stored", "id": evt.get("event_id")})
                         events_ingested_total.labels(service="ingestion").inc()
                     except Exception as e:
-                        logger.error({"event": "ingestion.store_failed", "id": evt.get("event_id"), "error": str(e)})
+                        logger.error(
+                            {
+                                "event": "ingestion.store_failed",
+                                "id": evt.get("event_id"),
+                                "error": str(e),
+                            }
+                        )
                     continue
 
                 now = time.time()
                 if conn is None and now >= next_connectivity_probe_at:
                     conn = _connect_edge_central(pg_dsn, settings, edge_buffer)
                     if conn is None:
-                        next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
+                        next_connectivity_probe_at = (
+                            now + settings.edge_connectivity_check_interval_s
+                        )
 
                 if conn is not None and edge_buffer.buffered_event_count() > 0:
-                    replayed = _replay_buffered_events(conn, edge_buffer, settings.edge_replay_batch_size)
+                    replayed = _replay_buffered_events(
+                        conn, edge_buffer, settings.edge_replay_batch_size
+                    )
                     if replayed.get("replayed"):
-                        logger.info({"event": "ingestion.edge_replayed", "count": replayed.get("replayed")})
+                        logger.info(
+                            {"event": "ingestion.edge_replayed", "count": replayed.get("replayed")}
+                        )
                     if replayed.get("error"):
-                        logger.error({"event": "ingestion.edge_replay_failed", "error": replayed.get("error")})
+                        logger.error(
+                            {
+                                "event": "ingestion.edge_replay_failed",
+                                "error": replayed.get("error"),
+                            }
+                        )
                         safe_close_connection(conn)
                         conn = None
-                        next_connectivity_probe_at = now + settings.edge_connectivity_check_interval_s
+                        next_connectivity_probe_at = (
+                            now + settings.edge_connectivity_check_interval_s
+                        )
 
                 if conn is None:
                     queued = edge_buffer.buffer_event(evt, error="Central store unavailable")
-                    logger.warning({"event": "ingestion.buffered", "id": evt.get("event_id"), "buffer_id": queued})
+                    logger.warning(
+                        {
+                            "event": "ingestion.buffered",
+                            "id": evt.get("event_id"),
+                            "buffer_id": queued,
+                        }
+                    )
                     continue
 
                 try:
@@ -147,7 +181,13 @@ def ingestion(kafka_bootstrap: str, pg_dsn: str):
                     logger.info({"event": "ingestion.stored", "id": evt.get("event_id")})
                     events_ingested_total.labels(service="ingestion").inc()
                 except Exception as e:
-                    logger.error({"event": "ingestion.store_failed", "id": evt.get("event_id"), "error": str(e)})
+                    logger.error(
+                        {
+                            "event": "ingestion.store_failed",
+                            "id": evt.get("event_id"),
+                            "error": str(e),
+                        }
+                    )
                     safe_close_connection(conn)
                     conn = None
                     edge_buffer.buffer_event(evt, error=str(e))

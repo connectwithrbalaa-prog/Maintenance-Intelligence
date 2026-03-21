@@ -119,8 +119,14 @@ def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monk
         ),
     )
     monkeypatch.setattr(health_mod.psycopg2, "connect", lambda dsn: FakeConnection())
-    monkeypatch.setattr(health_mod, "KafkaAdminClient", lambda **kwargs: SimpleNamespace(list_topics=lambda: ["topic-a"]))
-    monkeypatch.setattr(health_mod, "compute_kafka_lag", lambda *args, **kwargs: {"_summary": {"total_lag": 0}})
+    monkeypatch.setattr(
+        health_mod,
+        "KafkaAdminClient",
+        lambda **kwargs: SimpleNamespace(list_topics=lambda: ["topic-a"]),
+    )
+    monkeypatch.setattr(
+        health_mod, "compute_kafka_lag", lambda *args, **kwargs: {"_summary": {"total_lag": 0}}
+    )
 
     payload = health_mod.healthz(deep=True)
 

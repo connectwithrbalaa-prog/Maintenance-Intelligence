@@ -361,13 +361,16 @@ def _edge_status_payload() -> Dict[str, Any]:
     queue_snapshot = command_queue.snapshot()
     return {
         "edge_mode_enabled": True,
-        "connectivity_status": _as_safe_text(snapshot.get("connectivity_status"), "unknown") or "unknown",
+        "connectivity_status": _as_safe_text(snapshot.get("connectivity_status"), "unknown")
+        or "unknown",
         "buffered_event_count": int(snapshot.get("buffered_event_count") or 0),
         "queued_command_count": int(queue_snapshot.get("queued_command_count") or 0),
         "total_queued_commands": int(queue_snapshot.get("total_queued_commands") or 0),
         "total_replayed_commands": int(queue_snapshot.get("total_replayed_commands") or 0),
         "total_command_replay_failures": int(queue_snapshot.get("total_replay_failures") or 0),
-        "last_successful_central_write_at": _as_text(snapshot.get("last_successful_central_write_at")),
+        "last_successful_central_write_at": _as_text(
+            snapshot.get("last_successful_central_write_at")
+        ),
         "last_replay_attempt_at": _as_text(snapshot.get("last_replay_attempt_at")),
         "last_command_replay_attempt_at": _as_text(queue_snapshot.get("last_replay_attempt_at")),
         "last_command_replay_at": _as_text(queue_snapshot.get("last_successful_replay_at")),

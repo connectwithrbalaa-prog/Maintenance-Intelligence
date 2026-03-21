@@ -35,8 +35,7 @@ class EdgeCommandBuffer:
         return conn
 
     def _ensure_schema(self, conn: sqlite3.Connection) -> None:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS queued_commands (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 proposal_id TEXT NOT NULL UNIQUE,
@@ -46,23 +45,22 @@ class EdgeCommandBuffer:
                 updated_at TEXT NOT NULL,
                 last_error TEXT
             )
-            """
-        )
+            """)
         existing_columns = {
             str(row["name"])
             for row in conn.execute("PRAGMA table_info(queued_commands)").fetchall()
             if row and row["name"]
         }
         if "replay_attempts" not in existing_columns:
-            conn.execute("ALTER TABLE queued_commands ADD COLUMN replay_attempts INTEGER NOT NULL DEFAULT 0")
-        conn.execute(
-            """
+            conn.execute(
+                "ALTER TABLE queued_commands ADD COLUMN replay_attempts INTEGER NOT NULL DEFAULT 0"
+            )
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS runtime_state (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )
-            """
-        )
+            """)
         conn.commit()
 
     def _set_state(self, conn: sqlite3.Connection, key: str, value: Any) -> None:
@@ -91,7 +89,9 @@ class EdgeCommandBuffer:
             row = conn.execute("SELECT COUNT(*) AS total FROM queued_commands").fetchone()
             return int(row["total"] or 0) if row else 0
 
-    def enqueue_command(self, proposal_id: str, payload: Dict[str, Any], *, error: str | None = None) -> Dict[str, Any]:
+    def enqueue_command(
+        self, proposal_id: str, payload: Dict[str, Any], *, error: str | None = None
+    ) -> Dict[str, Any]:
         now = _utcnow_iso()
         encoded_payload = json.dumps(payload)
         with self._connect() as conn:

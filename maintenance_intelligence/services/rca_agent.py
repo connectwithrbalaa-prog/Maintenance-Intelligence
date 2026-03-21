@@ -23,9 +23,8 @@ from maintenance_intelligence.api.metrics import (
     rca_duration_seconds,
 )
 
-
-
 EDGE_LOCAL_FALLBACK_VERSION = "edge-fallback-v1"
+
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
 def create_kafka_consumer(kafka_bootstrap: str):
@@ -111,11 +110,17 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
     event_kind = _as_trimmed_string(evt.get("kind")) or "event"
     event_summary = _as_trimmed_string(evt.get("summary")) or f"{event_kind.title()} detected"
     work_orders = _ordered_unique_strings(ctx.get("last_wo_titles") or [])
-    doc_chunk_ids = _ordered_unique_strings([item.get("chunk_id") for item in ctx.get("doc_chunks", []) if isinstance(item, dict)])
-    signal_ids = _ordered_unique_strings([item.get("signal_id") for item in ctx.get("recent_signals", []) if isinstance(item, dict)])
+    doc_chunk_ids = _ordered_unique_strings(
+        [item.get("chunk_id") for item in ctx.get("doc_chunks", []) if isinstance(item, dict)]
+    )
+    signal_ids = _ordered_unique_strings(
+        [item.get("signal_id") for item in ctx.get("recent_signals", []) if isinstance(item, dict)]
+    )
     evidence_ids = _ordered_unique_strings([evt.get("event_id")] + doc_chunk_ids + signal_ids)
 
-    hypothesis = [f"{event_summary} on {asset_id} requires local inspection while GenAI analysis is unavailable."]
+    hypothesis = [
+        f"{event_summary} on {asset_id} requires local inspection while GenAI analysis is unavailable."
+    ]
     if work_orders:
         hypothesis.append(f"Recent maintenance activity may be related: {work_orders[0]}.")
 
@@ -124,29 +129,41 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
         "Manual review of local signals and maintenance context is required before remote GenAI analysis resumes.",
     ]
     if event_kind == "alarm":
-        root_causes[0] = "A protection, alarm, or process threshold was exceeded under current operating conditions."
+        root_causes[0] = (
+            "A protection, alarm, or process threshold was exceeded under current operating conditions."
+        )
 
     contributing_factors = []
     if doc_chunk_ids:
-        contributing_factors.append("Local maintenance documents were available for fallback review.")
+        contributing_factors.append(
+            "Local maintenance documents were available for fallback review."
+        )
     if signal_ids:
-        contributing_factors.append("Recent signals were present and should be checked against the current condition.")
+        contributing_factors.append(
+            "Recent signals were present and should be checked against the current condition."
+        )
     if work_orders:
-        contributing_factors.append("Recent work order history may have changed asset condition or maintenance state.")
+        contributing_factors.append(
+            "Recent work order history may have changed asset condition or maintenance state."
+        )
 
     immediate_actions = [
         f"Inspect {asset_id} at the source of the reported {event_kind}.",
         "Verify the alert condition against the current operating state and instrumentation.",
     ]
     if work_orders:
-        immediate_actions.append(f"Review recent work such as '{work_orders[0]}' before approving additional handoff.")
+        immediate_actions.append(
+            f"Review recent work such as '{work_orders[0]}' before approving additional handoff."
+        )
 
     pm_suggestions = [
         f"Schedule a manual follow-up inspection for {asset_id} in the next maintenance window.",
         "Capture technician findings so the remote RCA can be refined once GenAI connectivity returns.",
     ]
     if event_kind == "alarm":
-        pm_suggestions.append("Confirm alarm thresholds and sensor health during the follow-up inspection.")
+        pm_suggestions.append(
+            "Confirm alarm thresholds and sensor health during the follow-up inspection."
+        )
 
     summary_suffix = f" Reason: {reason}." if reason else ""
     return {
@@ -171,7 +188,9 @@ def _deterministic_edge_structured(evt: dict, ctx: dict, reason: str | None = No
     }
 
 
-def _edge_local_fallback(evt: dict, ctx: dict, reason: str | None = None) -> tuple[dict, str, dict, str, str]:
+def _edge_local_fallback(
+    evt: dict, ctx: dict, reason: str | None = None
+) -> tuple[dict, str, dict, str, str]:
     structured = _deterministic_edge_structured(evt, ctx, reason=reason)
     rationale = _build_rationale(structured, structured.get("summary", ""))
     model_meta = {
@@ -307,7 +326,9 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
 
     _t0 = time.time()
     ctx = _context_with_fallback(evt, settings)
-    structured, rationale, model_meta, lineage_source, inference_mode = _resolve_inference(evt, settings, ctx, gateway=gateway)
+    structured, rationale, model_meta, lineage_source, inference_mode = _resolve_inference(
+        evt, settings, ctx, gateway=gateway
+    )
 
     rec_id = str(uuid.uuid4())
     doc_chunk_ids = [d.get("chunk_id") for d in ctx.get("doc_chunks", []) if isinstance(d, dict)]
@@ -350,8 +371,12 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             "doc_chunk_ids": doc_chunk_ids,
             "signal_ids": signal_ids,
             "context_scope": ctx.get("context_scope", "local"),
-            "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get("external_ref_count", 0),
-            "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get("referenced_asset_ids", []),
+            "fleet_external_ref_count": (ctx.get("fleet_context_summary") or {}).get(
+                "external_ref_count", 0
+            ),
+            "fleet_referenced_asset_ids": (ctx.get("fleet_context_summary") or {}).get(
+                "referenced_asset_ids", []
+            ),
             "inference_mode": inference_mode,
             "degraded_inference": inference_mode == "local-deterministic",
         },
