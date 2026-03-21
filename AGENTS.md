@@ -42,3 +42,11 @@ Standard commands are in the `Makefile`:
 - The `scripts/demo_pm_approval.sh` health-check polls `/api/v1/health`, which does not exist. The actual health endpoint is `/healthz`. The demo flow can be replicated manually via curl (see README PM demo section).
 - Deep health check (`/healthz?deep=true`) shows `kafka_lag` as `degraded` due to a `KafkaConfigurationError` about request/session timeout mismatch. This is cosmetic and does not affect functionality.
 - `pip install -e .[dev,ops]` installs scripts to `~/.local/bin`. Ensure `~/.local/bin` is on `PATH`.
+
+### Portal development
+
+The portal is a single-file SPA at `maintenance_intelligence/web/index.html` (~7,000 lines inline CSS+JS). CDN dependencies (Chart.js, iziToast, SweetAlert2, Inter font) are loaded in the `<head>`.
+
+Modular JS files live in `maintenance_intelligence/web/assets/` and are served at `/portal/assets/` by FastAPI when the directory exists. These are scaffolding for future extraction of inline code into ES6 modules.
+
+Playwright E2E tests in `tests/e2e/` use a test harness (`portalTestHarness.js`) that mocks all API responses. They require `npm install && npx playwright install --with-deps chromium` and a running API server. Run with `npm run test:portal:e2e`.
