@@ -2,7 +2,8 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
 
 from alembic import context
 
@@ -64,8 +65,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Get database URL from environment or config
-    db_url = os.getenv("DATABASE_URL")
+    db_url = config.get_main_option("sqlalchemy.url")
+    if not db_url:
+        db_url = os.getenv("DATABASE_URL")
     if not db_url:
         # Try to construct from individual components
         db_host = os.getenv("MI_DB_HOST", "localhost")

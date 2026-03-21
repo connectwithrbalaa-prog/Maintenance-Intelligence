@@ -20,6 +20,44 @@ Next:
 - Add OpenClaw cron + run summaries
 - Add DB migrations & health endpoints
 
+## RCA Workflow
+
+The current RCA path in this branch is centered on the Kafka-driven `rca_agent` flow, with a thin single-run trigger for smoke and demo use.
+
+### Implemented Now
+
+1. Event ingestion publishes canonical events to `canonical.event.raised`.
+2. `maintenance_intelligence.services.rca_agent` consumes `alarm` and `anomaly` events from that topic.
+3. `maintenance_intelligence.context.assembler.get_event_context(...)` assembles evidence for the event:
+  - recent work order titles for the asset
+  - recent signals and rollups when available
+  - hybrid RAG document chunks when available, with graceful fallback
+4. The RCA agent calls the GenAI gateway when `OPENAI_API_KEY` is configured, or falls back to a stub RCA draft when it is not.
+5. The RCA output is normalized into structured fields such as `title`, `hypothesis`, `immediate_actions`, `pm_suggestions`, and `confidence`.
+6. The RCA agent emits a canonical recommendation event to `canonical.recommendation.created`.
+7. The RCA agent writes a run summary artifact to `outputs/YYYY-MM-DD/<run_id>.json`.
+8. The portal API and static portal UI expose those run summaries for inspection.
+
+What is currently tested in this branch:
+- structured gateway output and RCA stub behavior
+- context assembly and hybrid RAG import/smoke coverage
+- signals and metrics endpoints
+- portal list and detail views backed by run summary artifacts
+
+### Planned / Next
+
+The following are not part of the implemented RCA production flow in this branch yet:
+
+- PM advisor and playbook agents as first-class production services
+- identity-aware API behavior such as `whoami` and production auth wiring
+- CMMS adapter factory and real production connector implementations
+- staging or production credential paths for CMMS approval workflows
+- vendor observability connectors such as Datadog, ServiceNow, ScienceLogic, or SafetyCulture
+- automated end-to-end staging validation with real tokens and external systems
+- model governance features such as prompt audit logs, usage tracking, and feedback-driven tuning
+
+This separation is intentional: the branch currently defines and tests the RCA generation pipeline, while downstream PM workflow, identity, connector hardening, and vendor integration remain follow-on work.
+
 ## GenAI Gateway (OpenAI) & Run Summaries
 
 - Set OPENAI_API_KEY to enable GenAI RCA drafts.
@@ -29,13 +67,45 @@ Next:
   - MI_RUN_SUMMARY_DIR=outputs (JSON artifacts per run)
 - RCA agent includes model_version/tokens/latency in recommendation.model.
 
+## RAG Hybrid Retrieval
+
+- **Index**: IVFFlat index on `doc_chunks.embedding` for efficient ANN search (tuned for small datasets)
+- **Retrieval**: Hybrid ranking combining BM25 (text matching) and vector cosine similarity with configurable weights
+- **Context Budgeting**: Packs top chunks up to a token budget (rough estimate: 4 chars/token) without breaking JSON assembly
+- **Ingestion**: Supports .txt, .md, .html files; HTML converted to clean text; optional bulk chunking per document
+- **CLI**: `mi-runner rag --path ./docs --asset-id PUMP-101 --bulk-mode --chunk-size 1000`
+
+Context assembler now uses hybrid retrieval with event-based queries for better RCA evidence.
+
 ## Database Migrations & Health Checks
 
 - Run migrations:
   - python -m maintenance_intelligence.db.migrate
+- Dev compose runs the one-shot `migrator` service before starting the API.
 - Health endpoint:
   - GET /healthz (basic)
   - GET /healthz?deep=true (PG + Kafka checks)
+
+### Kafka Lag in Health Checks
+
+- Deep health (`/healthz?deep=true`) now includes consumer group lag.
+- Env:
+  - `MI_HEALTH_GROUPS` (default: agent-ingestion,agent-rca,agent-wo-bridge,agent-signals)
+  - `MI_HEALTH_TOPICS` (default: canonical.asset.upserted,canonical.event.raised,canonical.recommendation.created)
+  - `MI_HEALTH_MAX_LAG` (default: 1000)
+  - `MI_HEALTH_TIMEOUT_S` (default: 5)
+- Status is marked `degraded` if lag > `MI_HEALTH_MAX_LAG` or offsets cannot be determined.
+
+## Observability
+
+- Metrics:
+  - Prometheus endpoint: GET /metrics
+  - Key metrics: rca_runs_total, rca_failures_total, rca_duration_seconds, events_ingested_total, recommendations_created_total, wo_drafts_total, kafka_consume_lag{group=...}
+- Tracing (optional):
+  - Enable with OTEL_ENABLED=true
+  - Configure OTLP exporter via standard OTEL_* env vars (e.g., OTEL_EXPORTER_OTLP_ENDPOINT)
+- Dashboards:
+  - dashboards/observability-starter.json — import into Grafana and wire to your Prometheus datasource
 
 ## OpenClaw Cron Wiring (Scheduled RCA Test)
 
@@ -47,6 +117,22 @@ Environment:
 - `OPENAI_API_KEY` (for GenAI output; otherwise stub text is used)
 - Optional:
   - `MI_RUN_SUMMARY_DIR` (default: `outputs`)
+
+## Local Dev Stack (Compose) + Alerts
+
+- Start stack: `docker compose -f docker-compose.dev.yml up -d`
+  - Services: Kafka/ZooKeeper, Postgres, migrator, API, Prometheus, Alertmanager, Grafana
+- The `migrator` service waits for Postgres, applies Alembic migrations, then the API starts.
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (admin/admin)
+- Import `dashboards/observability-starter.json` in Grafana
+- Alerts:
+  - Rules in `deploy/prometheus/alerts.yml`
+  - Alertmanager at http://localhost:9093 (configure real receivers in `deploy/alertmanager/alertmanager.yml`)
+
+Note:
+- The API and migrator services use the repo code mounted at /app and install the app in-container at startup.
+- For real RCA runs and RAG, set `OPENAI_API_KEY` in the api service environment or via a compose override.
   - `MI_CRON_LOG_DIR` (default: `logs`)
 
 Example OpenClaw cron job (JSON):
@@ -92,6 +178,7 @@ Kafka / Postgres:
 - POSTGRES_USER (default: postgres)
 - POSTGRES_PASSWORD (default: postgres)
 - POSTGRES_HOST (default: timescaledb)
+- POSTGRES_PORT (default: 5432)
 
 GenAI:
 - OPENAI_API_KEY (required for live GenAI RCA)
@@ -101,6 +188,16 @@ GenAI:
 Outputs / Logs:
 - MI_RUN_SUMMARY_DIR (default: outputs)
 - MI_CRON_LOG_DIR (default: logs)
+
+## Outcomes Analytics
+
+- API:
+  - JSON: GET /api/v1/reports/rca-outcomes?window=30
+  - CSV: GET /api/v1/reports/rca-outcomes/csv?window=30
+- Metrics alignment:
+  - rca_feedback_total{action=...} supports acceptance KPI panels.
+- Dashboard:
+  - dashboards/outcomes-starter.json (import into Grafana)
 
 Copy .env.example to .env and set values as needed.
 
@@ -117,12 +214,36 @@ Copy .env.example to .env and set values as needed.
 
 Testing:
 - make test
+- make test-migrations
 
 Utilities:
 - mi-runner rca --event-id E123
 - mi-runner rca-test
 - mi-runner export-bad-actors --limit 50
 - scripts/cron_rca_test.sh (cron-friendly)
+- make demo-pm-approval
+
+Release helpers:
+- Dry-run the fixed v0.2.0 merge set: `bash merge_v0_2_0.sh --dry-run`
+- Dry-run generic merges from a fixture file: `bash merge_prs.sh --dry-run --pr-data-file /tmp/pull-requests.json`
+- Merge a filtered batch only: `bash merge_prs.sh --dry-run --base main --label release --search stabilization --batch-size 5 --batch-index 2`
+- `merge_prs.sh` also accepts explicit `--pr <number>` values, or it can query GitHub with filters such as `--state`, `--base`, `--head`, `--author`, `--label`, and `--search`
+
+CLI note:
+- `mi-runner` is available after `python -m pip install -e .` when the active virtualenv's `bin` directory is on `PATH`.
+- If the script name is not on `PATH`, use `python -m maintenance_intelligence.runner.cli ...` instead.
+
+PM demo flow:
+- Starts the API with local header-based identity enabled
+- Seeds a demo RCA run summary and analyzes it by `run_id` unless `--run-id` is provided
+- Creates a PM proposal via `/api/v1/agents/pm/advisor/analyze`
+- Approves that proposal via `/api/v1/agents/pm/proposals/{id}/approve`
+- Uses the default `mock` CMMS adapter unless `MI_PM_CONNECTOR_BACKEND=maximo` is configured
+- Use `DEMO_PM_START_API=false` or `scripts/demo_pm_approval.sh --use-existing-api` to target an already-running API
+- Use `API_URL=http://host:port` or `scripts/demo_pm_approval.sh --api-url http://host:port` to point the demo at another endpoint
+- Use `DEMO_PM_RUN_ID=<run-id>` or `scripts/demo_pm_approval.sh --run-id <run-id>` to target an existing run summary instead of generating a demo one
+- If you point the script at an already-running API without `--run-id`, that API must be reading the same `MI_RUN_SUMMARY_DIR`
+- The script pretty-prints JSON with `jq` when available and falls back to `python -m json.tool`
 
 ## Optional: pgvector RAG
 
@@ -137,63 +258,26 @@ Notes:
 - Requires OPENAI_API_KEY
 - Embedding model can be set via MI_EMBED_MODEL (default: text-embedding-3-large)
 
-## Structured RCA Output
+## Signals Processing
 
-- Gateway returns strict JSON with:
-  - title, hypothesis[], evidence_ids[], immediate_actions[], pm_suggestions[], confidence (0..1)
-- rca_agent uses structured fields to set recommendation title/rationale/evidence and carries confidence in model metadata.
-- Run summaries include the structured payload for traceability.
+- **signals** service: Consumes events, extracts measurements (vibration, temperature), computes rollups (1h/6h/24h mean/min/max), detects anomalies (threshold + z-score)
+- **Context Assembler**: Includes recent signals and rollups in RCA context
+- **API**: `/api/v1/signals/summary?asset_id=...` returns recent signals and rollups
+- **CLI**: `mi-runner signals` runs the signals processor
 
-### Outcomes Per-Asset & Resolution Timestamp
+Signals improve RCA evidence quality by providing measurement trends and anomaly flags.
 
-- TTR now prefers `workorders.metadata.resolved_at` and falls back to `created_at` when missing.
-- TTR linkage prefers `metadata.evidence_event_id`; otherwise it uses the nearest same-asset event within `MI_TTR_FALLBACK_WINDOW_H` hours.
-- API / CSV include:
-  - per_asset_acceptance: rate, accepts, total
-  - per_asset_ttr: average TTR seconds by asset
+## CMMS Connector Backend
 
-## Multi-Tenant and RBAC
-
-- `MI_MULTI_TENANT=true` enables org-aware query scoping for outcomes, feedback, bad-actors, context assembly, and RAG document retrieval.
-- `MI_AUTH_MODE=none|api_key` controls request auth. In `api_key` mode, send `X-API-Key` and configure `MI_API_KEYS` as JSON: `{"key-1":{"org_id":"org-a","role":"viewer"}}`.
-- Roles:
-  - `viewer`: read scoped reports and signals
-  - `operator`: viewer permissions plus RCA trigger and feedback submission
-  - `admin`: full access in the current stub
-- Kafka topic strategy:
-  - `MI_KAFKA_TENANT_MODE=message`: keep shared topics and filter by `org_id` in the consumer
-  - `MI_KAFKA_TENANT_MODE=namespaced`: publish and consume `canonical.{org_id}.*` topics for single-org worker deployments
-- Single-tenant deployment:
-  - leave `MI_MULTI_TENANT=false` and `MI_AUTH_MODE=none`
-- Multi-tenant deployment:
-  - enable `MI_MULTI_TENANT=true`
-  - provision per-org API keys via `MI_API_KEYS`
-  - run workers with the org selected by `MI_DEFAULT_ORG` when using namespaced Kafka topics
-
-## Signals Tenant Isolation
-
-- `signals` and `signal_rollups` now carry `org_id` for end-to-end tenant isolation in the context path.
-- Signal ingestion writes `org_id` from the incoming event, falls back to `lineage.org_id`, and then to `MI_DEFAULT_ORG`.
-- The SQL migration backfills existing `signals.org_id` from stored metadata where available; historical rollups without source org metadata may remain null until recomputed.
-
-## Prompt Catalog and A/B Testing
-
-- Prompt templates are versioned in `prompt_catalog` with IDs, route ownership, descriptions, and intended-use metadata.
-- Route-level defaults and org-specific overrides are stored in `prompt_route_configs`.
-- `MI_PROMPT_DEFAULTS` and `MI_PROMPT_CANARY_DEFAULTS` provide config-backed fallbacks when no DB override exists.
-- `MI_PROMPT_CANARY_RATIO` controls the default canary split; the RCA agent records `prompt_id` and variant in run summaries and recommendation model metadata.
-- Feedback can carry `prompt_id` and `prompt_route`, enabling prompt quality tracking via `prompt_feedback_total` and auto-rollback decisions.
-
-## Cost and Latency Dashboards v2
-
-- RCA runs now export `rca_cost_usd_total{model,prompt_id}` using a token-based estimate derived from `MI_RCA_MODEL_RATES`.
-- Model latency is exported via `rca_latency_seconds{service,model,prompt_id}` while the existing `rca_duration_seconds{service}` still tracks full agent runtime.
-- Budget caps are exposed via `rca_budget_cap_usd{window}` using `MI_RCA_BUDGET_CAPS_USD` for daily and weekly utilization panels.
-- Prompt acceptance rate is derived from `prompt_feedback_total{route,prompt_id,action}` in PromQL rather than stored as a separate gauge.
-- RCA run summaries now persist `estimated_cost_usd` alongside tokens and latency for per-run auditability.
-- Dashboard and alert assets live under `monitoring/grafana/rca_observability_v2.dashboard.json` and `monitoring/prometheus/rca_observability_v2_alerts.yml`.
-
-## Rollout and Operations Docs
-
-- Rollout guide: `docs/v0.3.0-rollout-guide.md`
-- Operator checklist: `docs/v0.3.0-operator-checklist.md`
+- `MI_PM_CONNECTOR_BACKEND` selects the work-order connector backend.
+  - `mock`: default adapter for local development and tests
+  - `maximo`: staging-ready IBM Maximo scaffold with request/response mapping
+- Maximo scaffold configuration:
+  - `MI_MAXIMO_BASE_URL`
+  - `MI_MAXIMO_SITE` (default: `BEDFORD`)
+  - `MI_MAXIMO_API_KEY`
+  - `MI_MAXIMO_TIMEOUT_S` (default: `15`)
+- The current `wo_bridge` now delegates work-order creation through the adapter factory, but only the mock backend is intended for local execution. The Maximo adapter is a scaffold for staging integration and still requires real endpoint validation.
+- Smoke harness:
+  - `pytest -k maximo_smoke`
+  - Uses `pytest-httpserver` to stand up a local Maximo-like endpoint and exercises the real HTTP adapter path without external credentials.

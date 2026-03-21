@@ -1,13 +1,11 @@
 import os
+import uuid
 import pathlib
 import re
-import uuid
-from typing import Any, Dict, List
-
+from typing import List, Dict, Any
 from loguru import logger
-
-from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.context.assembler import with_pg
 
 try:
     from openai import OpenAI
@@ -80,7 +78,6 @@ def load_texts(path: str) -> List[Dict[str, Any]]:
 def upsert_chunks(
     conn,
     asset_id: str,
-    org_id: str,
     docs: List[Dict[str, Any]],
     embeddings: List[List[float]],
     titles: List[str],
@@ -91,19 +88,11 @@ def upsert_chunks(
                 chunk_id = "DC-" + uuid.uuid4().hex[:12]
                 cur.execute(
                     """
-                    INSERT INTO doc_chunks (chunk_id, org_id, asset_id, title, content, source, embedding)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                    INSERT INTO doc_chunks (chunk_id, asset_id, title, content, source, embedding)
+                    VALUES (%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (chunk_id) DO NOTHING
                     """,
-                    (
-                        chunk_id,
-                        org_id,
-                        asset_id,
-                        titles[i],
-                        doc["content"],
-                        doc["source"],
-                        embeddings[i],
-                    ),
+                    (chunk_id, asset_id, titles[i], doc["content"], doc["source"], embeddings[i]),
                 )
 
 
@@ -149,7 +138,7 @@ def ingest_path(path: str, asset_id: str, chunk_size: int = 1200, bulk_mode: boo
 
         texts = [c["content"] for c in all_chunks]
         embs = embed_texts(api_key, texts)
-        upsert_chunks(conn, asset_id, s.default_org, all_chunks, embs, all_titles)
+        upsert_chunks(conn, asset_id, all_chunks, embs, all_titles)
         logger.info(
             {
                 "event": "rag.ingested",

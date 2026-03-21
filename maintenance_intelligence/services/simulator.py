@@ -1,17 +1,13 @@
-import datetime as dt
-import json
-import signal
-import sys
 import time
 import uuid
-
-import backoff
+import json
+import datetime as dt
+import signal
+import sys
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 from loguru import logger
-
-from maintenance_intelligence.multitenancy import scoped_topic
-from maintenance_intelligence.runner.config import Settings
+import backoff
 
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=5, max_time=60)
@@ -27,16 +23,15 @@ def create_kafka_producer(kafka_bootstrap: str):
 
 
 @backoff.on_exception(backoff.expo, KafkaError, max_tries=3, max_time=30)
-def send_event(producer, topic, event, settings: Settings):
+def send_event(producer, topic, event):
     """Send event with retry logic."""
-    future = producer.send(scoped_topic(topic, settings, event.get("org_id")), event)
+    future = producer.send(topic, event)
     producer.flush()  # Wait for send to complete
     return future
 
 
 def simulator(kafka_bootstrap: str):
     logger.info({"event": "simulator.start", "kafka_bootstrap": kafka_bootstrap})
-    settings = Settings()
 
     # Graceful shutdown handling
     shutdown_requested = False
@@ -73,7 +68,7 @@ def simulator(kafka_bootstrap: str):
                 }
 
                 try:
-                    send_event(prod, "canonical.event.raised", evt, settings)
+                    send_event(prod, "canonical.event.raised", evt)
                     logger.debug(
                         {"event": "simulator.sent", "asset_id": a, "event_id": evt["event_id"]}
                     )

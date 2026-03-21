@@ -2,7 +2,6 @@ import json
 import os
 
 import typer
-
 from .config import Settings
 from .core import run
 
@@ -25,11 +24,7 @@ def rca_test():
     """
     Trigger a synthetic RCA run (event_id = TEST-RCA-<uuid>) and print the run result.
     """
-    import json
     import uuid
-
-    from .config import Settings
-    from .core import run
 
     s = Settings()
     eid = f"TEST-RCA-{uuid.uuid4().hex[:8]}"
@@ -44,7 +39,6 @@ def export_bad_actors(limit: int = 50):
     Export bad-actor ranking as JSON to outputs/reports/bad_actors_<date>.json
     """
     import datetime as dt
-    import json
 
     from maintenance_intelligence.api.reports import bad_actors
     from maintenance_intelligence.runner.config import Settings

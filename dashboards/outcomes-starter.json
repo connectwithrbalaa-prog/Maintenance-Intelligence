@@ -1,0 +1,123 @@
+{
+  "title": "Maintenance Intelligence — Outcomes",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "asset_id",
+        "label": "Asset",
+        "type": "textbox",
+        "query": "PUMP-101",
+        "current": {
+          "text": "PUMP-101",
+          "value": "PUMP-101"
+        },
+        "description": "Starter asset selector. Replace with a datasource-backed variable query when your Grafana datasource can list asset ids."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Acceptance Rate",
+      "description": "Overall acceptance rate across the current window. Existing starter metric retained for high-level outcomes status.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(increase(rca_feedback_total{action=\"accept\"}[7d])) / clamp_min(sum(increase(rca_feedback_total[7d])), 1)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Feedback Actions (7d)",
+      "description": "Existing starter trend panel for feedback action volume.",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "targets": [
+        { "expr": "increase(rca_feedback_total{action=\"accept\"}[7d])" },
+        { "expr": "increase(rca_feedback_total{action=\"reject\"}[7d])" },
+        { "expr": "increase(rca_feedback_total{action=\"edited\"}[7d])" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RCA Duration p95",
+      "description": "Existing starter panel for RCA latency tracking.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(rca_duration_seconds_bucket[5m])))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Asset Daily Workorder Volume (30d)",
+      "description": "Starter panel for outcomes.asset_metrics[$asset_id].workorder_volume. Replace the placeholder target with a datasource-specific query that returns time, asset_id, and daily workorder count for the selected asset over the current 30-day range.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "asset_daily_workorder_volume{asset_id=\"$asset_id\"}",
+          "legendFormat": "{{$asset_id}}",
+          "placeholder": "Map to outcomes.asset_metrics[asset_id].workorder_volume[].value or an equivalent SQL/view result shaped as time, asset_id, value."
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Asset Acceptance Rate (30d)",
+      "description": "Starter panel for outcomes.asset_metrics[$asset_id].acceptance_rate. Replace the placeholder target with a datasource-specific query that returns time, asset_id, and daily acceptance rate values between 0 and 1 for the selected asset.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "B",
+          "expr": "asset_daily_acceptance_rate{asset_id=\"$asset_id\"}",
+          "legendFormat": "{{$asset_id}}",
+          "placeholder": "Map to outcomes.asset_metrics[asset_id].acceptance_rate[].value or an equivalent SQL/view result shaped as time, asset_id, value."
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

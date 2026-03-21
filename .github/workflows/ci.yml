@@ -10,4 +10,86 @@ jobs:
     - run: pip install --upgrade pip && pip install .[dev]
     - run: ruff check .
     - run: black --check .
-    - run: pytest
+    - run: pytest --ignore=tests/test_migration_smoke.py
+
+  portal-browser-smoke:
+    if: ${{ vars.RUN_PLAYWRIGHT == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      MI_DEV_ALLOW_HEADERS: "true"
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+    - uses: actions/setup-node@v4
+      with: { node-version: "20" }
+    - run: pip install --upgrade pip && pip install .[dev]
+    - run: npm install
+    - run: npx playwright install --with-deps chromium
+    - run: npm run test:portal:e2e
+
+  migration-smoke:
+    if: ${{ vars.RUN_MIGRATION_SMOKE == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      pgvector:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: maintenance
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+        - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d maintenance"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+    - run: pip install --upgrade pip && pip install .[dev,ops]
+    - name: Wait for Postgres
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: "5432"
+        POSTGRES_DB: maintenance
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+      run: |
+        python - <<'PY'
+        import os
+        import time
+        import psycopg2
+
+        deadline = time.time() + 60
+        last_error = None
+        while time.time() < deadline:
+            try:
+                conn = psycopg2.connect(
+                    dbname=os.environ["POSTGRES_DB"],
+                    user=os.environ["POSTGRES_USER"],
+                    password=os.environ["POSTGRES_PASSWORD"],
+                    host=os.environ["POSTGRES_HOST"],
+                    port=os.environ["POSTGRES_PORT"],
+                )
+                conn.close()
+                print("Postgres up")
+                raise SystemExit(0)
+            except Exception as exc:
+                last_error = exc
+                print(f"Waiting for Postgres: {exc}")
+                time.sleep(2)
+        raise SystemExit(f"Postgres did not become ready: {last_error}")
+        PY
+    - name: Run migration smoke
+      env:
+        RUN_MIGRATION_SMOKE: "true"
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/maintenance
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: "5432"
+        POSTGRES_DB: maintenance
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+      run: pytest tests/test_migration_workorder_timestamps.py -q

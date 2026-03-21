@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Maintenance Intelligence Portal</title>
+	<style>
+		:root {
+			color-scheme: light;
+			--bg: #f3efe5;
+			--panel: rgba(255, 251, 245, 0.88);
+			--panel-strong: #fffdf8;
+			--line: rgba(29, 42, 45, 0.12);
+			--text: #182226;
+			--muted: #5f6b6d;
+			--accent: #0e7c66;
+			--accent-soft: rgba(14, 124, 102, 0.12);
+			--warn: #c5672f;
+			--danger: #a63b2d;
+			--shadow: 0 24px 60px rgba(24, 34, 38, 0.12);
+			--radius-xl: 28px;
+			--radius-lg: 20px;
+			--radius-md: 14px;
+			--font-display: "Space Grotesk", "Segoe UI", sans-serif;
+			--font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			font-family: var(--font-body);
+			color: var(--text);
+			background:
+				radial-gradient(circle at top left, rgba(14, 124, 102, 0.18), transparent 32%),
+				radial-gradient(circle at bottom right, rgba(197, 103, 47, 0.14), transparent 30%),
+				linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+		}
+
+		body::before {
+			content: "";
+			position: fixed;
+			inset: 0;
+			pointer-events: none;
+			background-image:
+				linear-gradient(rgba(24, 34, 38, 0.02) 1px, transparent 1px),
+				linear-gradient(90deg, rgba(24, 34, 38, 0.02) 1px, transparent 1px);
+			background-size: 24px 24px;
+			mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent);
+		}
+
+		main {
+			width: min(1320px, calc(100vw - 32px));
+			margin: 0 auto;
+			padding: 28px 0 40px;
+			position: relative;
+		}
+
+		.hero {
+			display: grid;
+			grid-template-columns: 1.5fr 1fr;
+			gap: 20px;
+			margin-bottom: 20px;
+		}
+
+		.hero-card,
+		.panel,
+		.run-card {
+			background: var(--panel);
+			border: 1px solid var(--line);
+			box-shadow: var(--shadow);
+			backdrop-filter: blur(18px);
+		}
+
+		.hero-card {
+			border-radius: var(--radius-xl);
+			padding: 28px;
+			position: relative;
+			overflow: hidden;
+		}
+
+		.hero-card::after {
+			content: "";
+			position: absolute;
+			width: 240px;
+			height: 240px;
+			right: -70px;
+			top: -90px;
+			border-radius: 50%;
+			background: radial-gradient(circle, rgba(14, 124, 102, 0.18), transparent 68%);
+		}
+
+		.eyebrow {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			margin-bottom: 14px;
+			padding: 7px 12px;
+			border-radius: 999px;
+			background: rgba(24, 34, 38, 0.06);
+			color: var(--muted);
+			font-size: 12px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+		}
+
+		h1,
+		h2,
+		h3 {
+			font-family: var(--font-display);
+			margin: 0;
+			letter-spacing: -0.04em;
+		}
+
+		h1 {
+			max-width: 10ch;
+			font-size: clamp(2.5rem, 4.6vw, 4.5rem);
+			line-height: 0.94;
+			margin-bottom: 18px;
+		}
+
+		.hero-copy {
+			max-width: 60ch;
+			font-size: 16px;
+			line-height: 1.65;
+			color: var(--muted);
+			margin: 0;
+			position: relative;
+			z-index: 1;
+		}
+
+		.identity-panel {
+			margin-top: 18px;
+			padding: 16px;
+			border-radius: var(--radius-lg);
+			background: rgba(255, 255, 255, 0.68);
+			border: 1px solid var(--line);
+			position: relative;
+			z-index: 1;
+		}
+
+		.identity-row {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.identity-badge {
+			display: inline-flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+		}
+
+		.identity-badge strong {
+			font-family: var(--font-display);
+			font-size: 1rem;
+		}
+
+		.dev-toggle {
+			display: grid;
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			gap: 10px;
+			margin-top: 14px;
+		}
+
+		.dev-toggle label {
+			display: grid;
+			gap: 6px;
+			font-size: 12px;
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+		}
+
+		.dev-toggle input,
+		.dev-toggle select,
+		.dev-toggle button {
+			width: 100%;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			font: inherit;
+		}
+
+		.dev-toggle input,
+		.dev-toggle select {
+			padding: 10px 12px;
+			background: rgba(255, 255, 255, 0.8);
+			color: var(--text);
+		}
+
+		.dev-toggle button {
+			align-self: end;
+			padding: 12px 14px;
+			background: var(--text);
+			color: #fff;
+			cursor: pointer;
+		}
+
+		.hero-metrics {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.metric {
+			border-radius: var(--radius-lg);
+			padding: 18px;
+			background: var(--panel-strong);
+			border: 1px solid var(--line);
+		}
+
+		.metric-label {
+			font-size: 12px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 10px;
+		}
+
+		.metric-value {
+			font-family: var(--font-display);
+			font-size: clamp(1.6rem, 3vw, 2.6rem);
+			letter-spacing: -0.05em;
+		}
+
+		.layout {
+			display: grid;
+			grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+			gap: 20px;
+			align-items: start;
+		}
+
+		.panel {
+			border-radius: var(--radius-xl);
+			padding: 20px;
+		}
+
+		.panel-header {
+			display: flex;
+			align-items: end;
+			justify-content: space-between;
+			gap: 12px;
+			margin-bottom: 16px;
+		}
+
+		.panel-title {
+			font-size: 1.5rem;
+		}
+
+		.toolbar {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+			margin-bottom: 16px;
+		}
+
+		.toolbar input,
+		.toolbar button {
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			font: inherit;
+		}
+
+		.toolbar input {
+			width: 100%;
+			padding: 12px 14px;
+			background: rgba(255, 255, 255, 0.72);
+			color: var(--text);
+		}
+
+		.toolbar button {
+			padding: 12px 14px;
+			background: var(--text);
+			color: #fff;
+			cursor: pointer;
+			transition: transform 160ms ease, opacity 160ms ease;
+		}
+
+		.toolbar button:hover {
+			transform: translateY(-1px);
+			opacity: 0.94;
+		}
+
+		.run-list {
+			display: grid;
+			gap: 12px;
+			max-height: calc(100vh - 320px);
+			overflow: auto;
+			padding-right: 4px;
+		}
+
+		.run-card {
+			width: 100%;
+			text-align: left;
+			padding: 16px;
+			border-radius: 18px;
+			cursor: pointer;
+			transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+			animation: enter 420ms ease both;
+		}
+
+		.run-card:hover,
+		.run-card:focus-visible,
+		.run-card.active {
+			transform: translateY(-2px);
+			border-color: rgba(14, 124, 102, 0.36);
+			background: rgba(255, 255, 255, 0.96);
+			outline: none;
+		}
+
+		.run-card-header,
+		.metadata-grid,
+		.detail-columns,
+		.detail-grid {
+			display: grid;
+			gap: 12px;
+		}
+
+		.run-card-header {
+			grid-template-columns: auto 1fr auto;
+			align-items: start;
+			margin-bottom: 10px;
+		}
+
+		.run-index {
+			width: 32px;
+			height: 32px;
+			border-radius: 12px;
+			display: grid;
+			place-items: center;
+			font-family: var(--font-display);
+			font-size: 0.95rem;
+			background: var(--accent-soft);
+			color: var(--accent);
+		}
+
+		.run-title {
+			font-size: 1rem;
+			line-height: 1.25;
+			margin-bottom: 4px;
+		}
+
+		.muted {
+			color: var(--muted);
+		}
+
+		.tiny {
+			font-size: 12px;
+		}
+
+		.status-pill,
+		.chip {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 7px 10px;
+			border-radius: 999px;
+			font-size: 12px;
+			border: 1px solid transparent;
+			white-space: nowrap;
+		}
+
+		.status-pill.ok {
+			background: rgba(14, 124, 102, 0.12);
+			color: var(--accent);
+		}
+
+		.status-pill.unknown {
+			background: rgba(24, 34, 38, 0.08);
+			color: var(--muted);
+		}
+
+		.status-pill.error {
+			background: rgba(166, 59, 45, 0.12);
+			color: var(--danger);
+		}
+
+		.status-pill.warn {
+			background: rgba(197, 103, 47, 0.14);
+			color: var(--warn);
+		}
+
+		.run-card p {
+			margin: 0;
+		}
+
+		.metadata-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.meta-tile {
+			padding: 12px;
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.04);
+			min-height: 78px;
+		}
+
+		.meta-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+			margin-bottom: 8px;
+		}
+
+		.meta-value {
+			font-size: 0.95rem;
+			line-height: 1.35;
+			word-break: break-word;
+		}
+
+		.detail-shell {
+			min-height: 720px;
+			display: grid;
+		}
+
+		.detail-columns {
+			grid-template-columns: 1.2fr 0.8fr;
+			align-items: start;
+		}
+
+		.detail-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			margin: 16px 0;
+		}
+
+		.section {
+			margin-top: 18px;
+			padding-top: 18px;
+			border-top: 1px solid var(--line);
+		}
+
+		.section h3 {
+			font-size: 1.05rem;
+			margin-bottom: 10px;
+		}
+
+		.section-head {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			margin-bottom: 10px;
+		}
+
+		.section-head h3 {
+			margin-bottom: 0;
+		}
+
+		.list {
+			margin: 0;
+			padding-left: 18px;
+			color: var(--muted);
+			line-height: 1.6;
+		}
+
+		.list li + li {
+			margin-top: 8px;
+		}
+
+		.chips {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.chip {
+			background: rgba(24, 34, 38, 0.06);
+			border-color: var(--line);
+			color: var(--text);
+		}
+
+		.json-box {
+			margin-top: 16px;
+			padding: 16px;
+			border-radius: 18px;
+			background: #1c2527;
+			color: #dff0ea;
+			overflow: auto;
+			font-size: 12px;
+			line-height: 1.6;
+		}
+
+		.empty-state,
+		.loading-state,
+		.error-state {
+			height: 100%;
+			min-height: 320px;
+			display: grid;
+			place-items: center;
+			padding: 24px;
+			text-align: center;
+			border: 1px dashed var(--line);
+			border-radius: 22px;
+			background: rgba(255, 255, 255, 0.36);
+			color: var(--muted);
+		}
+
+		.result-banner {
+			margin: 16px 0 0;
+			padding: 14px 16px;
+			border-radius: 16px;
+			border: 1px solid var(--line);
+			background: rgba(24, 34, 38, 0.04);
+		}
+
+		.result-banner.success {
+			background: rgba(14, 124, 102, 0.12);
+			border-color: rgba(14, 124, 102, 0.28);
+		}
+
+		.result-banner.warn {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.24);
+		}
+
+		.result-banner.error {
+			background: rgba(166, 59, 45, 0.12);
+			border-color: rgba(166, 59, 45, 0.24);
+		}
+
+		.pm-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 12px;
+			align-items: center;
+			margin-top: 12px;
+		}
+
+		.audit-item {
+			padding: 12px 0;
+			border-bottom: 1px solid rgba(29, 42, 45, 0.08);
+		}
+
+		.audit-item:last-child {
+			border-bottom: 0;
+		}
+
+		.audit-item.admin-origin {
+			background: linear-gradient(90deg, rgba(14, 124, 102, 0.08), transparent 78%);
+			border-radius: 14px;
+			padding: 12px;
+			margin-left: -12px;
+		}
+
+		.audit-head {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+			margin-bottom: 6px;
+		}
+
+		.audit-badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 10px;
+			border-radius: 999px;
+			font-size: 11px;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			border: 1px solid var(--line);
+			background: rgba(24, 34, 38, 0.06);
+			color: var(--text);
+		}
+
+		.audit-badge.origin-admin {
+			background: rgba(14, 124, 102, 0.14);
+			border-color: rgba(14, 124, 102, 0.24);
+			color: var(--accent);
+		}
+
+		.audit-badge.origin-approval {
+			background: rgba(24, 34, 38, 0.06);
+			color: var(--muted);
+		}
+
+		.audit-badge.actor {
+			background: rgba(197, 103, 47, 0.12);
+			border-color: rgba(197, 103, 47, 0.22);
+			color: var(--warn);
+		}
+
+		.outcomes-panel {
+			padding: 16px;
+			border-radius: 18px;
+			background: rgba(255, 255, 255, 0.62);
+			border: 1px solid var(--line);
+		}
+
+		.outcomes-toolbar {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 12px;
+			align-items: end;
+			justify-content: space-between;
+			margin-bottom: 14px;
+		}
+
+		.outcomes-toolbar label {
+			display: grid;
+			gap: 6px;
+			font-size: 11px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		.outcomes-toolbar select {
+			min-width: 220px;
+			padding: 10px 12px;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: rgba(255, 255, 255, 0.88);
+			font: inherit;
+			color: var(--text);
+		}
+
+		.outcomes-summary {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+		}
+
+		.outcomes-note {
+			padding: 10px 12px;
+			border-radius: 12px;
+			background: rgba(24, 34, 38, 0.05);
+			color: var(--muted);
+			font-size: 13px;
+			line-height: 1.5;
+		}
+
+		.outcomes-note.warn {
+			background: rgba(197, 103, 47, 0.12);
+			color: var(--warn);
+		}
+
+		.outcomes-chart-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 14px;
+			margin-top: 14px;
+		}
+
+		.chart-card {
+			padding: 14px;
+			border-radius: 16px;
+			background: rgba(255, 255, 255, 0.78);
+			border: 1px solid var(--line);
+		}
+
+		.chart-head {
+			display: flex;
+			align-items: start;
+			justify-content: space-between;
+			gap: 12px;
+			margin-bottom: 12px;
+		}
+
+		.chart-title {
+			font-family: var(--font-display);
+			font-size: 1rem;
+			letter-spacing: -0.03em;
+		}
+
+		.chart-stat {
+			font-family: var(--font-display);
+			font-size: 1.4rem;
+			letter-spacing: -0.05em;
+		}
+
+		.chart-meta {
+			margin-top: 4px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.chart-svg {
+			width: 100%;
+			height: auto;
+			display: block;
+		}
+
+		.chart-axis {
+			font-size: 10px;
+			fill: var(--muted);
+		}
+
+		.chart-grid-line {
+			stroke: rgba(24, 34, 38, 0.08);
+			stroke-width: 1;
+		}
+
+		.chart-line {
+			fill: none;
+			stroke-width: 3;
+			stroke-linecap: round;
+			stroke-linejoin: round;
+		}
+
+		.chart-dot {
+			stroke: #fff;
+			stroke-width: 2;
+		}
+
+		.chart-empty {
+			min-height: 154px;
+			display: grid;
+			place-items: center;
+			border: 1px dashed var(--line);
+			border-radius: 14px;
+			background: rgba(24, 34, 38, 0.03);
+			color: var(--muted);
+			text-align: center;
+			padding: 16px;
+			font-size: 13px;
+		}
+
+		.pm-actions button {
+			padding: 12px 14px;
+			border: 1px solid var(--line);
+			border-radius: 12px;
+			background: var(--accent);
+			color: #fff;
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.pm-actions button[disabled] {
+			opacity: 0.6;
+			cursor: progress;
+		}
+
+		.pulse {
+			width: 72px;
+			height: 72px;
+			border-radius: 50%;
+			background: radial-gradient(circle, rgba(14, 124, 102, 0.32), transparent 70%);
+			animation: pulse 2.1s ease-in-out infinite;
+			margin: 0 auto 16px;
+		}
+
+		.footer-note {
+			margin-top: 14px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		@keyframes pulse {
+			0%, 100% { transform: scale(0.92); opacity: 0.45; }
+			50% { transform: scale(1.08); opacity: 1; }
+		}
+
+		@keyframes enter {
+			from {
+				opacity: 0;
+				transform: translateY(10px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
+		}
+
+		@media (max-width: 1040px) {
+			.hero,
+			.layout,
+			.detail-columns {
+				grid-template-columns: 1fr;
+			}
+
+			.outcomes-chart-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.run-list {
+				max-height: none;
+			}
+		}
+
+		@media (max-width: 720px) {
+			main {
+				width: min(100vw - 20px, 100%);
+				padding-top: 18px;
+			}
+
+			.hero-card,
+			.panel {
+				padding: 16px;
+			}
+
+			.hero-metrics,
+			.metadata-grid,
+			.detail-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.toolbar {
+				flex-direction: column;
+			}
+
+			.toolbar button {
+				width: 100%;
+			}
+
+			.outcomes-toolbar {
+				flex-direction: column;
+				align-items: stretch;
+			}
+
+			.outcomes-toolbar select {
+				min-width: 0;
+				width: 100%;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main>
+		<section class="hero">
+			<article class="hero-card">
+				<div class="eyebrow">RCA portal · structured summaries</div>
+				<h1>Run evidence without digging through raw JSON.</h1>
+				<p class="hero-copy">
+					Inspect the latest RCA runs, compare confidence and action sets, and drill into the structured payload that was persisted for each recommendation.
+				</p>
+				<div class="identity-panel" aria-label="portal identity">
+					<div class="identity-row">
+						<div>
+							<div class="meta-label">Current identity</div>
+							<div id="identityBadge" class="identity-badge">
+								<strong>Portal user</strong>
+								<span class="chip">Role planner</span>
+								<span class="chip">Org demo-org</span>
+							</div>
+						</div>
+						<span id="identityHint" class="muted tiny">Role badge refreshes from whoami when available.</span>
+					</div>
+					<form id="identityControls" class="dev-toggle" hidden>
+						<label>
+							Subject
+							<input id="identitySubjectInput" type="text" value="portal.user">
+						</label>
+						<label>
+							Role
+							<select id="identityRoleSelect">
+								<option value="planner">Operator</option>
+								<option value="maintainer">Maintainer</option>
+								<option value="admin">Admin</option>
+							</select>
+						</label>
+						<label>
+							Org
+							<input id="identityOrgInput" type="text" value="demo-org">
+						</label>
+						<button id="identityApplyButton" type="submit">Apply demo identity</button>
+					</form>
+				</div>
+			</article>
+			<section class="hero-metrics" aria-label="portal metrics">
+				<article class="metric">
+					<div class="metric-label">Loaded runs</div>
+					<div class="metric-value" id="metricRuns">0</div>
+				</article>
+				<article class="metric">
+					<div class="metric-label">Median confidence</div>
+					<div class="metric-value" id="metricConfidence">-</div>
+				</article>
+				<article class="metric">
+					<div class="metric-label">Latest status</div>
+					<div class="metric-value" id="metricStatus">-</div>
+				</article>
+				<article class="metric">
+					<div class="metric-label">Latest update</div>
+					<div class="metric-value" id="metricUpdated">-</div>
+				</article>
+			</section>
+		</section>
+
+		<section class="layout">
+			<aside class="panel">
+				<div class="panel-header">
+					<div>
+						<div class="eyebrow">Run queue</div>
+						<h2 class="panel-title">Recent summaries</h2>
+					</div>
+					<span class="muted tiny" id="resultsCount">0 visible</span>
+				</div>
+				<div class="toolbar">
+					<input id="searchInput" type="search" placeholder="Filter by asset, run, title, or status">
+					<button id="refreshButton" type="button">Refresh</button>
+				</div>
+				<div id="runList" class="run-list" aria-live="polite"></div>
+			</aside>
+
+			<section class="panel detail-shell">
+				<div class="panel-header">
+					<div>
+						<div class="eyebrow">Run detail</div>
+						<h2 class="panel-title">Structured output</h2>
+					</div>
+					<span class="muted tiny" id="detailStamp">No run selected</span>
+				</div>
+				<div id="detailView" class="empty-state">
+					<div>
+						<div class="pulse"></div>
+						<h3>Select a run</h3>
+						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+					</div>
+				</div>
+			</section>
+		</section>
+	</main>
+
+	<script>
+		const state = {
+			runs: [],
+			filteredRuns: [],
+			selectedRunId: null,
+			detailsById: new Map(),
+			approvalResultsById: new Map(),
+			approvalInFlightById: new Set(),
+			approvalHistoryById: new Map(),
+			auditLoadingById: new Set(),
+			selectedOutcomeAssetByRunId: new Map(),
+			outcomes: {
+				report: null,
+				loading: false,
+				error: "",
+				windowDays: 30,
+			},
+			session: {
+				subject: "portal.user",
+				role: "planner",
+				orgId: "demo-org",
+				authenticated: false,
+				authSource: "local-storage",
+				devMode: false,
+			},
+			loading: false,
+		};
+
+		const elements = {
+			runList: document.getElementById("runList"),
+			detailView: document.getElementById("detailView"),
+			detailStamp: document.getElementById("detailStamp"),
+			resultsCount: document.getElementById("resultsCount"),
+			metricRuns: document.getElementById("metricRuns"),
+			metricConfidence: document.getElementById("metricConfidence"),
+			metricStatus: document.getElementById("metricStatus"),
+			metricUpdated: document.getElementById("metricUpdated"),
+			searchInput: document.getElementById("searchInput"),
+			refreshButton: document.getElementById("refreshButton"),
+			identityBadge: document.getElementById("identityBadge"),
+			identityHint: document.getElementById("identityHint"),
+			identityControls: document.getElementById("identityControls"),
+			identitySubjectInput: document.getElementById("identitySubjectInput"),
+			identityRoleSelect: document.getElementById("identityRoleSelect"),
+			identityOrgInput: document.getElementById("identityOrgInput"),
+			identityApplyButton: document.getElementById("identityApplyButton"),
+		};
+
+		function portalDevFlagEnabled() {
+			const params = new URLSearchParams(window.location.search);
+			return params.get("portalDev") === "1" || window.localStorage.getItem("miPortalDevMode") === "true";
+		}
+
+		function readPortalIdentity() {
+			const subject = window.localStorage.getItem("miPortalUserId") || "portal.user";
+			const role = window.localStorage.getItem("miPortalUserRole") || "planner";
+			const orgId = window.localStorage.getItem("miPortalOrgId") || "demo-org";
+			const devMode = portalDevFlagEnabled();
+			if (devMode) {
+				window.localStorage.setItem("miPortalDevMode", "true");
+			}
+			return {
+				subject,
+				role,
+				orgId,
+				authenticated: false,
+				authSource: "local-storage",
+				devMode,
+			};
+		}
+
+		function writePortalIdentity(nextIdentity) {
+			window.localStorage.setItem("miPortalUserId", nextIdentity.subject);
+			window.localStorage.setItem("miPortalUserRole", nextIdentity.role);
+			window.localStorage.setItem("miPortalOrgId", nextIdentity.orgId);
+			if (nextIdentity.devMode) {
+				window.localStorage.setItem("miPortalDevMode", "true");
+			}
+		}
+
+		function syncIdentityInputs(identity = state.session) {
+			elements.identitySubjectInput.value = identity.subject || "portal.user";
+			elements.identityRoleSelect.value = identity.role || "planner";
+			elements.identityOrgInput.value = identity.orgId || "demo-org";
+		}
+
+		function identityBadgeText(identity = state.session) {
+			const roleLabel = (identity.role || "planner").toLowerCase();
+			const orgLabel = identity.orgId || "demo-org";
+			return {
+				title: identity.subject || "portal.user",
+				role: `Role ${roleLabel}`,
+				org: `Org ${orgLabel}`,
+			};
+		}
+
+		function renderIdentityPanel() {
+			const identity = state.session;
+			const badge = identityBadgeText(identity);
+			elements.identityBadge.innerHTML = `
+				<strong>${escapeHtml(badge.title)}</strong>
+				<span class="chip">${escapeHtml(badge.role)}</span>
+				<span class="chip">${escapeHtml(badge.org)}</span>
+			`;
+			elements.identityHint.textContent = identity.authenticated
+				? `Authenticated via ${identity.authSource || "identity middleware"}.`
+				: "Role badge is using local demo identity.";
+			elements.identityControls.hidden = !(identity.devMode || identity.authSource === "dev-header");
+			syncIdentityInputs(identity);
+		}
+
+		async function refreshIdentity() {
+			const localIdentity = readPortalIdentity();
+			state.session = localIdentity;
+			renderIdentityPanel();
+			try {
+				const whoami = await fetchJson("/api/v1/whoami", { headers: portalIdentityHeaders() });
+				const user = whoami?.user && typeof whoami.user === "object" ? whoami.user : {};
+				state.session = {
+					subject: user.subject || localIdentity.subject,
+					role: user.role || localIdentity.role,
+					orgId: user.org_id || localIdentity.orgId,
+					authenticated: Boolean(whoami?.authenticated),
+					authSource: user.auth_source || localIdentity.authSource,
+					devMode: localIdentity.devMode || user.auth_source === "dev-header",
+				};
+				writePortalIdentity(state.session);
+				renderIdentityPanel();
+				if (state.selectedRunId) {
+					const selected = state.detailsById.get(state.selectedRunId);
+					if (selected) {
+						renderDetail(selected);
+					}
+				}
+			} catch (error) {
+				void error;
+			}
+		}
+
+		function escapeHtml(value) {
+			return String(value ?? "")
+				.replaceAll("&", "&amp;")
+				.replaceAll("<", "&lt;")
+				.replaceAll(">", "&gt;")
+				.replaceAll('"', "&quot;")
+				.replaceAll("'", "&#39;");
+		}
+
+		function asObject(value) {
+			return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+		}
+
+		function asString(value, fallback = "") {
+			if (typeof value === "string") {
+				return value;
+			}
+			if (typeof value === "number" && Number.isFinite(value)) {
+				return String(value);
+			}
+			return fallback;
+		}
+
+		function asNumber(value) {
+			return typeof value === "number" && Number.isFinite(value) ? value : null;
+		}
+
+		function asStringList(value) {
+			if (!Array.isArray(value)) {
+				return [];
+			}
+			return value
+				.map((item) => asString(item).trim())
+				.filter(Boolean);
+		}
+
+		function asPointList(value) {
+			if (!Array.isArray(value)) {
+				return [];
+			}
+			return value
+				.map((item) => asObject(item))
+				.filter((item) => item.date);
+		}
+
+		function normalizeMetaValue(value) {
+			if (Array.isArray(value)) {
+				return value.map((item) => normalizeMetaValue(item)).filter((item) => item !== null && item !== "" && !(Array.isArray(item) && !item.length) && !(typeof item === "object" && item && !Object.keys(item).length));
+			}
+			if (value && typeof value === "object") {
+				return Object.fromEntries(
+					Object.entries(value)
+						.map(([key, item]) => [asString(key), normalizeMetaValue(item)])
+						.filter(([key, item]) => key && item !== null && item !== "" && !(Array.isArray(item) && !item.length) && !(typeof item === "object" && item && !Object.keys(item).length))
+				);
+			}
+			if (typeof value === "string") {
+				return value;
+			}
+			if (typeof value === "number" && Number.isFinite(value)) {
+				return String(value);
+			}
+			return null;
+		}
+
+		function normalizeRun(run) {
+			const source = asObject(run);
+			const structuredSource = asObject(source.structured);
+			const modelSource = asObject(source.model);
+			const contextMeta = normalizeMetaValue(asObject(source.context_meta));
+
+			return {
+				run_id: asString(source.run_id),
+				status: asString(source.status, "unknown") || "unknown",
+				event_id: asString(source.event_id),
+				recommendation_id: asString(source.recommendation_id),
+				title: asString(source.title) || asString(structuredSource.title),
+				summary: asString(source.summary) || asString(structuredSource.summary),
+				confidence: asNumber(source.confidence) ?? asNumber(structuredSource.confidence) ?? asNumber(modelSource.confidence),
+				hypothesis: asStringList(Array.isArray(source.hypothesis) && source.hypothesis.length ? source.hypothesis : structuredSource.hypothesis),
+				immediate_actions: asStringList(Array.isArray(source.immediate_actions) && source.immediate_actions.length ? source.immediate_actions : structuredSource.immediate_actions),
+				pm_suggestions: asStringList(Array.isArray(source.pm_suggestions) && source.pm_suggestions.length ? source.pm_suggestions : structuredSource.pm_suggestions),
+				structured: {
+					title: asString(structuredSource.title),
+					summary: asString(structuredSource.summary),
+					confidence: asNumber(structuredSource.confidence),
+					hypothesis: asStringList(structuredSource.hypothesis),
+					immediate_actions: asStringList(structuredSource.immediate_actions),
+					pm_suggestions: asStringList(structuredSource.pm_suggestions),
+				},
+				model: {
+					name: asString(modelSource.name),
+					version: asString(modelSource.version),
+					latency_ms: asNumber(modelSource.latency_ms),
+					confidence: asNumber(modelSource.confidence),
+				},
+				context_meta: asObject(contextMeta),
+				date: asString(source.date),
+				source_file: asString(source.source_file),
+				updated_at: source.updated_at,
+			};
+		}
+
+		function formatDate(timestamp) {
+			if (!timestamp) {
+				return "-";
+			}
+			const date = new Date(typeof timestamp === "number" ? timestamp * 1000 : timestamp);
+			if (Number.isNaN(date.getTime())) {
+				return "-";
+			}
+			return new Intl.DateTimeFormat(undefined, {
+				month: "short",
+				day: "numeric",
+				hour: "numeric",
+				minute: "2-digit",
+			}).format(date);
+		}
+
+		function formatConfidence(value) {
+			if (typeof value !== "number" || Number.isNaN(value)) {
+				return "-";
+			}
+			return `${Math.round(value * 100)}%`;
+		}
+
+		function normalizeStatus(value) {
+			const status = String(value || "unknown").toLowerCase();
+			if (["ok", "success", "completed"].includes(status)) {
+				return { label: status, className: "ok" };
+			}
+			if (["error", "failed", "failure"].includes(status)) {
+				return { label: status, className: "error" };
+			}
+			if (["warn", "warning", "degraded", "partial"].includes(status)) {
+				return { label: status, className: "warn" };
+			}
+			return { label: status, className: "unknown" };
+		}
+
+		function sortAssetIds(assetIds, preferredAssetId = "") {
+			return [...assetIds].sort((left, right) => {
+				if (left === preferredAssetId) {
+					return -1;
+				}
+				if (right === preferredAssetId) {
+					return 1;
+				}
+				return left.localeCompare(right);
+			});
+		}
+
+		function preferredOutcomeAsset(run, assetIds) {
+			const savedAssetId = state.selectedOutcomeAssetByRunId.get(run?.run_id);
+			if (savedAssetId && assetIds.includes(savedAssetId)) {
+				return savedAssetId;
+			}
+			const runAssetId = asString(asObject(run?.context_meta).asset_id);
+			if (runAssetId && assetIds.includes(runAssetId)) {
+				return runAssetId;
+			}
+			return assetIds[0] || "";
+		}
+
+		function metricValues(points) {
+			return points
+				.map((point) => asNumber(point?.value))
+				.filter((value) => typeof value === "number" && !Number.isNaN(value));
+		}
+
+		function formatTrendValue(value, metricName) {
+			if (typeof value !== "number" || Number.isNaN(value)) {
+				return "-";
+			}
+			if (metricName === "acceptance_rate") {
+				return `${Math.round(value * 100)}%`;
+			}
+			return `${Math.round(value)}`;
+		}
+
+		function chartSummary(points, metricName) {
+			const values = metricValues(points);
+			if (!values.length) {
+				return metricName === "acceptance_rate"
+					? "No accept or reject feedback was recorded for this asset in the current window."
+					: "No work orders were recorded for this asset in the current window.";
+			}
+			const peak = Math.max(...values);
+			const low = Math.min(...values);
+			if (metricName === "acceptance_rate") {
+				return `Range ${formatTrendValue(low, metricName)} to ${formatTrendValue(peak, metricName)} across the current window.`;
+			}
+			return `Peak daily volume ${formatTrendValue(peak, metricName)} · Low ${formatTrendValue(low, metricName)}.`;
+		}
+
+		function latestTrendValue(points) {
+			for (let index = points.length - 1; index >= 0; index -= 1) {
+				const value = asNumber(points[index]?.value);
+				if (typeof value === "number" && !Number.isNaN(value)) {
+					return value;
+				}
+			}
+			return null;
+		}
+
+		function buildTrendSegments(points, width, height, padding) {
+			const numericValues = metricValues(points);
+			if (!numericValues.length) {
+				return { segments: [], lastPoint: null };
+			}
+			const minValue = Math.min(...numericValues);
+			const maxValue = Math.max(...numericValues);
+			const spread = maxValue - minValue;
+			const xDenominator = Math.max(points.length - 1, 1);
+			const toX = (index) => padding + ((width - (padding * 2)) * index) / xDenominator;
+			const toY = (value) => {
+				const normalized = spread === 0 ? 0.5 : (value - minValue) / spread;
+				return height - padding - (normalized * (height - (padding * 2)));
+			};
+			const segments = [];
+			let currentSegment = [];
+			let lastPoint = null;
+			points.forEach((point, index) => {
+				const numericValue = asNumber(point?.value);
+				if (typeof numericValue !== "number" || Number.isNaN(numericValue)) {
+					if (currentSegment.length) {
+						segments.push(currentSegment);
+						currentSegment = [];
+					}
+					return;
+				}
+				const nextPoint = {
+					x: toX(index),
+					y: toY(numericValue),
+				};
+				currentSegment.push(nextPoint);
+				lastPoint = nextPoint;
+			});
+			if (currentSegment.length) {
+				segments.push(currentSegment);
+			}
+			return { segments, lastPoint };
+		}
+
+		function renderTrendChartSvg(points, metricName, color) {
+			const width = 340;
+			const height = 160;
+			const padding = 16;
+			const { segments, lastPoint } = buildTrendSegments(points, width, height, padding);
+			if (!segments.length) {
+				const emptyLabel = metricName === "acceptance_rate"
+					? "No acceptance decisions yet"
+					: "No work order volume yet";
+				return `<div class="chart-empty">${escapeHtml(emptyLabel)}</div>`;
+			}
+			const firstLabel = asString(points[0]?.date, "-");
+			const lastLabel = asString(points[points.length - 1]?.date, "-");
+			const polylines = segments.map((segment) => `
+				<polyline class="chart-line" points="${segment.map((point) => `${point.x},${point.y}`).join(" ")}" style="stroke: ${escapeHtml(color)}"></polyline>
+			`).join("");
+			const dot = lastPoint
+				? `<circle class="chart-dot" cx="${lastPoint.x}" cy="${lastPoint.y}" r="5" fill="${escapeHtml(color)}"></circle>`
+				: "";
+			return `
+				<svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metricName)} trend chart">
+					<line class="chart-grid-line" x1="${padding}" y1="${padding}" x2="${width - padding}" y2="${padding}"></line>
+					<line class="chart-grid-line" x1="${padding}" y1="${height / 2}" x2="${width - padding}" y2="${height / 2}"></line>
+					<line class="chart-grid-line" x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}"></line>
+					${polylines}
+					${dot}
+					<text class="chart-axis" x="${padding}" y="${height - 2}">${escapeHtml(firstLabel)}</text>
+					<text class="chart-axis" x="${width - padding}" y="${height - 2}" text-anchor="end">${escapeHtml(lastLabel)}</text>
+				</svg>
+			`;
+		}
+
+		function renderTrendCard(title, metricName, points, color) {
+			const latestValue = latestTrendValue(points);
+			return `
+				<article class="chart-card">
+					<div class="chart-head">
+						<div>
+							<div class="chart-title">${escapeHtml(title)}</div>
+							<div class="chart-meta">${escapeHtml(chartSummary(points, metricName))}</div>
+						</div>
+						<div class="chart-stat">${escapeHtml(formatTrendValue(latestValue, metricName))}</div>
+					</div>
+					${renderTrendChartSvg(points, metricName, color)}
+				</article>
+			`;
+		}
+
+		function renderOutcomesPanel(run) {
+			const report = asObject(state.outcomes.report);
+			const outcomesWindow = asNumber(report.window_days) || state.outcomes.windowDays;
+			if (state.outcomes.loading) {
+				return `
+					<div class="outcomes-panel">
+						<div class="outcomes-note">Loading outcomes trends for the last ${escapeHtml(outcomesWindow)} days.</div>
+					</div>
+				`;
+			}
+			if (state.outcomes.error) {
+				return `
+					<div class="outcomes-panel">
+						<div class="outcomes-note warn">Unable to load outcomes trends: ${escapeHtml(state.outcomes.error)}</div>
+					</div>
+				`;
+			}
+			const assetMetrics = asObject(report.asset_metrics);
+			const runAssetId = asString(asObject(run.context_meta).asset_id);
+			const assetIds = sortAssetIds(Object.keys(assetMetrics), runAssetId);
+			if (!assetIds.length) {
+				return `
+					<div class="outcomes-panel">
+						<div class="outcomes-note">No asset trend data is available yet for the current outcomes window.</div>
+					</div>
+				`;
+			}
+			const selectedAssetId = preferredOutcomeAsset(run, assetIds);
+			state.selectedOutcomeAssetByRunId.set(run.run_id, selectedAssetId);
+			const selectedMetrics = asObject(assetMetrics[selectedAssetId]);
+			const workorderSeries = asPointList(selectedMetrics.workorder_volume);
+			const acceptanceSeries = asPointList(selectedMetrics.acceptance_rate);
+			const warnings = asStringList(report.warnings).slice(0, 2);
+			const warningMarkup = [
+				report.status === "partial" ? `
+					<div class="outcomes-note warn">Partial outcomes report: ${escapeHtml(warnings[0] || "one or more metric queries degraded, so this panel may be incomplete.")}</div>
+				` : "",
+				runAssetId && selectedAssetId !== runAssetId ? `
+					<div class="outcomes-note">No trend series was found for ${escapeHtml(runAssetId)}. Showing ${escapeHtml(selectedAssetId)} instead.</div>
+				` : "",
+			].filter(Boolean).join("");
+			return `
+				<div class="outcomes-panel">
+					<div class="outcomes-toolbar">
+						<label>
+							Asset selector
+							<select id="outcomesAssetSelect" aria-label="Select asset trend series">
+								${assetIds.map((assetId) => `<option value="${escapeHtml(assetId)}" ${assetId === selectedAssetId ? "selected" : ""}>${escapeHtml(assetId)}</option>`).join("")}
+							</select>
+						</label>
+						<div class="outcomes-summary">
+							<span class="chip">Last ${escapeHtml(outcomesWindow)} days</span>
+							<span class="chip">Source outcomes.asset_metrics</span>
+						</div>
+					</div>
+					${warningMarkup}
+					<div class="outcomes-chart-grid">
+						${renderTrendCard("Workorder volume", "workorder_volume", workorderSeries, "#0e7c66")}
+						${renderTrendCard("Acceptance rate", "acceptance_rate", acceptanceSeries, "#c5672f")}
+					</div>
+				</div>
+			`;
+		}
+
+		function portalIdentityHeaders() {
+			const identity = readPortalIdentity();
+			return {
+				"Content-Type": "application/json",
+				Accept: "application/json",
+				"X-User-Id": identity.subject,
+				"X-User-Role": identity.role,
+				"X-Org-Id": identity.orgId,
+			};
+		}
+
+		function portalUserRole() {
+			return (state.session.role || readPortalIdentity().role || "planner").toLowerCase();
+		}
+
+		function portalUserIsAdmin() {
+			return ["admin", "maintainer"].includes(portalUserRole());
+		}
+
+		function metricMedianConfidence(runs) {
+			const values = runs
+				.map((run) => run.confidence)
+				.filter((value) => typeof value === "number" && !Number.isNaN(value))
+				.sort((left, right) => left - right);
+			if (!values.length) {
+				return "-";
+			}
+			const middle = Math.floor(values.length / 2);
+			const median = values.length % 2 === 0
+				? (values[middle - 1] + values[middle]) / 2
+				: values[middle];
+			return formatConfidence(median);
+		}
+
+		function getSearchText(run) {
+			return [
+				run.run_id,
+				run.title,
+				run.status,
+				run.event_id,
+				run.recommendation_id,
+				run.context_meta?.asset_id,
+				run.model?.name,
+			].join(" ").toLowerCase();
+		}
+
+		function renderRunList() {
+			const runs = state.filteredRuns;
+			const query = elements.searchInput.value.trim();
+			elements.resultsCount.textContent = `${runs.length} visible`;
+
+			if (!runs.length) {
+				const title = query ? "No runs matched" : "No valid runs available";
+				const message = query
+					? "Try a broader search term or refresh after new summaries are written."
+					: "The portal could not find any valid run summaries to display. Refresh after new artifacts are written.";
+				elements.runList.innerHTML = `
+					<div class="empty-state">
+						<div>
+							<h3>${escapeHtml(title)}</h3>
+							<p>${escapeHtml(message)}</p>
+						</div>
+					</div>
+				`;
+				return;
+			}
+
+			elements.runList.innerHTML = runs.map((run, index) => {
+				const status = normalizeStatus(run.status);
+				const assetId = run.context_meta?.asset_id || "Unscoped asset";
+				const activeClass = run.run_id === state.selectedRunId ? " active" : "";
+				return `
+					<button class="run-card${activeClass}" type="button" data-run-id="${escapeHtml(run.run_id)}">
+						<div class="run-card-header">
+							<div class="run-index">${index + 1}</div>
+							<div>
+								<div class="run-title">${escapeHtml(run.title || "Untitled recommendation")}</div>
+								<p class="muted tiny">${escapeHtml(assetId)} · ${escapeHtml(run.run_id)}</p>
+							</div>
+							<span class="status-pill ${status.className}">${escapeHtml(status.label)}</span>
+						</div>
+						<div class="metadata-grid">
+							<div class="meta-tile">
+								<div class="meta-label">Confidence</div>
+								<div class="meta-value">${escapeHtml(formatConfidence(run.confidence))}</div>
+							</div>
+							<div class="meta-tile">
+								<div class="meta-label">Updated</div>
+								<div class="meta-value">${escapeHtml(formatDate(run.updated_at))}</div>
+							</div>
+						</div>
+					</button>
+				`;
+			}).join("");
+
+			elements.runList.querySelectorAll("[data-run-id]").forEach((button) => {
+				button.addEventListener("click", () => {
+					selectRun(button.getAttribute("data-run-id"));
+				});
+			});
+		}
+
+		function renderMetrics() {
+			const latest = state.runs[0];
+			elements.metricRuns.textContent = String(state.runs.length);
+			elements.metricConfidence.textContent = metricMedianConfidence(state.runs);
+			elements.metricStatus.textContent = latest ? normalizeStatus(latest.status).label : "-";
+			elements.metricUpdated.textContent = latest ? formatDate(latest.updated_at) : "-";
+		}
+
+		function renderDetail(run) {
+			if (!run) {
+				elements.detailStamp.textContent = "No run selected";
+				elements.detailView.className = "empty-state";
+				elements.detailView.innerHTML = `
+					<div>
+						<div class="pulse"></div>
+						<h3>Select a run</h3>
+						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+					</div>
+				`;
+				return;
+			}
+
+			const status = normalizeStatus(run.status);
+			const structured = asObject(run.structured);
+			const contextMeta = asObject(run.context_meta);
+			const model = asObject(run.model);
+			const assetId = contextMeta.asset_id || "Unscoped asset";
+			const eventKind = contextMeta.event_kind || contextMeta.kind || "-";
+			const modelName = [model.name, model.version].filter(Boolean).join(" · ") || "-";
+			const summaryText = structured.summary || "This run summary is partial. Missing fields were left empty so the detail view can still load safely.";
+			const approvalResult = state.approvalResultsById.get(run.run_id);
+			const approvalHistory = state.approvalHistoryById.get(run.run_id);
+			const canApprove = Array.isArray(run.pm_suggestions) && run.pm_suggestions.length > 0;
+			const approvalBusy = state.approvalInFlightById.has(run.run_id);
+			const auditBusy = state.auditLoadingById.has(run.run_id);
+			const proposalId = run.recommendation_id || run.run_id;
+			const retryState = getRetryState(approvalResult, approvalHistory);
+			const isAdmin = portalUserIsAdmin();
+			const buttonLabel = getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin });
+			const actionHint = retryState.isRetry
+				? (isAdmin
+					? `Admin retry attempts remaining: ${retryState.attemptsRemaining} of ${retryState.maxAttempts}.`
+					: "Manual retries require an admin or maintainer role.")
+				: "Approval uses the PM advisor analyze + approve flow for this run.";
+
+			elements.detailStamp.textContent = `${run.run_id} · ${formatDate(run.updated_at)}`;
+			elements.detailView.className = "";
+			elements.detailView.innerHTML = `
+				<div>
+					<div class="detail-columns">
+						<div>
+							<div class="eyebrow">${escapeHtml(assetId)}</div>
+							<h2>${escapeHtml(run.title || structured.title || "Untitled recommendation")}</h2>
+							<p class="hero-copy">${escapeHtml(summaryText)}</p>
+						</div>
+						<div class="chips">
+							<span class="status-pill ${status.className}">${escapeHtml(status.label)}</span>
+							<span class="chip">Confidence ${escapeHtml(formatConfidence(run.confidence ?? model.confidence))}</span>
+							<span class="chip">Model ${escapeHtml(modelName)}</span>
+						</div>
+					</div>
+
+					<div class="detail-grid">
+						<div class="meta-tile">
+							<div class="meta-label">Event</div>
+							<div class="meta-value">${escapeHtml(run.event_id || "-")}</div>
+						</div>
+						<div class="meta-tile">
+							<div class="meta-label">Recommendation</div>
+							<div class="meta-value">${escapeHtml(run.recommendation_id || "-")}</div>
+						</div>
+						<div class="meta-tile">
+							<div class="meta-label">Event kind</div>
+							<div class="meta-value">${escapeHtml(eventKind)}</div>
+						</div>
+						<div class="meta-tile">
+							<div class="meta-label">Latency</div>
+							<div class="meta-value">${escapeHtml(model.latency_ms ? `${model.latency_ms} ms` : "-")}</div>
+						</div>
+					</div>
+
+					<div class="section">
+						<h3>Hypotheses</h3>
+						${renderList(run.hypothesis, "No hypotheses were stored for this run.")}
+					</div>
+
+					<div class="section">
+						<h3>Immediate actions</h3>
+						${renderList(run.immediate_actions, "No immediate actions were stored for this run.")}
+					</div>
+
+					<div class="section">
+						<h3>PM suggestions</h3>
+						${renderList(run.pm_suggestions, "No PM suggestions were stored for this run.")}
+						<div class="pm-actions">
+							<button id="approvePmButton" type="button" ${(canApprove && retryState.enabled) ? "" : "disabled"}>
+								${escapeHtml(buttonLabel)}
+							</button>
+							<span class="muted tiny">${escapeHtml(actionHint)}</span>
+						</div>
+						${renderApprovalBanner(approvalResult)}
+					</div>
+
+					<div class="section">
+						<h3>Approval history</h3>
+						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
+					</div>
+
+					<div class="section">
+						<div class="section-head">
+							<h3>Asset trend snapshot</h3>
+							<span class="muted tiny">Compact outcomes view for demos in the portal.</span>
+						</div>
+						${renderOutcomesPanel(run)}
+					</div>
+
+					<div class="section">
+						<h3>Context metadata</h3>
+						${renderChips(contextMeta, "No context metadata was captured.")}
+					</div>
+
+					<pre class="json-box">${escapeHtml(JSON.stringify(structured, null, 2))}</pre>
+					<div class="footer-note">Source: ${escapeHtml(run.date || "-")}/${escapeHtml(run.source_file || "-")}</div>
+				</div>
+			`;
+
+			const approveButton = document.getElementById("approvePmButton");
+			if (approveButton && canApprove && retryState.enabled) {
+				approveButton.addEventListener("click", () => {
+					approveRun(run, retryState, { adminRetry: isAdmin && retryState.isRetry });
+				});
+			}
+
+			const loadMoreButton = document.getElementById("loadMoreAuditButton");
+			if (loadMoreButton && approvalHistory?.has_more && !auditBusy) {
+				loadMoreButton.addEventListener("click", () => {
+					loadApprovalHistory(run, { page: (approvalHistory.page || 1) + 1, size: approvalHistory.size || 3, append: true });
+				});
+			}
+
+			const outcomesAssetSelect = document.getElementById("outcomesAssetSelect");
+			if (outcomesAssetSelect) {
+				outcomesAssetSelect.addEventListener("change", () => {
+					state.selectedOutcomeAssetByRunId.set(run.run_id, outcomesAssetSelect.value);
+					renderDetail(run);
+				});
+			}
+
+			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
+				void ensureOutcomesReport();
+			}
+		}
+
+		async function ensureOutcomesReport() {
+			if (state.outcomes.loading || state.outcomes.report) {
+				return;
+			}
+			state.outcomes.loading = true;
+			state.outcomes.error = "";
+			const selectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+			if (selectedRun) {
+				renderDetail(selectedRun);
+			}
+			try {
+				state.outcomes.report = await fetchJson(`/api/v1/reports/rca-outcomes?window=${encodeURIComponent(state.outcomes.windowDays)}`);
+			} catch (error) {
+				state.outcomes.error = error instanceof Error ? error.message : "Unknown outcomes error";
+			} finally {
+				state.outcomes.loading = false;
+				const nextSelectedRun = state.selectedRunId ? state.detailsById.get(state.selectedRunId) : null;
+				if (nextSelectedRun) {
+					renderDetail(nextSelectedRun);
+				}
+			}
+		}
+
+		function resetOutcomesReport() {
+			state.outcomes.report = null;
+			state.outcomes.error = "";
+			state.outcomes.loading = false;
+		}
+
+		function getRetryState(result, history) {
+			const source = history && typeof history === "object" ? history : result && typeof result === "object" ? result : {};
+			const attemptCount = typeof source.attempt_count === "number" ? source.attempt_count : 0;
+			const attemptsRemaining = typeof source.attempts_remaining === "number" ? source.attempts_remaining : 0;
+			const maxAttempts = typeof source.max_attempts === "number" ? source.max_attempts : Math.max(attemptCount, 0);
+			const retryAllowed = Boolean(source.retry_allowed);
+			const approved = Boolean(result?.approved);
+			const lastState = source.handoff_state || result?.attempt_status || result?.handoff_state || "pending";
+			const isRetry = attemptCount > 0 && !approved;
+			return {
+				attemptCount,
+				attemptsRemaining,
+				maxAttempts,
+				retryAllowed,
+				lastState,
+				isRetry,
+				enabled: Boolean(!approved && retryAllowed),
+			};
+		}
+
+		function getApprovalActionLabel({ canApprove, approvalBusy, retryState, isAdmin }) {
+			if (!canApprove) {
+				return "Approve PM proposal";
+			}
+			if (approvalBusy) {
+				return retryState.isRetry ? (isAdmin ? "Admin retry in progress..." : "Retrying handoff...") : "Submitting approval...";
+			}
+			if (retryState.isRetry) {
+				if (!isAdmin) {
+					return "Admin Retry Only";
+				}
+				return retryState.enabled ? "Admin Retry" : "Retry limit reached";
+			}
+			return "Approve PM proposal";
+		}
+
+		function renderApprovalBanner(result) {
+			if (!result) {
+				return `<p class="muted tiny">No approval attempt recorded for this run in this browser session.</p>`;
+			}
+			const tone = result.approved ? "success" : result.status === "pending" ? "warn" : "error";
+			const workOrderId = result.work_order?.wo_id || result.proposal?.work_order_id || "-";
+			const approvedBy = result.approved_by || result.proposal?.approved_by || "Unknown approver";
+			const approvedAt = result.approved_at || result.proposal?.approved_at || "Pending";
+			const lastAttempt = result.last_attempt_info && typeof result.last_attempt_info === "object" ? result.last_attempt_info : {};
+			const attemptCount = typeof result.attempt_count === "number" ? result.attempt_count : 0;
+			const attemptNumber = typeof lastAttempt.attempt_number === "number" ? lastAttempt.attempt_number : attemptCount;
+			const connectorMessage = lastAttempt.connector_result?.message || lastAttempt.error_message || result.detail || "Approval update recorded";
+			const connectorStatus = lastAttempt.connector_result?.status || result.attempt_status || result.handoff_state || result.status || "unknown";
+			const reuseLine = result.reused_result ? "Reused existing CMMS handoff result." : "Fresh handoff result.";
+			const attemptSummary = attemptCount > 0 ? `Attempt ${attemptNumber} of ${attemptCount}` : "No attempts recorded";
+			const retryLine = result.retry_allowed
+				? `Retries remaining: ${result.attempts_remaining} of ${result.max_attempts}.`
+				: `Retry limit reached at ${result.max_attempts || attemptCount || 0} attempts.`;
+			return `
+				<div class="result-banner ${tone}">
+					<strong>${escapeHtml(result.detail || "Approval update recorded")}</strong>
+					<div class="footer-note">Status: ${escapeHtml(result.status || "unknown")} · Attempt state: ${escapeHtml(result.attempt_status || result.handoff_state || "unknown")} · ${escapeHtml(attemptSummary)}</div>
+					<div class="footer-note">Approved by: ${escapeHtml(approvedBy)} · Approved at: ${escapeHtml(approvedAt)} · Work order: ${escapeHtml(workOrderId)}</div>
+					<div class="footer-note">Last attempt: ${escapeHtml(lastAttempt.attempted_at || "Unknown time")} · Connector: ${escapeHtml(connectorStatus)} · ${escapeHtml(connectorMessage)}</div>
+					<div class="footer-note">${escapeHtml(retryLine)}</div>
+					<div class="footer-note">${escapeHtml(reuseLine)}</div>
+				</div>
+			`;
+		}
+
+		function renderApprovalHistoryPanel(history, proposalId, auditBusy = false) {
+			const attempts = Array.isArray(history?.attempts) ? history.attempts : [];
+			if (!attempts.length) {
+				return `
+					<p class="muted">No approval attempts recorded yet.</p>
+					<p class="footer-note">Showing 0 of ${escapeHtml(history?.total_count ?? 0)} attempts.</p>
+					<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=3" target="_blank" rel="noreferrer">View full audit</a></p>
+				`;
+			}
+			const loadMore = history?.has_more
+				? `<button id="loadMoreAuditButton" type="button">${auditBusy ? "Loading more audit..." : "Load more"}</button>`
+				: `<p class="footer-note">All recorded audit attempts are visible.</p>`;
+			return `
+				<ol class="list">${attempts.map((attempt) => `
+					<li class="audit-item ${(attempt.origin || "approval") === "admin" ? "admin-origin" : ""}">
+						<div class="audit-head">
+							<strong>${escapeHtml(attempt.handoff_state || attempt.result || "pending")}</strong>
+							<span class="audit-badge actor">Actor ${escapeHtml(attempt.approved_by || "Unknown approver")}</span>
+							<span class="audit-badge origin-${escapeHtml((attempt.origin || "approval").toLowerCase())}">Origin ${escapeHtml(attempt.origin || "approval")}</span>
+						</div>
+						<div class="footer-note">Attempt ${escapeHtml(attempt.attempt_number || "?")} · ${escapeHtml(attempt.attempted_at || "Unknown time")}</div>
+						${attempt.connector_result?.message ? `<div class="footer-note">${escapeHtml(attempt.connector_result.message)}</div>` : ""}
+						${attempt.error_message ? `<div class="footer-note">${escapeHtml(attempt.error_message)}</div>` : ""}
+					</li>
+					`).join("")}</ol>
+				<p class="footer-note">Showing ${escapeHtml(attempts.length)} of ${escapeHtml(history?.total_count ?? attempts.length)} attempts.</p>
+				<p class="footer-note">Retries remaining: ${escapeHtml(history.attempts_remaining ?? 0)} of ${escapeHtml(history.max_attempts ?? attempts.length)}</p>
+				<div class="pm-actions">
+					${loadMore}
+					<span class="muted tiny">Paged audit uses the same normalized approval history API.</span>
+				</div>
+				<p class="footer-note"><a href="/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=1&size=${encodeURIComponent(history?.size || 3)}" target="_blank" rel="noreferrer">View full audit</a></p>
+			`;
+		}
+
+		function renderList(items, emptyText) {
+			if (!Array.isArray(items) || !items.length) {
+				return `<p class="muted">${escapeHtml(emptyText)}</p>`;
+			}
+			return `<ol class="list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`;
+		}
+
+		function renderChips(meta, emptyText) {
+			const entries = Object.entries(meta || {}).filter(([, value]) => value !== null && value !== undefined && value !== "");
+			if (!entries.length) {
+				return `<p class="muted">${escapeHtml(emptyText)}</p>`;
+			}
+			function formatMetaValue(value) {
+				if (Array.isArray(value)) {
+					return value.join(", ");
+				}
+				if (value && typeof value === "object") {
+					return JSON.stringify(value);
+				}
+				return value;
+			}
+			return `<div class="chips">${entries.map(([key, value]) => `
+				<span class="chip">${escapeHtml(key)}: ${escapeHtml(formatMetaValue(value))}</span>
+			`).join("")}</div>`;
+		}
+
+		function setListLoading() {
+			elements.runList.innerHTML = `
+				<div class="loading-state">
+					<div>
+						<div class="pulse"></div>
+						<h3>Loading runs</h3>
+						<p>Fetching the latest RCA summaries from the API.</p>
+					</div>
+				</div>
+			`;
+		}
+
+		function setError(message) {
+			elements.detailStamp.textContent = "Request failed";
+			elements.detailView.className = "error-state";
+			elements.detailView.innerHTML = `
+				<div>
+					<h3>Portal request failed</h3>
+					<p>${escapeHtml(message)}</p>
+				</div>
+			`;
+		}
+
+		async function fetchJson(url, init = {}) {
+			const response = await fetch(url, {
+				...init,
+				headers: {
+					Accept: "application/json",
+					...(init.headers || {}),
+				},
+			});
+			if (!response.ok) {
+				let detail = `${response.status} ${response.statusText}`;
+				try {
+					const body = await response.json();
+					if (body && body.detail) {
+						detail = body.detail;
+					}
+				} catch (error) {
+					void error;
+				}
+				throw new Error(detail);
+			}
+			try {
+				return await response.json();
+			} catch (error) {
+				void error;
+				throw new Error("Portal API returned invalid JSON");
+			}
+		}
+
+		async function postJson(url, payload) {
+			const response = await fetch(url, {
+				method: "POST",
+				headers: portalIdentityHeaders(),
+				body: JSON.stringify(payload),
+			});
+			let body = {};
+			try {
+				body = await response.json();
+			} catch (error) {
+				void error;
+			}
+			if (!response.ok) {
+				const detail = body && body.detail ? body.detail : `${response.status} ${response.statusText}`;
+				throw new Error(detail);
+			}
+			return body;
+		}
+
+		async function approveRun(run, retryState = getRetryState(state.approvalResultsById.get(run?.run_id), state.approvalHistoryById.get(run?.run_id)), options = {}) {
+			if (!run?.run_id) {
+				return;
+			}
+			const adminRetry = Boolean(options.adminRetry);
+			const confirmation = retryState.isRetry
+				? `${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.`
+				: `Approve the PM proposal for ${run.run_id}?`;
+			if (!window.confirm(confirmation)) {
+				return;
+			}
+
+			state.approvalInFlightById.add(run.run_id);
+			renderDetail(run);
+			try {
+				const analyze = await postJson("/api/v1/agents/pm/advisor/analyze", { run_id: run.run_id });
+				const proposalId = analyze?.proposal?.proposal_id || run.recommendation_id || run.run_id;
+				const approval = await postJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/approve`, adminRetry ? { admin_retry: true } : {});
+				state.approvalResultsById.set(run.run_id, approval);
+				await loadApprovalHistory({ ...run, recommendation_id: proposalId });
+				renderDetail({
+					...run,
+					approved_by: approval.proposal?.approved_by || approval.approved_by,
+					approved_at: approval.proposal?.approved_at || approval.approved_at,
+				});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown approval error";
+				const existingHistory = state.approvalHistoryById.get(run.run_id);
+				const existingRetryState = getRetryState(state.approvalResultsById.get(run.run_id), existingHistory);
+				state.approvalResultsById.set(run.run_id, {
+					status: "error",
+					handoff_state: "failure",
+					attempt_status: "failure",
+					attempt_count: existingRetryState.attemptCount,
+					attempts_remaining: existingRetryState.attemptsRemaining,
+					max_attempts: existingRetryState.maxAttempts,
+					retry_allowed: existingRetryState.retryAllowed,
+					last_attempt_info: { attempted_at: "", attempt_number: 0, connector_result: {}, error_message: message },
+					reused_result: false,
+					approved: false,
+					detail: message,
+					proposal: { approved_by: "", approved_at: "", work_order_id: "" },
+					work_order: {},
+				});
+				await loadApprovalHistory(run);
+				renderDetail(run);
+			} finally {
+				state.approvalInFlightById.delete(run.run_id);
+				renderDetail(run);
+			}
+		}
+
+		function appendApprovalHistoryPage(existingHistory, nextHistory) {
+			const existingAttempts = Array.isArray(existingHistory?.attempts) ? existingHistory.attempts : [];
+			const nextAttempts = Array.isArray(nextHistory?.attempts) ? nextHistory.attempts : [];
+			const seen = new Set(existingAttempts.map((attempt) => `${attempt.attempt_number || "?"}:${attempt.attempted_at || ""}`));
+			const mergedAttempts = existingAttempts.concat(
+				nextAttempts.filter((attempt) => {
+					const key = `${attempt.attempt_number || "?"}:${attempt.attempted_at || ""}`;
+					if (seen.has(key)) {
+						return false;
+					}
+					seen.add(key);
+					return true;
+				})
+			);
+			return {
+				...nextHistory,
+				attempts: mergedAttempts,
+			};
+		}
+
+		async function loadApprovalHistory(run, options = {}) {
+			const proposalId = run?.recommendation_id || run?.run_id;
+			if (!proposalId) {
+				return;
+			}
+			const page = Number.isFinite(options.page) ? Math.max(1, options.page) : 1;
+			const size = Number.isFinite(options.size) ? Math.max(1, options.size) : 3;
+			const append = Boolean(options.append);
+			state.auditLoadingById.add(run.run_id);
+			if (state.selectedRunId === run.run_id) {
+				renderDetail(run);
+			}
+			try {
+				const history = await fetchJson(`/api/v1/agents/pm/proposals/${encodeURIComponent(proposalId)}/history?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}`);
+				const nextHistory = append
+					? appendApprovalHistoryPage(state.approvalHistoryById.get(run.run_id), history)
+					: history;
+				state.approvalHistoryById.set(run.run_id, nextHistory);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
+			} catch (error) {
+				void error;
+			} finally {
+				state.auditLoadingById.delete(run.run_id);
+				if (state.selectedRunId === run.run_id) {
+					renderDetail(run);
+				}
+			}
+		}
+
+		function applyFilter() {
+			const query = elements.searchInput.value.trim().toLowerCase();
+			state.filteredRuns = query
+				? state.runs.filter((run) => getSearchText(run).includes(query))
+				: [...state.runs];
+			renderRunList();
+
+			if (!state.filteredRuns.some((run) => run.run_id === state.selectedRunId)) {
+				if (state.filteredRuns[0]) {
+					selectRun(state.filteredRuns[0].run_id);
+				} else {
+					state.selectedRunId = null;
+					renderDetail(null);
+				}
+			}
+		}
+
+		async function loadRuns() {
+			if (state.loading) {
+				return;
+			}
+			state.loading = true;
+			setListLoading();
+			try {
+				const runs = await fetchJson("/api/v1/portal/runs?limit=24");
+				state.runs = Array.isArray(runs) ? runs.map((run) => normalizeRun(run)) : [];
+				renderMetrics();
+				applyFilter();
+
+				if (!state.selectedRunId && state.filteredRuns[0]) {
+					await selectRun(state.filteredRuns[0].run_id);
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				elements.runList.innerHTML = `
+					<div class="error-state">
+						<div>
+							<h3>Unable to load runs</h3>
+							<p>${escapeHtml(message)}</p>
+						</div>
+					</div>
+				`;
+				setError(message);
+				renderMetrics();
+			} finally {
+				state.loading = false;
+			}
+		}
+
+		async function selectRun(runId) {
+			if (!runId) {
+				return;
+			}
+
+			state.selectedRunId = runId;
+			renderRunList();
+
+			if (state.detailsById.has(runId)) {
+				const cached = state.detailsById.get(runId);
+				renderDetail(cached);
+				if (!state.approvalHistoryById.has(runId)) {
+					await loadApprovalHistory(cached);
+				}
+				return;
+			}
+
+			elements.detailStamp.textContent = `${runId} · loading`;
+			elements.detailView.className = "loading-state";
+			elements.detailView.innerHTML = `
+				<div>
+					<div class="pulse"></div>
+					<h3>Loading detail</h3>
+					<p>Fetching structured RCA output for ${escapeHtml(runId)}.</p>
+				</div>
+			`;
+
+			try {
+				const detail = await fetchJson(`/api/v1/portal/runs/${encodeURIComponent(runId)}`);
+				const normalized = normalizeRun(detail);
+				state.detailsById.set(runId, normalized);
+				renderDetail(normalized);
+				await loadApprovalHistory(normalized);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				setError(message);
+			}
+		}
+
+		elements.searchInput.addEventListener("input", applyFilter);
+		elements.refreshButton.addEventListener("click", async () => {
+			state.detailsById.clear();
+			resetOutcomesReport();
+			await loadRuns();
+		});
+		elements.identityControls.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			state.session = {
+				...state.session,
+				subject: elements.identitySubjectInput.value.trim() || "portal.user",
+				role: elements.identityRoleSelect.value || "planner",
+				orgId: elements.identityOrgInput.value.trim() || "demo-org",
+				devMode: true,
+				authSource: state.session.authSource || "local-storage",
+			};
+			writePortalIdentity(state.session);
+			renderIdentityPanel();
+			await refreshIdentity();
+		});
+
+		state.session = readPortalIdentity();
+		renderIdentityPanel();
+		refreshIdentity();
+		loadRuns();
+	</script>
+</body>
+</html>

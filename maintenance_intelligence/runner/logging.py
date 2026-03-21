@@ -1,8 +1,7 @@
+from loguru import logger
 import sys
 import time
 import uuid
-
-from loguru import logger
 
 
 def setup_logger(level: str = "INFO"):

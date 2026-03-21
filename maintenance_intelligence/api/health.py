@@ -1,12 +1,11 @@
-import os
-import socket
-from typing import Any, Dict, List
-
-import psycopg2
 from fastapi import APIRouter, Query
-from kafka import KafkaAdminClient, KafkaConsumer
-
 from maintenance_intelligence.runner.config import Settings
+import socket
+import psycopg2
+from kafka import KafkaAdminClient
+import os
+from typing import Dict, Any, List
+from kafka import KafkaConsumer
 
 
 def compute_kafka_lag(

@@ -1,14 +1,3 @@
-__pycache__/
-*.py[cod]
-.coverage
-
-# Python packaging/build artifacts
-*.egg-info/
-
-# Node and browser test artifacts
 node_modules/
-test-results/
 playwright-report/
-
-# Runtime output artifacts
-outputs/
+test-results/

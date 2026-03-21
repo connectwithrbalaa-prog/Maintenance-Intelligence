@@ -1,38 +1,23 @@
-from typing import Any, Dict, List
-
+from fastapi import APIRouter, Query
+from typing import List, Dict, Any
 import psycopg2
-from fastapi import APIRouter, Depends, Query
-
-from maintenance_intelligence.api.auth import require_role
-from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
 
-def with_pg(dsn: str, retry_interval_s: float = 1.0, max_attempts: int = 30):
-    """Open a PostgreSQL connection with bounded retries."""
+def with_pg(dsn: str):
     import time
 
-    last_error = None
-    for attempt in range(max_attempts):
+    while True:
         try:
             return psycopg2.connect(dsn)
-        except Exception as exc:
-            last_error = exc
-            if attempt == max_attempts - 1:
-                break
-            time.sleep(retry_interval_s)
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Failed to connect to PostgreSQL")
+        except Exception:
+            time.sleep(1)
 
 
 @router.get("/bad-actors")
-def bad_actors(
-    limit: int = Query(20, ge=1, le=200),
-    access: TenantContext = Depends(require_role("viewer")),
-) -> List[Dict[str, Any]]:
+def bad_actors(limit: int = Query(20, ge=1, le=200)) -> List[Dict[str, Any]]:
     """
     Ranks assets by recent event/WO activity (MVP heuristic):
     - score = (#events last 90d) + 2*(#workorders last 90d)
@@ -42,53 +27,33 @@ def bad_actors(
     conn = with_pg(s.pg_dsn)
     try:
         with conn, conn.cursor() as cur:
-            org_clause = " AND org_id = %s" if org_scope_enabled(s) else ""
-            org_params = (access.org_id,) if org_scope_enabled(s) else ()
             # events count (90d)
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT asset_id, COUNT(*) AS ev_count, MAX(occurred_at) AS last_evt_at
                 FROM events
                 WHERE occurred_at > (NOW() - INTERVAL '90 days')
-            """
-                + org_clause
-                + """
                 GROUP BY asset_id
-            """,
-                org_params,
-            )
+            """)
             ev = {
                 r[0]: {"ev_count": r[1], "last_evt_at": r[2]} for r in cur.fetchall() if r and r[0]
             }
 
             # latest severity per asset
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT DISTINCT ON (asset_id) asset_id, severity, occurred_at
                 FROM events
                 WHERE occurred_at > (NOW() - INTERVAL '90 days')
-            """
-                + org_clause
-                + """
                 ORDER BY asset_id, occurred_at DESC
-            """,
-                org_params,
-            )
+            """)
             sev = {r[0]: r[1] for r in cur.fetchall() if r and r[0]}
 
             # workorder count (90d)
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT asset_id, COUNT(*) AS wo_count
                 FROM workorders
                 WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > (NOW() - INTERVAL '90 days')
-            """
-                + (" AND org_id = %s" if org_scope_enabled(s) else "")
-                + """
                 GROUP BY asset_id
-            """,
-                org_params,
-            )
+            """)
             wo = {r[0]: r[1] for r in cur.fetchall() if r and r[0]}
 
         rows = []

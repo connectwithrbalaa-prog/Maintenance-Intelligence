@@ -1,17 +1,17 @@
-import csv
-import datetime as dt
+from fastapi import APIRouter, HTTPException, Query, Response
+from typing import Dict, Any, List
+from datetime import datetime, timedelta, timezone
 import io
-from collections import defaultdict
-from typing import Any, Dict, List, Optional
-
+import csv
 import psycopg2
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-
-from maintenance_intelligence.api.auth import require_role
-from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
 from maintenance_intelligence.runner.config import Settings
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
+FEEDBACK_ACTIONS = ("accept", "reject", "edited")
+PLACEHOLDER_NOTES = {
+    "mtbf_seconds_avg": "Placeholder until work order lifecycle/failure intervals are available.",
+    "mttr_seconds_avg": "Placeholder until work order lifecycle repair timestamps are available.",
+}
 
 
 def with_pg(dsn: str):
@@ -31,197 +31,81 @@ def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
 
 
-def _org_scope_sql(
-    settings: Settings, org_id: str, column: str = "org_id"
-) -> tuple[str, tuple[Any, ...]]:
-    if not org_scope_enabled(settings):
-        return "", ()
-    return f" AND {column} = %s", (org_id,)
+def _base_outcomes(window: int) -> Dict[str, Any]:
+    return {
+        "window_days": int(window),
+        "status": "ok",
+        "warnings": [],
+        "feedback_counts": {action: 0 for action in FEEDBACK_ACTIONS},
+        "feedback_total": 0,
+        "acceptance_rate": None,
+        "ttr_seconds_avg": None,
+        "mtbf_seconds_avg": None,
+        "mttr_seconds_avg": None,
+        "top_assets_by_wo_volume": [],
+        "asset_metrics": {},
+        "placeholders": dict(PLACEHOLDER_NOTES),
+    }
 
 
-def _parse_timestamp(value: Any) -> Optional[dt.datetime]:
-    if value is None or value == "":
-        return None
-    if isinstance(value, dt.datetime):
-        return value
-    if not isinstance(value, str):
-        return None
-    normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+def _mark_partial(out: Dict[str, Any], message: str) -> None:
+    out["status"] = "partial"
+    out.setdefault("warnings", []).append(message)
+
+
+def _clear_placeholder(out: Dict[str, Any], metric_name: str) -> None:
+    placeholders = out.get("placeholders")
+    if isinstance(placeholders, dict):
+        placeholders.pop(metric_name, None)
+
+
+def _safe_rollback(conn: Any) -> None:
     try:
-        return dt.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
+        conn.rollback()
+    except Exception:
+        pass
 
 
-def _resolution_timestamp(metadata: Any) -> Optional[dt.datetime]:
-    metadata = metadata if isinstance(metadata, dict) else {}
-    return _parse_timestamp(metadata.get("resolved_at")) or _parse_timestamp(
-        metadata.get("created_at")
-    )
+def _bucket_dates(window: int, now: datetime | None = None) -> List[str]:
+    anchor = now or datetime.now(timezone.utc)
+    start = (anchor - timedelta(days=max(0, int(window) - 1))).date()
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(int(window))]
 
 
-def _evidence_event_id(metadata: Any) -> Optional[str]:
-    metadata = metadata if isinstance(metadata, dict) else {}
-    value = metadata.get("evidence_event_id")
-    if not isinstance(value, str):
-        return None
-    for candidate in value.split(","):
-        cleaned = candidate.strip()
-        if cleaned:
-            return cleaned
-    return None
+def _empty_asset_series(bucket_dates: List[str], *, empty_value: Any) -> List[Dict[str, Any]]:
+    return [{"date": bucket_date, "value": empty_value} for bucket_date in bucket_dates]
 
 
-def _find_ttr_event(
-    workorder: Dict[str, Any],
-    exact_events: Dict[str, Dict[str, Any]],
-    asset_events: Dict[str, List[Dict[str, Any]]],
-    fallback_window_h: int,
-) -> Optional[Dict[str, Any]]:
-    evidence_event_id = _evidence_event_id(workorder.get("metadata"))
-    if evidence_event_id:
-        return exact_events.get(evidence_event_id)
-
-    wo_ts = workorder.get("wo_ts")
-    asset_id = workorder.get("asset_id")
-    if not wo_ts or not asset_id:
-        return None
-
-    best_event: Optional[Dict[str, Any]] = None
-    best_delta: Optional[dt.timedelta] = None
-    max_delta = dt.timedelta(hours=fallback_window_h)
-    for event in asset_events.get(asset_id, []):
-        occurred_at = event.get("occurred_at")
-        if not occurred_at:
-            continue
-        delta = abs(wo_ts - occurred_at)
-        if delta > max_delta:
-            continue
-        if best_delta is None or delta < best_delta:
-            best_event = event
-            best_delta = delta
-    return best_event
+def _series_to_rows(
+    values: Dict[str, Dict[str, Any]], bucket_dates: List[str], *, empty_value: Any
+) -> Dict[str, List[Dict[str, Any]]]:
+    rows: Dict[str, List[Dict[str, Any]]] = {}
+    for asset_id, per_day in values.items():
+        rows[asset_id] = [
+            {"date": bucket_date, "value": per_day.get(bucket_date, empty_value)}
+            for bucket_date in bucket_dates
+        ]
+    return rows
 
 
-def _build_ttr_measurements(
-    workorders: List[Dict[str, Any]],
-    events: List[Dict[str, Any]],
-    fallback_window_h: int,
-) -> List[Dict[str, Any]]:
-    exact_events = {event["event_id"]: event for event in events if event.get("event_id")}
-    asset_events: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for event in events:
-        asset_id = event.get("asset_id")
-        if asset_id:
-            asset_events[asset_id].append(event)
-
-    measurements: List[Dict[str, Any]] = []
-    for workorder in workorders:
-        wo_ts = _resolution_timestamp(workorder.get("metadata"))
-        if not wo_ts:
-            continue
-
-        match = _find_ttr_event(
-            {**workorder, "wo_ts": wo_ts},
-            exact_events=exact_events,
-            asset_events=asset_events,
-            fallback_window_h=fallback_window_h,
+def _set_asset_metric_series(
+    out: Dict[str, Any],
+    metric_name: str,
+    series: Dict[str, List[Dict[str, Any]]],
+    bucket_dates: List[str],
+) -> None:
+    asset_metrics = out.setdefault("asset_metrics", {})
+    asset_ids = set(asset_metrics) | set(series)
+    for asset_id in sorted(asset_ids):
+        asset_entry = asset_metrics.setdefault(asset_id, {})
+        empty_value = 0 if metric_name == "workorder_volume" else None
+        asset_entry[metric_name] = series.get(
+            asset_id, _empty_asset_series(bucket_dates, empty_value=empty_value)
         )
-        if not match or not match.get("occurred_at"):
-            continue
-
-        delta_s = (wo_ts - match["occurred_at"]).total_seconds()
-        if delta_s < 0:
-            continue
-
-        measurements.append(
-            {
-                "wo_id": workorder.get("wo_id"),
-                "asset_id": workorder.get("asset_id"),
-                "event_id": match.get("event_id"),
-                "ttr_seconds": delta_s,
-            }
-        )
-    return measurements
 
 
-def _fetch_workorders_for_ttr(
-    cur, window: int, settings: Settings, org_id: str
-) -> List[Dict[str, Any]]:
-    org_sql, org_params = _org_scope_sql(settings, org_id)
-    cur.execute(
-        f"""
-            SELECT wo_id, asset_id, metadata
-            FROM workorders
-            WHERE COALESCE((metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}{org_sql}
-            ORDER BY COALESCE((metadata->>'created_at')::timestamptz, NOW()) DESC
-            LIMIT 500
-        """,
-        org_params,
-    )
-    return [
-        {"wo_id": row[0], "asset_id": row[1], "metadata": row[2] or {}}
-        for row in (cur.fetchall() or [])
-    ]
-
-
-def _fetch_candidate_events(
-    cur,
-    workorders: List[Dict[str, Any]],
-    fallback_window_h: int,
-    settings: Settings,
-    org_id: str,
-) -> List[Dict[str, Any]]:
-    evidence_event_ids = []
-    asset_ids = set()
-    workorder_timestamps = []
-
-    for workorder in workorders:
-        metadata = workorder.get("metadata") or {}
-        evidence_event_id = _evidence_event_id(metadata)
-        if evidence_event_id:
-            evidence_event_ids.append(evidence_event_id)
-        asset_id = workorder.get("asset_id")
-        if asset_id:
-            asset_ids.add(asset_id)
-        wo_ts = _resolution_timestamp(metadata)
-        if wo_ts:
-            workorder_timestamps.append(wo_ts)
-
-    if not evidence_event_ids and (not asset_ids or not workorder_timestamps):
-        return []
-
-    where_clauses = []
-    params: List[Any] = []
-    if evidence_event_ids:
-        where_clauses.append("event_id = ANY(%s)")
-        params.append(evidence_event_ids)
-    if asset_ids and workorder_timestamps:
-        min_ts = min(workorder_timestamps) - dt.timedelta(hours=fallback_window_h)
-        max_ts = max(workorder_timestamps) + dt.timedelta(hours=fallback_window_h)
-        where_clauses.append("(asset_id = ANY(%s) AND occurred_at BETWEEN %s AND %s)")
-        params.extend([sorted(asset_ids), min_ts, max_ts])
-
-    if org_scope_enabled(settings):
-        where_clauses = [f"({clause})" for clause in where_clauses]
-        where_clauses.append("org_id = %s")
-        params.append(org_id)
-
-    cur.execute(
-        f"""
-            SELECT event_id, asset_id, occurred_at
-            FROM events
-            WHERE {' OR '.join(where_clauses)}
-        """,
-        tuple(params),
-    )
-    return [
-        {"event_id": row[0], "asset_id": row[1], "occurred_at": row[2]}
-        for row in (cur.fetchall() or [])
-    ]
-
-
-def _rca_outcomes_report(window: int, access: TenantContext) -> Dict[str, Any]:
+@router.get("/rca-outcomes")
+def rca_outcomes(window: int = Query(30, ge=1, le=365)) -> Dict[str, Any]:
     if window > 365:
         raise HTTPException(status_code=400, detail="Window cannot exceed 365 days")
     s = Settings()
@@ -230,142 +114,236 @@ def _rca_outcomes_report(window: int, access: TenantContext) -> Dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     try:
-        out: Dict[str, Any] = {}
-        fallback_window_h = max(1, int(getattr(s, "ttr_fallback_window_h", 24) or 24))
-        with conn, conn.cursor() as cur:
-            fb_scope_sql, fb_scope_params = _org_scope_sql(s, access.org_id)
+        out = _base_outcomes(window)
+        bucket_dates = _bucket_dates(window)
+        with conn.cursor() as cur:
             # Feedback counts by action (accept/reject/edited)
-            cur.execute(
-                f"""
-                SELECT action, COUNT(*) FROM rca_feedback
-                WHERE created_at > {_window_clause(window)}
-                {fb_scope_sql}
-                GROUP BY action
-            """,
-                fb_scope_params,
-            )
-            fb = {r[0]: int(r[1]) for r in cur.fetchall() if r and r[0]}
-            total = sum(fb.values())
-            accept = fb.get("accept", 0)
-            out["feedback_counts"] = fb
-            out["acceptance_rate"] = (accept / total) if total > 0 else None
+            try:
+                cur.execute(f"""
+                    SELECT action, COUNT(*) FROM rca_feedback
+                    WHERE created_at > {_window_clause(window)}
+                    GROUP BY action
+                """)
+                fb = {r[0]: int(r[1]) for r in cur.fetchall() if r and r[0]}
+                out["feedback_counts"].update({key: fb.get(key, 0) for key in FEEDBACK_ACTIONS})
+                out["feedback_total"] = sum(out["feedback_counts"].values())
+                accept = out["feedback_counts"].get("accept", 0)
+                out["acceptance_rate"] = (
+                    (accept / out["feedback_total"]) if out["feedback_total"] > 0 else None
+                )
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"feedback aggregation unavailable: {exc}")
 
-            wo_scope_sql, wo_scope_params = _org_scope_sql(s, access.org_id, column="w.org_id")
-            cur.execute(
-                f"""
-                SELECT w.asset_id, COUNT(*) AS n
-                FROM workorders w
-                WHERE COALESCE((w.metadata->>'created_at')::timestamptz, NOW()) > {_window_clause(window)}
-                {wo_scope_sql}
-                GROUP BY w.asset_id
-                ORDER BY n DESC
-                LIMIT 10
-            """,
-                wo_scope_params,
-            )
-            out["top_assets_by_wo_volume"] = [
-                {"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r
-            ]
+            # Approx TTR: recommendation -> canonical workorder creation timestamp.
+            try:
+                cur.execute(f"""
+                    SELECT w.wo_id, w.workorder_created_at AS wo_ts,
+                           e.occurred_at AS rec_ts, w.asset_id
+                    FROM workorders w
+                    JOIN events e ON (
+                        e.event_id = ANY(string_to_array(COALESCE(w.metadata->>'evidence_event_id', ''), ','))
+                        OR (
+                            COALESCE(w.metadata->>'evidence_event_id', '') = ''
+                            AND e.asset_id = w.asset_id
+                        )
+                    )
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
+                    LIMIT 500
+                """)
+                ttrs = []
+                for row in cur.fetchall() or []:
+                    wo_ts, rec_ts = row[1], row[2]
+                    if wo_ts and rec_ts:
+                        delta = (wo_ts - rec_ts).total_seconds()
+                        if delta >= 0:
+                            ttrs.append(delta)
+                out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"ttr aggregation unavailable: {exc}")
+
+            # Proxy MTBF: mean interval between successive events for the same asset.
+            # This uses event cadence as a precursor until explicit failure lifecycle data exists.
+            try:
+                cur.execute(f"""
+                    SELECT asset_id, occurred_at
+                    FROM events
+                    WHERE occurred_at > {_window_clause(window)}
+                      AND asset_id IS NOT NULL
+                    ORDER BY asset_id, occurred_at
+                """)
+                last_seen: Dict[str, Any] = {}
+                intervals: List[float] = []
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    event_ts = row[1]
+                    previous_ts = last_seen.get(asset_id)
+                    if previous_ts is not None:
+                        delta = (event_ts - previous_ts).total_seconds()
+                        if delta >= 0:
+                            intervals.append(delta)
+                    last_seen[asset_id] = event_ts
+                out["mtbf_seconds_avg"] = (sum(intervals) / len(intervals)) if intervals else None
+                if out["mtbf_seconds_avg"] is not None:
+                    _clear_placeholder(out, "mtbf_seconds_avg")
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"mtbf aggregation unavailable: {exc}")
+
+            # Proxy MTTR: terminal workorders with canonical lifecycle timestamps.
+            try:
+                cur.execute(f"""
+                    SELECT w.wo_id,
+                           w.workorder_created_at AS created_ts,
+                           w.workorder_completed_at AS completed_ts,
+                           w.status
+                    FROM workorders w
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
+                      AND UPPER(COALESCE(w.status, '')) IN ('COMP', 'COMPLETE', 'COMPLETED', 'CLOSE', 'CLOSED', 'DONE')
+                """)
+                mttrs = []
+                for row in cur.fetchall() or []:
+                    if not row:
+                        continue
+                    created_ts = row[1]
+                    completed_ts = row[2]
+                    if created_ts and completed_ts:
+                        delta = (completed_ts - created_ts).total_seconds()
+                        if delta >= 0:
+                            mttrs.append(delta)
+                out["mttr_seconds_avg"] = (sum(mttrs) / len(mttrs)) if mttrs else None
+                if out["mttr_seconds_avg"] is not None:
+                    _clear_placeholder(out, "mttr_seconds_avg")
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"mttr aggregation unavailable: {exc}")
+
+            # Per-asset summary (top 10 by slowest TTR)
+            # This is a placeholder; improve with real WO lifecycle timestamps.
+            try:
+                cur.execute(f"""
+                    SELECT w.asset_id, COUNT(*) AS n
+                    FROM workorders w
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
+                    GROUP BY w.asset_id
+                    ORDER BY n DESC
+                    LIMIT 10
+                """)
+                out["top_assets_by_wo_volume"] = [
+                    {"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r
+                ]
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"asset volume aggregation unavailable: {exc}")
 
             try:
-                workorders = _fetch_workorders_for_ttr(cur, window, s, access.org_id)
-                candidate_events = _fetch_candidate_events(
-                    cur, workorders, fallback_window_h, s, access.org_id
+                cur.execute(f"""
+                    SELECT w.asset_id,
+                           DATE_TRUNC('day', COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()))::date AS bucket_date,
+                           COUNT(*) AS n
+                    FROM workorders w
+                    WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
+                    GROUP BY w.asset_id, bucket_date
+                    ORDER BY w.asset_id, bucket_date
+                """)
+                workorder_volume: Dict[str, Dict[str, int]] = {}
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
+                    workorder_volume.setdefault(asset_id, {})[bucket_date] = int(row[2] or 0)
+                _set_asset_metric_series(
+                    out,
+                    "workorder_volume",
+                    _series_to_rows(workorder_volume, bucket_dates, empty_value=0),
+                    bucket_dates,
                 )
-                ttr_rows = _build_ttr_measurements(workorders, candidate_events, fallback_window_h)
-            except Exception:
-                ttr_rows = []
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"asset workorder trend unavailable: {exc}")
 
-            ttrs = [row["ttr_seconds"] for row in ttr_rows]
-            out["ttr_seconds_avg"] = (sum(ttrs) / len(ttrs)) if ttrs else None
-
-        try:
-            with conn, conn.cursor() as cur2:
-                fb_scope_sql, fb_scope_params = _org_scope_sql(s, access.org_id)
-                cur2.execute(
-                    f"""
+            try:
+                cur.execute(f"""
                     SELECT asset_id,
-                           COUNT(*) FILTER (WHERE action = 'accept') AS accept_cnt,
-                           COUNT(*) AS total_cnt
+                           DATE_TRUNC('day', created_at)::date AS bucket_date,
+                           SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accepted_count,
+                           SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected_count
                     FROM rca_feedback
                     WHERE created_at > {_window_clause(window)}
-                    {fb_scope_sql}
-                    GROUP BY asset_id
-                """,
-                    fb_scope_params,
+                      AND action IN ('accept', 'reject')
+                      AND asset_id IS NOT NULL
+                    GROUP BY asset_id, bucket_date
+                    ORDER BY asset_id, bucket_date
+                """)
+                acceptance_rate: Dict[str, Dict[str, float | None]] = {}
+                for row in cur.fetchall() or []:
+                    if not row or not row[0] or not row[1]:
+                        continue
+                    asset_id = str(row[0])
+                    bucket_date = (
+                        row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1])
+                    )
+                    accepted_count = int(row[2] or 0)
+                    rejected_count = int(row[3] or 0)
+                    total = accepted_count + rejected_count
+                    acceptance_rate.setdefault(asset_id, {})[bucket_date] = (
+                        (accepted_count / total) if total > 0 else None
+                    )
+                _set_asset_metric_series(
+                    out,
+                    "acceptance_rate",
+                    _series_to_rows(acceptance_rate, bucket_dates, empty_value=None),
+                    bucket_dates,
                 )
-                rows = cur2.fetchall() or []
-                out["per_asset_acceptance"] = [
-                    {
-                        "asset_id": row[0],
-                        "acceptance_rate": (
-                            (int(row[1] or 0) / int(row[2] or 0)) if int(row[2] or 0) > 0 else None
-                        ),
-                        "accepts": int(row[1] or 0),
-                        "total": int(row[2] or 0),
-                    }
-                    for row in rows
-                ]
-        except Exception:
-            out["per_asset_acceptance"] = None
-
-        if ttr_rows:
-            per_asset_ttr: Dict[str, List[float]] = defaultdict(list)
-            for row in ttr_rows:
-                asset_id = row.get("asset_id")
-                if asset_id:
-                    per_asset_ttr[asset_id].append(row["ttr_seconds"])
-            out["per_asset_ttr"] = [
-                {
-                    "asset_id": asset_id,
-                    "ttr_seconds_avg": sum(values) / len(values),
-                }
-                for asset_id, values in sorted(
-                    per_asset_ttr.items(),
-                    key=lambda item: (sum(item[1]) / len(item[1])) if item[1] else -1,
-                    reverse=True,
-                )[:10]
-            ]
-        else:
-            out["per_asset_ttr"] = None
+            except Exception as exc:
+                _safe_rollback(conn)
+                _mark_partial(out, f"asset acceptance trend unavailable: {exc}")
 
         return out
     finally:
         conn.close()
 
 
-@router.get("/rca-outcomes")
-def rca_outcomes(
-    window: int = Query(30, ge=1, le=365),
-    access: TenantContext = Depends(require_role("viewer")),
-) -> Dict[str, Any]:
-    return _rca_outcomes_report(window, access)
-
-
 @router.get("/rca-outcomes/csv")
-def rca_outcomes_csv(
-    window: int = Query(30, ge=1, le=365),
-    access: TenantContext = Depends(require_role("viewer")),
-):
+def rca_outcomes_csv(window: int = Query(30, ge=1, le=365)):
     # Flatten a report view for leadership export
-    rep = _rca_outcomes_report(window=window, access=access)
+    rep = rca_outcomes(window=window)  # reuse computation
     rows = []
     # Feedback counts by action -> key/value rows
-    for k, v in (rep.get("feedback_counts") or {}).items():
+    for k in FEEDBACK_ACTIONS:
+        v = (rep.get("feedback_counts") or {}).get(k, 0)
         rows.append({"metric": f"feedback_{k}", "value": v})
+    rows.append({"metric": "feedback_total", "value": rep.get("feedback_total")})
+    rows.append({"metric": "report_status", "value": rep.get("status")})
+    rows.append({"metric": "warning_count", "value": len(rep.get("warnings") or [])})
     rows.append({"metric": "acceptance_rate", "value": rep.get("acceptance_rate")})
     rows.append({"metric": "ttr_seconds_avg", "value": rep.get("ttr_seconds_avg")})
+    rows.append({"metric": "mtbf_seconds_avg", "value": rep.get("mtbf_seconds_avg")})
+    rows.append({"metric": "mttr_seconds_avg", "value": rep.get("mttr_seconds_avg")})
     # Asset highlights as separate rows for easier slicing
     for a in rep.get("top_assets_by_wo_volume") or []:
         rows.append({"metric": f"top_asset_{a['asset_id']}_wo_count", "value": a["count"]})
-    for a in rep.get("per_asset_acceptance") or []:
-        rows.append(
-            {"metric": f"asset_{a['asset_id']}_acceptance_rate", "value": a.get("acceptance_rate")}
-        )
-    for a in rep.get("per_asset_ttr") or []:
-        rows.append(
-            {"metric": f"asset_{a['asset_id']}_ttr_seconds_avg", "value": a.get("ttr_seconds_avg")}
-        )
+    for asset_id, asset_metrics in (rep.get("asset_metrics") or {}).items():
+        for point in asset_metrics.get("workorder_volume") or []:
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_workorder_volume_{point['date']}",
+                    "value": point.get("value", 0),
+                }
+            )
+        for point in asset_metrics.get("acceptance_rate") or []:
+            rows.append(
+                {
+                    "metric": f"asset_{asset_id}_acceptance_rate_{point['date']}",
+                    "value": point.get("value"),
+                }
+            )
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["metric", "value"])

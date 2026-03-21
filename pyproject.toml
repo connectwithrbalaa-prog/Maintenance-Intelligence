@@ -18,22 +18,13 @@ dependencies = [
   "backoff>=2.2",
 ]
 [project.optional-dependencies]
-dev = ["ruff>=0.3","black>=24.2","mypy>=1.8","pytest>=8.0","pytest-cov>=4.1"]
+dev = ["ruff>=0.3","black>=24.2","mypy>=1.8","pytest>=8.0","pytest-cov>=4.1","pytest-httpserver>=1.1","testcontainers>=4.8"]
 rag = ["beautifulsoup4>=4.12"]
-ops = ["alembic>=1.13"]
+ops = ["alembic>=1.13", "pgvector>=0.3"]
 observability = ["opentelemetry-distro>=0.45b0", "opentelemetry-exporter-otlp-proto-http>=1.24.0"]
 [project.scripts]
 mi-runner = "maintenance_intelligence.runner.cli:app"
 [tool.black]
 line-length = 100
-target-version = ["py310"]
-
-[tool.ruff]
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-ignore = ["E501", "UP006", "UP007", "UP035", "UP045"]
-
 [tool.setuptools.packages.find]
 exclude = ["logs*", "configs*", "outputs*", "scripts*"]

@@ -8,9 +8,10 @@ Create Date: 2024-01-15 10:00:00.000000
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from pgvector.sqlalchemy import Vector
 
 # revision identifiers, used by Alembic.
 revision: str = "001_initial"
@@ -66,7 +67,7 @@ def upgrade() -> None:
     )
 
     # Add embedding column to doc_chunks
-    op.add_column("doc_chunks", sa.Column("embedding", postgresql.VECTOR(1536), nullable=True))
+    op.add_column("doc_chunks", sa.Column("embedding", Vector(1536), nullable=True))
 
     # Create IVFFlat index
     op.create_index(

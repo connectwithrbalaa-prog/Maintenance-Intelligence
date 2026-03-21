@@ -1,9 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-
-from maintenance_intelligence.api.auth import require_role
-from maintenance_intelligence.context.assembler import with_pg
-from maintenance_intelligence.multitenancy import TenantContext, org_scope_enabled
+from fastapi import APIRouter, HTTPException, Query
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.context.assembler import with_pg
 
 router = APIRouter()
 
@@ -12,24 +9,22 @@ router = APIRouter()
 async def get_signals_summary(
     asset_id: str = Query(..., description="Asset ID to get signals for"),
     limit: int = Query(10, description="Max number of signals to return"),
-    access: TenantContext = Depends(require_role("viewer")),
 ):
     """Get recent signals and rollups for an asset."""
     settings = Settings()
     try:
         conn = with_pg(settings.pg_dsn)
         with conn, conn.cursor() as cur:
-            scope_enabled = org_scope_enabled(settings)
             # Get recent signals
             cur.execute(
                 """
                 SELECT signal_id, signal_type, value, unit, timestamp, metadata
                 FROM signals
-                WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
+                WHERE asset_id = %s
                 ORDER BY timestamp DESC
                 LIMIT %s
             """,
-                (asset_id, scope_enabled, access.org_id, limit),
+                (asset_id, limit),
             )
             signals = cur.fetchall()
 
@@ -38,11 +33,11 @@ async def get_signals_summary(
                 """
                 SELECT signal_type, period, mean_value, min_value, max_value, anomaly_flags, end_time
                 FROM signal_rollups
-                WHERE asset_id = %s AND (%s = FALSE OR org_id = %s)
+                WHERE asset_id = %s
                 ORDER BY end_time DESC
                 LIMIT 20
             """,
-                (asset_id, scope_enabled, access.org_id),
+                (asset_id,),
             )
             rollups = cur.fetchall()
 
