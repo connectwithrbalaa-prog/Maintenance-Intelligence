@@ -16,7 +16,7 @@ services:
     ports: ["9092:9092"]
 
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     environment:
       POSTGRES_DB: maintenance
       POSTGRES_USER: postgres
@@ -93,10 +93,18 @@ services:
   grafana:
     image: grafana/grafana:10.4.2
     ports: ["3000:3000"]
-    depends_on: [prometheus]
+    depends_on:
+      prometheus:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./deploy/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
 
 volumes:
   pgdata:

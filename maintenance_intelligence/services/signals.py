@@ -147,7 +147,9 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
                         anomaly_evt = {
                             "event_type": "signal.anomaly.detected",
                             "event_id": f"anomaly-{signal_id}",
-                            "occurred_at": dt.datetime.utcnow().isoformat() + "Z",
+                            "occurred_at": dt.datetime.now(dt.timezone.utc)
+                            .isoformat()
+                            .replace("+00:00", "Z"),
                             "org_id": evt["org_id"],
                             "asset_id": asset_id,
                             "kind": "anomaly",
@@ -202,7 +204,7 @@ def signals_processor(kafka_bootstrap: str = None, db_url: str = None):
 
 def _compute_rollups(conn, asset_id: str, signal_type: str):
     """Compute 1h, 6h, 24h rollups for the last period."""
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
     periods = [
         ("1h", dt.timedelta(hours=1)),
         ("6h", dt.timedelta(hours=6)),

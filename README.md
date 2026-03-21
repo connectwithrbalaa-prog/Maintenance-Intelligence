@@ -101,6 +101,7 @@ Context assembler now uses hybrid retrieval with event-based queries for better 
 - Metrics:
   - Prometheus endpoint: GET /metrics
   - Key metrics: rca_runs_total, rca_failures_total, rca_duration_seconds, events_ingested_total, recommendations_created_total, wo_drafts_total, kafka_consume_lag{group=...}
+  - CMMS handoff gauges now publish last-30-day operational pressure directly from Postgres on each scrape, including cmms_handoff_backlog_total, cmms_handoff_admin_retry_required_total, cmms_handoff_limit_reached_total, and backend-labeled variants such as cmms_handoff_backend_backlog_total{backend="maximo"}
 - Tracing (optional):
   - Enable with OTEL_ENABLED=true
   - Configure OTLP exporter via standard OTEL_* env vars (e.g., OTEL_EXPORTER_OTLP_ENDPOINT)
@@ -122,13 +123,22 @@ Environment:
 
 - Start stack: `docker compose -f docker-compose.dev.yml up -d`
   - Services: Kafka/ZooKeeper, Postgres, migrator, API, Prometheus, Alertmanager, Grafana
+  - The Postgres service uses a pgvector-capable image so the initial migrations can enable the `vector` extension required by RAG tables.
 - The `migrator` service waits for Postgres, applies Alembic migrations, then the API starts.
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 (admin/admin)
-- Import `dashboards/observability-starter.json` in Grafana
+- Dev compose now provisions Grafana datasources automatically:
+  - `Maintenance Intelligence Prometheus` -> `http://prometheus:9090`
+  - `Maintenance Intelligence Postgres` -> `postgres:5432` / `maintenance`
+  - `Maintenance Intelligence Alertmanager` -> `http://alertmanager:9093`
+- Dev compose now auto-loads dashboards from `dashboards/` into the `Maintenance Intelligence` Grafana folder.
+- Included starter dashboards:
+  - `dashboards/observability-starter.json`
+  - `dashboards/outcomes-starter.json`
 - Alerts:
   - Rules in `deploy/prometheus/alerts.yml`
   - Alertmanager at http://localhost:9093 (configure real receivers in `deploy/alertmanager/alertmanager.yml`)
+  - Starter CMMS rules now cover metrics freshness, total handoff backlog, backend-specific backlog, admin-retry-required pressure, and retry-ceiling breaches.
 
 Note:
 - The API and migrator services use the repo code mounted at /app and install the app in-container at startup.
@@ -198,6 +208,27 @@ Outputs / Logs:
   - rca_feedback_total{action=...} supports acceptance KPI panels.
 - Dashboard:
   - dashboards/outcomes-starter.json (import into Grafana)
+  - Datasource variables:
+    - prometheus_ds powers the top-level KPI panels from `rca_feedback_total` and `rca_duration_seconds_bucket`
+    - postgres_ds powers asset, operator, and org drill-down panels from the `workorders` and `rca_feedback` tables
+  - Starter variables:
+    - asset_id maps to outcomes.asset_metrics[asset_id]
+    - user_id maps to outcomes.user_metrics[user_id]
+    - org_id maps to outcomes.org_metrics[org_id]
+    - pm_handoff_max_attempts keeps the CMMS retry-ceiling panels aligned with `MI_PM_HANDOFF_MAX_ATTEMPTS_PER_PROPOSAL` (default `3`)
+  - Starter panels now cover:
+    - CMMS leadership KPIs for success, pending backlog, failure backlog, admin retry required, retry limit reached, average approval-to-handoff lead time, and daily handoff trend
+    - CMMS operational drill-down tables by asset and backend for the same success, backlog, retry, and lead-time measures
+    - asset workorder volume and asset acceptance trend
+    - operator feedback total, operator acceptance rate, operator feedback volume, operator acceptance trend
+    - org feedback total, org acceptance rate, org feedback volume, org acceptance trend
+  - The SQL-backed panels use Grafana PostgreSQL macros such as `__$timeFilter(...)` and `__$timeGroupAlias(..., '1d')` to stay aligned with the dashboard time picker.
+  - The live SQL-backed panels assume the schema created by the app migrations, especially `pm_proposals.{asset_id,status,work_order_id,metadata,created_at}`, `workorders.{asset_id,wo_id,metadata,workorder_created_at,handoff_completed_at,workorder_completed_at}`, and `rca_feedback.{asset_id,user_id,org_id,action,created_at}`.
+  - The JSON and CSV outcomes reports now also expose `cmms_summary` plus `cmms_breakdowns.by_asset` and `cmms_breakdowns.by_backend`, with handoff success, pending/failure backlog, retry pressure, limit-reached count, and average approval-to-handoff lead time derived from `pm_proposals` plus persisted work-order timestamps and handoff backend metadata.
+  - The portal outcomes panel mirrors those CMMS totals and drill-downs directly, so operators can inspect asset and backend pressure without switching over to Grafana.
+  - CMMS asset and backend breakdown rows in the portal now navigate into first-class outcomes trend scopes: assets open workorder and acceptance trends, while backends open handoff-volume and handoff-success-rate trends sourced from `outcomes.backend_metrics`.
+  - Prometheus and Alertmanager now ingest CMMS handoff backlog and retry gauges from the API metrics endpoint, so the Grafana stack can surface live operational alerts for growing backlog and exhausted retry ceilings.
+  - With `docker compose -f docker-compose.dev.yml up -d`, Grafana provisions both required datasources and auto-loads the outcomes starter into the `Maintenance Intelligence` folder.
 
 Copy .env.example to .env and set values as needed.
 

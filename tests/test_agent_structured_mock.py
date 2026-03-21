@@ -28,7 +28,7 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rca_mod,
         "get_event_context",
-        lambda evt, settings: {
+        lambda evt, settings, **kwargs: {
             "last_wo_titles": [],
             "doc_chunks": [{"chunk_id": "DOC-1"}],
             "recent_signals": [{"signal_id": "SIG-1"}],

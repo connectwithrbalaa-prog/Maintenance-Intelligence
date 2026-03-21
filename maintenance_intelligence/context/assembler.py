@@ -49,43 +49,91 @@ def _normalize_recent_signals(rows: List[Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def _normalize_doc_chunks(rows: List[Any]) -> List[Dict[str, Any]]:
-    return [{"chunk_id": row[0], "title": row[1]} for row in rows if row]
+def _normalize_doc_chunks(
+    rows: List[Any], current_asset_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    chunks: List[Dict[str, Any]] = []
+    for row in rows:
+        if not row:
+            continue
+        row_asset_id = row[3] if len(row) > 3 else None
+        source = row[4] if len(row) > 4 else None
+        chunks.append(
+            {
+                "chunk_id": row[0],
+                "title": row[1],
+                "asset_id": row_asset_id,
+                "source": source,
+                "org_id": None,
+                "site_id": None,
+                "asset_class": None,
+                "source_scope": (
+                    "local" if not current_asset_id or row_asset_id == current_asset_id else "fleet"
+                ),
+            }
+        )
+    return chunks
 
 
 def _tokenize_fallback_query(query: str) -> List[str]:
     return [token for token in re.sub(r"[^\w\s]", " ", query.lower()).split() if token]
 
 
-def _score_fallback_doc_chunk(row: Any, query_terms: List[str]) -> tuple[int, float, str]:
+def _score_fallback_doc_chunk(
+    row: Any, query_terms: List[str], current_asset_id: Optional[str] = None
+) -> tuple[int, int, float, str]:
     title = str(row[1] or "")
     content = str(row[2] or "") if len(row) > 2 else ""
     title_text = title.lower()
     content_text = content.lower()
 
     if not query_terms:
-        created_at = row[3].timestamp() if len(row) > 3 and row[3] else 0.0
-        return (0, created_at, str(row[0]))
+        created_at = row[5].timestamp() if len(row) > 5 and row[5] else 0.0
+        locality = 0 if not current_asset_id or (len(row) > 3 and row[3] == current_asset_id) else 1
+        return (0, locality, created_at, str(row[0]))
 
     title_hits = sum(title_text.count(term) for term in query_terms)
     content_hits = sum(content_text.count(term) for term in query_terms)
     lexical_score = (title_hits * 3) + content_hits
-    created_at = row[3].timestamp() if len(row) > 3 and row[3] else 0.0
-    return (lexical_score, created_at, str(row[0]))
+    created_at = row[5].timestamp() if len(row) > 5 and row[5] else 0.0
+    locality = 0 if not current_asset_id or (len(row) > 3 and row[3] == current_asset_id) else 1
+    return (lexical_score, locality, created_at, str(row[0]))
 
 
-def _rank_fallback_doc_chunks(rows: List[Any], query: str, limit: int = 3) -> List[Dict[str, Any]]:
+def _rank_fallback_doc_chunks(
+    rows: List[Any], query: str, current_asset_id: Optional[str] = None, limit: int = 3
+) -> List[Dict[str, Any]]:
     query_terms = _tokenize_fallback_query(query)
 
-    def sort_key(row: Any) -> tuple[int, float, str]:
-        lexical_score, created_at, chunk_id = _score_fallback_doc_chunk(row, query_terms)
-        return (-lexical_score, -created_at, chunk_id)
+    def sort_key(row: Any) -> tuple[int, int, float, str]:
+        lexical_score, locality, created_at, chunk_id = _score_fallback_doc_chunk(
+            row, query_terms, current_asset_id
+        )
+        return (-lexical_score, locality, -created_at, chunk_id)
 
     ranked_rows = sorted(
         rows,
         key=sort_key,
     )
-    return _normalize_doc_chunks(ranked_rows[:limit])
+    return _normalize_doc_chunks(ranked_rows[:limit], current_asset_id)
+
+
+def _summarize_fleet_doc_chunks(
+    asset_id: Optional[str], doc_chunks: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    external_chunks = [chunk for chunk in doc_chunks if chunk.get("source_scope") == "fleet"]
+    referenced_asset_ids = sorted(
+        {str(chunk.get("asset_id")) for chunk in external_chunks if chunk.get("asset_id")}
+    )
+    referenced_sources = sorted(
+        {str(chunk.get("source")) for chunk in external_chunks if chunk.get("source")}
+    )
+    return {
+        "external_ref_count": len(external_chunks),
+        "referenced_asset_ids": referenced_asset_ids,
+        "referenced_sources": referenced_sources,
+        "current_asset_id": asset_id,
+    }
 
 
 def _flatten_detail_value(value: Any) -> List[str]:
@@ -158,22 +206,36 @@ def _fetch_signal_context(conn, asset_id: Optional[str]) -> Dict[str, List[Dict[
     return {"signal_rollups": rollups, "recent_signals": recent_signals}
 
 
-def _fetch_fallback_doc_chunks(conn, asset_id: Optional[str], query: str) -> List[Dict[str, Any]]:
+def _fetch_fallback_doc_chunks(
+    conn, asset_id: Optional[str], query: str, fleet_wide: bool = False
+) -> List[Dict[str, Any]]:
     with conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT chunk_id, title, content, created_at FROM doc_chunks
-            WHERE asset_id = %s
-            ORDER BY created_at DESC, chunk_id ASC
-            LIMIT 25
-            """,
-            (asset_id,),
-        )
-        return _rank_fallback_doc_chunks(cur.fetchall(), query)
+        if asset_id and not fleet_wide:
+            cur.execute(
+                """
+                SELECT chunk_id, title, content, asset_id, source, created_at FROM doc_chunks
+                WHERE asset_id = %s
+                ORDER BY created_at DESC, chunk_id ASC
+                LIMIT 25
+                """,
+                (asset_id,),
+            )
+        else:
+            cur.execute("""
+                SELECT chunk_id, title, content, asset_id, source, created_at FROM doc_chunks
+                ORDER BY created_at DESC, chunk_id ASC
+                LIMIT 50
+                """)
+        return _rank_fallback_doc_chunks(cur.fetchall(), query, asset_id)
 
 
 def _fetch_doc_chunks(
-    conn, asset_id: Optional[str], query: str, dsn: str, retriever_cls=None
+    conn,
+    asset_id: Optional[str],
+    query: str,
+    dsn: str,
+    retriever_cls=None,
+    fleet_wide: bool = False,
 ) -> List[Dict[str, Any]]:
     if retriever_cls is None:
         from maintenance_intelligence.rag.retrieval import HybridRetriever
@@ -182,11 +244,25 @@ def _fetch_doc_chunks(
 
     try:
         retriever = retriever_cls(dsn)
-        chunks = retriever.retrieve(query, asset_id, limit=5, token_budget=2000)
-        return [{"chunk_id": chunk["chunk_id"], "title": chunk["title"]} for chunk in chunks]
+        chunks = retriever.retrieve(
+            query, asset_id, limit=5, token_budget=2000, fleet_wide=fleet_wide
+        )
+        return [
+            {
+                "chunk_id": chunk["chunk_id"],
+                "title": chunk["title"],
+                "asset_id": chunk.get("asset_id"),
+                "source": chunk.get("source"),
+                "org_id": chunk.get("org_id"),
+                "site_id": chunk.get("site_id"),
+                "asset_class": chunk.get("asset_class"),
+                "source_scope": chunk.get("source_scope", "local"),
+            }
+            for chunk in chunks
+        ]
     except Exception as exc:
         logger.debug({"event": "ctx.hybrid_rag.skip", "err": str(exc)})
-        return _fetch_fallback_doc_chunks(conn, asset_id, query)
+        return _fetch_fallback_doc_chunks(conn, asset_id, query, fleet_wide=fleet_wide)
 
 
 def get_event_context(
@@ -194,6 +270,7 @@ def get_event_context(
     settings: Optional[Settings] = None,
     connection_factory=with_pg,
     retriever_cls=None,
+    fleet_wide: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     MVP bootstrap context assembly.
@@ -203,6 +280,7 @@ def get_event_context(
     Returns empty lists gracefully if tables not present.
     """
     settings = settings or Settings()
+    fleet_wide = settings.rca_fleet_wide_context if fleet_wide is None else fleet_wide
     asset_id = event.get("asset_id")
     out: Dict[str, Any] = {
         "asset_id": asset_id,
@@ -211,6 +289,13 @@ def get_event_context(
         "signal_rollups": [],
         "recent_signals": [],
         "doc_chunks": [],
+        "context_scope": "local",
+        "fleet_context_summary": {
+            "external_ref_count": 0,
+            "referenced_asset_ids": [],
+            "referenced_sources": [],
+            "current_asset_id": asset_id,
+        },
     }
     conn = None
     try:
@@ -233,7 +318,16 @@ def get_event_context(
         try:
             query = _build_rag_query(event)
             out["doc_chunks"] = _fetch_doc_chunks(
-                conn, asset_id, query, settings.pg_dsn, retriever_cls=retriever_cls
+                conn,
+                asset_id,
+                query,
+                settings.pg_dsn,
+                retriever_cls=retriever_cls,
+                fleet_wide=fleet_wide,
+            )
+            out["fleet_context_summary"] = _summarize_fleet_doc_chunks(asset_id, out["doc_chunks"])
+            out["context_scope"] = (
+                "local+fleet" if out["fleet_context_summary"]["external_ref_count"] else "local"
             )
         except Exception as e:
             logger.debug({"event": "ctx.docs.skip", "err": str(e)})

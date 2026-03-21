@@ -1,0 +1,5 @@
+route:
+  receiver: 'null'
+receivers:
+  - name: 'null'
+# To enable real notifications, add a receiver (e.g., Slack, email) here.

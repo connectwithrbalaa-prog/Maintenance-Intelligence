@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.context.assembler import with_pg
 
@@ -7,10 +8,14 @@ router = APIRouter()
 
 @router.get("/api/v1/signals/summary")
 async def get_signals_summary(
+    request: Request,
     asset_id: str = Query(..., description="Asset ID to get signals for"),
     limit: int = Query(10, description="Max number of signals to return"),
 ):
     """Get recent signals and rollups for an asset."""
+    require_authenticated_identity(
+        request, detail="Signal summaries require an authenticated identity"
+    )
     settings = Settings()
     try:
         conn = with_pg(settings.pg_dsn)
