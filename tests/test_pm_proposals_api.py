@@ -28,6 +28,10 @@ _load_local_module(
     "maintenance_intelligence.runner.config", Path("maintenance_intelligence/runner/config.py")
 )
 _load_local_module(
+    "maintenance_intelligence.runner.edge_command_buffer",
+    Path("maintenance_intelligence/runner/edge_command_buffer.py"),
+)
+_load_local_module(
     "maintenance_intelligence.api.metrics", Path("maintenance_intelligence/api/metrics.py")
 )
 identity_mod = _load_local_module(
@@ -565,6 +569,113 @@ def test_approve_proposal_returns_202_for_incomplete_handoff(monkeypatch, tmp_pa
         entry for entry in fake_connection.executed if "INSERT INTO workorders" in entry[0]
     ]
     assert workorder_calls == []
+
+
+def test_approve_proposal_queues_offline_when_edge_mode_enabled(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    queue_path = tmp_path / "edge" / "command-buffer.sqlite3"
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(queue_path))
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_ATTEMPTS", "3")
+    monkeypatch.setenv("MI_PM_HANDOFF_RETRY_INTERVAL_S", "0")
+    fake_connection = FakeConnection()
+
+    class OfflineAdapter:
+        backend_name = "offline"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            raise pm_mod.CMMSUnavailableError("temporary outage")
+
+    adapter = OfflineAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued-offline"
+    assert payload["handoff_state"] == "queued-offline"
+    assert payload["attempt_status"] == "queued-offline"
+    assert payload["detail"] == "PM proposal approved locally and queued for offline CMMS handoff"
+    assert payload["approved"] is False
+    assert payload["retry_allowed"] is False
+    assert payload["admin_retry_required"] is False
+    assert payload["attempt_count"] == 1
+    assert payload["attempts_remaining"] == 2
+    assert payload["work_order"]["status"] == "queued-offline"
+    assert payload["work_order"]["queue_id"]
+    assert payload["work_order"]["reason"] == "temporary outage"
+    assert adapter.calls == 1
+    assert fake_connection.proposals["REC-1"]["status"] == "queued-offline"
+    assert (
+        fake_connection.proposals["REC-1"]["metadata"]["approval"]["handoff_state"]
+        == "queued-offline"
+    )
+
+    queue_module = _load_local_module(
+        "maintenance_intelligence.runner.edge_command_buffer.runtime_check",
+        Path("maintenance_intelligence/runner/edge_command_buffer.py"),
+    )
+    queued = queue_module.EdgeCommandBuffer(str(queue_path)).get_queued_command("REC-1")
+    assert queued["proposal_id"] == "REC-1"
+    assert queued["payload"]["handoff_context"]["approved_by"] == "planner-1"
+    assert queued["payload"]["recommendation"]["asset_id"] == "PUMP-101"
+
+
+def test_approve_proposal_reuses_existing_offline_queue_result(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    queue_path = tmp_path / "edge" / "command-buffer.sqlite3"
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setenv("MI_EDGE_MODE_ENABLED", "true")
+    monkeypatch.setenv("MI_EDGE_COMMAND_BUFFER_PATH", str(queue_path))
+    fake_connection = FakeConnection()
+
+    class OfflineAdapter:
+        backend_name = "offline"
+
+        def __init__(self):
+            self.calls = 0
+
+        def create_work_order(self, recommendation):
+            self.calls += 1
+            raise pm_mod.CMMSUnavailableError("temporary outage")
+
+    adapter = OfflineAdapter()
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: fake_connection)
+    monkeypatch.setattr(pm_mod, "adapter_factory", lambda settings: adapter)
+
+    client = TestClient(app)
+    first = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}
+    )
+    second = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve", headers={"x-user-id": "planner-1"}
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    second_payload = second.json()
+    assert second_payload["status"] == "queued-offline"
+    assert second_payload["reused_result"] is True
+    assert (
+        second_payload["detail"]
+        == "PM proposal already queued for offline handoff; returning the existing queue result"
+    )
+    assert second_payload["retry_allowed"] is False
+    assert adapter.calls == 1
 
 
 def test_approve_proposal_returns_502_for_malformed_adapter_payload(monkeypatch, tmp_path):

@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
+from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
 from maintenance_intelligence.services.repair_plan_service import (
     get_repair_plan,
     list_parts_for_plan,
@@ -337,6 +339,47 @@ def _run_summary_root() -> Path:
     return Path(settings.run_summary_dir).expanduser()
 
 
+def _edge_status_payload() -> Dict[str, Any]:
+    settings = Settings()
+    if not settings.edge_mode_enabled:
+        return {
+            "edge_mode_enabled": False,
+            "connectivity_status": "disabled",
+            "buffered_event_count": 0,
+            "queued_command_count": 0,
+            "last_successful_central_write_at": None,
+            "last_replay_attempt_at": None,
+            "last_command_replay_attempt_at": None,
+            "last_command_replay_at": None,
+            "last_command_queued_at": None,
+            "last_command_error": None,
+            "last_error": None,
+        }
+    buffer = EdgeEventBuffer(settings.edge_buffer_path, max_events=settings.edge_buffer_max_events)
+    command_queue = EdgeCommandBuffer(settings.edge_command_buffer_path)
+    snapshot = buffer.snapshot()
+    queue_snapshot = command_queue.snapshot()
+    return {
+        "edge_mode_enabled": True,
+        "connectivity_status": _as_safe_text(snapshot.get("connectivity_status"), "unknown")
+        or "unknown",
+        "buffered_event_count": int(snapshot.get("buffered_event_count") or 0),
+        "queued_command_count": int(queue_snapshot.get("queued_command_count") or 0),
+        "total_queued_commands": int(queue_snapshot.get("total_queued_commands") or 0),
+        "total_replayed_commands": int(queue_snapshot.get("total_replayed_commands") or 0),
+        "total_command_replay_failures": int(queue_snapshot.get("total_replay_failures") or 0),
+        "last_successful_central_write_at": _as_text(
+            snapshot.get("last_successful_central_write_at")
+        ),
+        "last_replay_attempt_at": _as_text(snapshot.get("last_replay_attempt_at")),
+        "last_command_replay_attempt_at": _as_text(queue_snapshot.get("last_replay_attempt_at")),
+        "last_command_replay_at": _as_text(queue_snapshot.get("last_successful_replay_at")),
+        "last_command_queued_at": _as_text(queue_snapshot.get("last_queued_command_at")),
+        "last_command_error": _as_text(queue_snapshot.get("last_error")),
+        "last_error": _as_text(snapshot.get("last_error")),
+    }
+
+
 def _extract_run_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = _sanitize_structured(payload.get("structured"))
     model = _sanitize_model(payload.get("model"))
@@ -420,6 +463,12 @@ def recent_runs(request: Request, limit: int = Query(12, ge=1, le=50)) -> List[D
         if len(items) >= limit:
             break
     return items
+
+
+@router.get("/api/v1/portal/edge-status")
+def edge_status(request: Request) -> Dict[str, Any]:
+    _require_read_access(request)
+    return _edge_status_payload()
 
 
 @router.get("/api/v1/portal/runs/latest")

@@ -87,3 +87,57 @@ def test_health_deep_degrades_when_dependencies_fail_or_lag_is_unknown(monkeypat
     assert payload["pg"] == "error: pg down"
     assert payload["kafka"] == "error: kafka down"
     assert payload["kafka_lag"] == {"_summary": {"total_lag": None}}
+
+
+def test_health_deep_includes_edge_summary_when_edge_mode_enabled(tmp_path, monkeypatch):
+    buffer_path = tmp_path / "edge" / "edge.sqlite3"
+    buffer = health_mod.EdgeEventBuffer(str(buffer_path), max_events=10)
+    buffer.buffer_event(
+        {
+            "event_id": "EV-EDGE",
+            "occurred_at": "2026-03-15T10:00:00Z",
+            "org_id": "demo-org",
+            "asset_id": "PUMP-101",
+            "kind": "anomaly",
+            "severity": "high",
+            "summary": "Offline buffered event",
+            "details": {"source": "edge"},
+            "lineage": {"channel": "kafka"},
+        },
+        error="central store unavailable",
+    )
+
+    monkeypatch.setattr(
+        health_mod,
+        "Settings",
+        lambda: SimpleNamespace(
+            pg_dsn="dsn",
+            kafka_bootstrap="kafka:9092",
+            edge_mode_enabled=True,
+            edge_buffer_path=str(buffer_path),
+            edge_buffer_max_events=10,
+        ),
+    )
+    monkeypatch.setattr(health_mod.psycopg2, "connect", lambda dsn: FakeConnection())
+    monkeypatch.setattr(
+        health_mod,
+        "KafkaAdminClient",
+        lambda **kwargs: SimpleNamespace(list_topics=lambda: ["topic-a"]),
+    )
+    monkeypatch.setattr(
+        health_mod, "compute_kafka_lag", lambda *args, **kwargs: {"_summary": {"total_lag": 0}}
+    )
+
+    payload = health_mod.healthz(deep=True)
+
+    assert payload["status"] == "ok"
+    assert payload["edge"] == {
+        "edge_mode_enabled": True,
+        "connectivity_status": "offline",
+        "buffered_event_count": 1,
+        "total_buffered_events": 1,
+        "total_replayed_events": 0,
+        "total_replay_failures": 0,
+        "last_successful_central_write_at": None,
+        "last_replay_attempt_at": None,
+    }

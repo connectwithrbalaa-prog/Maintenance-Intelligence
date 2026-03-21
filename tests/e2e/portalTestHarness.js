@@ -912,10 +912,10 @@ function createPortalHarness(options = {}) {
       await fulfillJson(route, buildOutcomesReport(feedbackHistory));
     });
 
-  	await page.route('**/api/v1/reports/prioritized-assets**', async (route) => {
+	await page.route('**/api/v1/reports/prioritized-assets**', async (route) => {
       const url = new URL(route.request().url());
       expect(url.searchParams.get('limit')).toBe('6');
-  	  expect(url.searchParams.get('window')).toBe('30');
+	  expect(url.searchParams.get('window')).toBe('30');
 		  const warningsOnly = url.searchParams.get('warnings_only') === 'true';
       if (badActorsFailure) {
         await fulfillError(route, 503, badActorsFailure);

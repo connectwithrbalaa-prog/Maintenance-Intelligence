@@ -25,9 +25,12 @@ from maintenance_intelligence.api.middleware.identity import (
     require_authenticated_identity,
 )
 from maintenance_intelligence.runner.config import Settings
+from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.services.wo_bridge import process_recommendation, with_pg
 
 router = APIRouter(prefix="/api/v1/agents/pm", tags=["pm"])
+
+QUEUED_OFFLINE_STATUS = "queued-offline"
 
 
 class AnalyzePayload(BaseModel):
@@ -167,7 +170,10 @@ def _retry_fields(proposal: Dict[str, Any], max_attempts: int) -> Dict[str, Any]
     )
     attempt_count = len(attempts)
     attempts_remaining = max(0, max_attempts - attempt_count)
-    retry_allowed = proposal.get("status") != "approved" and attempts_remaining > 0
+    proposal_status = _as_text(proposal.get("status")) or "pending"
+    retry_allowed = (
+        proposal_status not in {"approved", QUEUED_OFFLINE_STATUS} and attempts_remaining > 0
+    )
     return {
         "attempt_count": attempt_count,
         "attempts_remaining": attempts_remaining,
@@ -181,10 +187,12 @@ def _proposal_with_retry_fields(proposal: Dict[str, Any], max_attempts: int) -> 
         proposal.get("metadata") or {}
     )
     latest_attempt = attempts[0] if attempts else {}
+    proposal_status = _as_text(proposal.get("status")) or "pending"
     return {
         **proposal,
         **_retry_fields(proposal, max_attempts),
-        "admin_retry_required": bool(attempts) and proposal.get("status") != "approved",
+        "admin_retry_required": bool(attempts)
+        and proposal_status not in {"approved", QUEUED_OFFLINE_STATUS},
         "last_attempt_info": latest_attempt,
     }
 
@@ -353,10 +361,13 @@ def _approval_response(
     *,
     max_attempts: int,
     reused_result: bool = False,
+    response_status: Optional[str] = None,
 ) -> JSONResponse:
     approval = _approval_fields(proposal.get("metadata") or {})
-    approval_status = proposal.get("status") or (
-        "approved" if result and result.get("handoff_complete") else "pending"
+    approval_status = (
+        response_status
+        or proposal.get("status")
+        or ("approved" if result and result.get("handoff_complete") else "pending")
     )
     approved_by = proposal.get("approved_by") or approval.get("approved_by")
     approved_at = proposal.get("approved_at") or approval.get("approved_at")
@@ -364,7 +375,7 @@ def _approval_response(
     handoff_state = (
         normalized_proposal.get("handoff_state")
         or approval.get("handoff_state")
-        or ("success" if normalized_proposal.get("status") == "approved" else "pending")
+        or ("success" if approval_status == "approved" else "pending")
     )
     attempts = normalized_proposal.get("approval_history") or _approval_attempts(
         normalized_proposal.get("metadata") or {}
@@ -383,7 +394,8 @@ def _approval_response(
         "retry_allowed": retry_fields["retry_allowed"],
         "attempt_status": latest_attempt.get("handoff_state") or handoff_state,
         "last_attempt_info": latest_attempt,
-        "admin_retry_required": bool(attempts) and approval_status != "approved",
+        "admin_retry_required": bool(attempts)
+        and approval_status not in {"approved", QUEUED_OFFLINE_STATUS},
         "proposal_id": normalized_proposal.get("proposal_id"),
         "approved_by": approved_by,
         "approved_at": approved_at,
@@ -652,6 +664,85 @@ def _with_proposal_connection():
     return connection_factory(settings.pg_dsn)
 
 
+def _queue_attempts(
+    attempts: List[Dict[str, Any]], queued_result: Dict[str, Any], detail: str
+) -> List[Dict[str, Any]]:
+    if attempts:
+        queued_attempt = {
+            **attempts[-1],
+            "handoff_state": QUEUED_OFFLINE_STATUS,
+            "result": "pending",
+            "connector_result": queued_result,
+            "error_message": detail,
+        }
+        return [*attempts[:-1], queued_attempt]
+    return [
+        {
+            "attempt_number": 1,
+            "attempted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "handoff_state": QUEUED_OFFLINE_STATUS,
+            "result": "pending",
+            "connector_result": queued_result,
+            "error_message": detail,
+        }
+    ]
+
+
+def _queue_offline_handoff(
+    settings: Settings,
+    proposal_id: str,
+    recommendation: Dict[str, Any],
+    approved_by: str,
+    attempt_origin: str,
+    detail: str,
+    proposal: Dict[str, Any],
+    attempts: List[Dict[str, Any]],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    queue = EdgeCommandBuffer(settings.edge_command_buffer_path)
+    queued_command = queue.enqueue_command(
+        proposal_id,
+        {
+            "proposal_id": proposal_id,
+            "recommendation_id": recommendation.get("id"),
+            "queued_from": "pm_advisor",
+            "recommendation": recommendation,
+            "handoff_context": {
+                "proposal_id": proposal_id,
+                "recommendation_id": recommendation.get("id"),
+                "approved_by": approved_by,
+                "origin": attempt_origin,
+            },
+        },
+        error=detail,
+    )
+    queued_result = {
+        "status": QUEUED_OFFLINE_STATUS,
+        "handoff_complete": False,
+        "backend": settings.pm_connector_backend,
+        "proposal_id": proposal_id,
+        "queue_id": queued_command.get("queue_id"),
+        "queued_at": queued_command.get("queued_at"),
+        "message": "CMMS handoff queued locally for replay",
+        "reason": detail,
+    }
+    queue_attempts = _queue_attempts(attempts, queued_result, detail)
+    conn = connection_factory(settings.pg_dsn)
+    try:
+        persisted = _update_proposal_status(
+            conn,
+            proposal_id,
+            approved_by,
+            None,
+            QUEUED_OFFLINE_STATUS,
+            _append_approval_metadata(
+                proposal.get("metadata"), approved_by, queue_attempts, origin=attempt_origin
+            ),
+        )
+    finally:
+        conn.close()
+    return persisted, queued_result
+
+
 def _load_persisted_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
     conn = _with_proposal_connection()
     try:
@@ -788,6 +879,17 @@ def approve_proposal(
             reused_result=True,
         )
 
+    if existing and existing.get("status") == QUEUED_OFFLINE_STATUS:
+        return _approval_response(
+            existing,
+            _latest_connector_result(existing.get("metadata")),
+            202,
+            "PM proposal already queued for offline handoff; returning the existing queue result",
+            max_attempts=max_attempts,
+            reused_result=True,
+            response_status=QUEUED_OFFLINE_STATUS,
+        )
+
     existing_attempts = _approval_attempts((existing or {}).get("metadata") or {})
     attempts_remaining = max(0, max_attempts - len(existing_attempts))
     if attempts_remaining <= 0:
@@ -830,8 +932,10 @@ def approve_proposal(
                 },
                 conn,
                 adapter,
-                retry_attempts=min(
-                    max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining
+                retry_attempts=(
+                    1
+                    if settings.edge_mode_enabled
+                    else min(max(1, int(settings.pm_handoff_retry_attempts)), attempts_remaining)
                 ),
                 retry_interval_s=settings.pm_handoff_retry_interval_s,
             )
@@ -892,6 +996,28 @@ def approve_proposal(
         )
     except CMMSRetryExhaustedError as exc:
         detail = str(exc)
+        if settings.edge_mode_enabled:
+            try:
+                persisted, queued_result = _queue_offline_handoff(
+                    settings,
+                    proposal_id,
+                    recommendation,
+                    approved_by,
+                    attempt_origin,
+                    detail,
+                    proposal,
+                    list(exc.attempts or []),
+                )
+                return _approval_response(
+                    persisted,
+                    queued_result,
+                    202,
+                    "PM proposal approved locally and queued for offline CMMS handoff",
+                    max_attempts=max_attempts,
+                    response_status=QUEUED_OFFLINE_STATUS,
+                )
+            except Exception:
+                pass
         persisted = {}
         try:
             conn = connection_factory(settings.pg_dsn)
@@ -923,7 +1049,63 @@ def approve_proposal(
             detail,
             max_attempts=max_attempts,
         )
-    except (CMMSUnavailableError, CMMSAdapterError) as exc:
+    except CMMSUnavailableError as exc:
+        detail = str(exc)
+        if settings.edge_mode_enabled:
+            try:
+                persisted, queued_result = _queue_offline_handoff(
+                    settings,
+                    proposal_id,
+                    recommendation,
+                    approved_by,
+                    attempt_origin,
+                    detail,
+                    proposal,
+                    list(getattr(exc, "attempts", []) or []),
+                )
+                return _approval_response(
+                    persisted,
+                    queued_result,
+                    202,
+                    "PM proposal approved locally and queued for offline CMMS handoff",
+                    max_attempts=max_attempts,
+                    response_status=QUEUED_OFFLINE_STATUS,
+                )
+            except Exception:
+                pass
+        persisted = {}
+        attempts = getattr(exc, "attempts", [])
+        try:
+            conn = connection_factory(settings.pg_dsn)
+            try:
+                persisted = _update_proposal_status(
+                    conn,
+                    proposal_id,
+                    approved_by,
+                    None,
+                    "pending",
+                    _append_approval_metadata(
+                        proposal.get("metadata"), approved_by, attempts, origin=attempt_origin
+                    ),
+                )
+            finally:
+                conn.close()
+        except Exception:
+            pass
+        return _approval_response(
+            persisted
+            or {
+                "proposal_id": proposal_id,
+                "status": "pending",
+                "approved_by": approved_by,
+                "approved_at": None,
+            },
+            None,
+            503,
+            detail,
+            max_attempts=max_attempts,
+        )
+    except CMMSAdapterError as exc:
         detail = str(exc)
         persisted = {}
         attempts = getattr(exc, "attempts", [])
