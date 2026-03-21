@@ -1702,16 +1702,36 @@
 		}
 
 		.chart-empty {
-			min-height: 154px;
+			min-height: 160px;
 			display: grid;
 			place-items: center;
 			border: 1px dashed var(--line);
 			border-radius: 14px;
-			background: rgba(24, 34, 38, 0.03);
+			background: rgba(15, 23, 42, 0.02);
 			color: var(--muted);
 			text-align: center;
 			padding: 16px;
 			font-size: 13px;
+		}
+
+		.chart-card {
+			min-height: 240px;
+			contain: layout style;
+		}
+
+		.outcomes-panel {
+			min-height: 200px;
+			contain: layout style;
+		}
+
+		.triage-panel,
+		.handoff-panel {
+			min-height: 160px;
+			contain: layout style;
+		}
+
+		.detail-shell {
+			contain: layout style;
 		}
 
 		.pm-actions button {
@@ -2009,6 +2029,13 @@
 	</main>
 
 	<script>
+		const DETAIL_CACHE_LIMIT = 50;
+		function evictMapIfNeeded(map, limit = DETAIL_CACHE_LIMIT) {
+			if (map.size <= limit) return;
+			const keysToEvict = [...map.keys()].slice(0, map.size - limit);
+			for (const key of keysToEvict) map.delete(key);
+		}
+
 		const state = {
 			runs: [],
 			filteredRuns: [],
@@ -3629,6 +3656,7 @@
 			});
 			const normalized = normalizeRun(detail);
 			state.detailsById.set(runId, normalized);
+			evictMapIfNeeded(state.detailsById);
 			return normalized;
 		}
 
@@ -5845,11 +5873,14 @@
 				`;
 			}).join("");
 
-			elements.runList.querySelectorAll("[data-run-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					selectRun(button.getAttribute("data-run-id"));
-				});
+		}
+
+		if (!elements.runList._delegated) {
+			elements.runList.addEventListener("click", (event) => {
+				const card = event.target.closest("[data-run-id]");
+				if (card) selectRun(card.getAttribute("data-run-id"));
 			});
+			elements.runList._delegated = true;
 		}
 
 		function renderMetrics() {
@@ -5896,7 +5927,231 @@
 			}
 		}
 
+		function _destroyDetailCharts() {
+			for (const [id, chart] of _chartInstances) {
+				chart.destroy();
+			}
+			_chartInstances.clear();
+		}
+
+		function _bindDetailDelegation(run, ctx) {
+			if (!elements.detailView._delegatedClick) {
+				elements.detailView.addEventListener("click", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					const workflowBtn = target.closest("[data-workflow-target]");
+					if (workflowBtn) {
+						focusWorkflowSection(asString(workflowBtn.getAttribute("data-workflow-target")));
+						return;
+					}
+
+					const evidenceRefBtn = target.closest("[data-evidence-ref-id]");
+					if (evidenceRefBtn) {
+						focusEvidenceReference(currentRun, asString(evidenceRefBtn.getAttribute("data-evidence-ref-id")), asString(evidenceRefBtn.getAttribute("data-evidence-ref-type")));
+						return;
+					}
+
+					const compareRefBtn = target.closest("[data-compare-evidence-ref-id]");
+					if (compareRefBtn) {
+						const compareRunId = asString(compareRefBtn.getAttribute("data-compare-evidence-run-id"));
+						const sourceSide = asString(compareRefBtn.getAttribute("data-compare-evidence-side")) || "current";
+						const compareRun = compareRunId ? state.detailsById.get(compareRunId) || null : null;
+						activateCompareEvidenceReference(currentRun, compareRun, asString(compareRefBtn.getAttribute("data-compare-evidence-ref-id")), asString(compareRefBtn.getAttribute("data-compare-evidence-ref-type")), sourceSide);
+						return;
+					}
+
+					const handoffRetryBtn = target.closest("[data-handoff-retry-proposal-id]");
+					if (handoffRetryBtn) {
+						const proposalId = asString(handoffRetryBtn.getAttribute("data-handoff-retry-proposal-id"));
+						if (proposalId) {
+							const row = handoffExceptionRows(state.handoffExceptions.report).find((c) => c.proposalId === proposalId);
+							if (row) submitHandoffQueueRetry(row);
+						}
+						return;
+					}
+
+					const handoffFocusBtn = target.closest("[data-handoff-focus-run-id]");
+					if (handoffFocusBtn) {
+						selectRun(asString(handoffFocusBtn.getAttribute("data-handoff-focus-run-id")));
+						return;
+					}
+
+					const handoffAuditBtn = target.closest("[data-handoff-open-audit-run-id]");
+					if (handoffAuditBtn) {
+						selectRun(asString(handoffAuditBtn.getAttribute("data-handoff-open-audit-run-id"))).then(() => focusWorkflowSection("approvalHistorySection"));
+						return;
+					}
+
+					const cmmsBreakdownLink = target.closest(".cmms-breakdown-link");
+					if (cmmsBreakdownLink) return;
+
+					if (target.id === "approvePmButton" || target.closest("#approvePmButton")) {
+						const rs = elements.detailView._retryState;
+						if (rs && elements.detailView._canApprove && rs.enabled) {
+							approveRun(currentRun, rs, { adminRetry: elements.detailView._isAdmin && rs.isRetry });
+						}
+						return;
+					}
+
+					if (target.id === "loadMoreAuditButton" || target.closest("#loadMoreAuditButton")) {
+						const ah = state.approvalHistoryById.get(currentRun.run_id);
+						if (ah?.has_more) loadApprovalHistory(currentRun, { page: (ah.page || 1) + 1, size: ah.size || 3, append: true });
+						return;
+					}
+				});
+				elements.detailView._delegatedClick = true;
+			}
+
+			if (!elements.detailView._delegatedChange) {
+				elements.detailView.addEventListener("change", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "feedbackActionSelect") {
+						updateFeedbackDraft(currentRun.run_id, { action: target.value });
+					} else if (target.id === "compareRunSelect") {
+						const compareRunId = target.value;
+						if (!compareRunId) {
+							state.selectedCompareRunIdByRunId.delete(currentRun.run_id);
+							state.compareErrorByRunId.delete(currentRun.run_id);
+							renderDetail(currentRun);
+						} else {
+							state.selectedCompareRunIdByRunId.set(currentRun.run_id, compareRunId);
+							ensureCompareRunData(currentRun, compareRunId);
+						}
+					}
+				});
+				elements.detailView._delegatedChange = true;
+			}
+
+			if (!elements.detailView._delegatedInput) {
+				elements.detailView.addEventListener("input", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "feedbackReasonInput") {
+						updateFeedbackDraft(currentRun.run_id, { reason: target.value });
+					} else if (target.id === "feedbackTitleInput") {
+						updateFeedbackDraft(currentRun.run_id, { editedTitle: target.value });
+					} else if (target.id === "feedbackActionsInput") {
+						updateFeedbackDraft(currentRun.run_id, { editedActions: target.value });
+					}
+				});
+				elements.detailView._delegatedInput = true;
+			}
+
+			if (!elements.detailView._delegatedSubmit) {
+				elements.detailView.addEventListener("submit", (event) => {
+					if (event.target.id === "feedbackForm") {
+						event.preventDefault();
+						const currentRun = elements.detailView._currentRun;
+						if (currentRun) submitFeedback(currentRun);
+					}
+				});
+				elements.detailView._delegatedSubmit = true;
+			}
+
+			if (!elements.detailView._delegatedClickPhase2) {
+				elements.detailView.addEventListener("click", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					const ageBucketBtn = target.closest("[data-handoff-age-bucket]");
+					if (ageBucketBtn) {
+						state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(ageBucketBtn.getAttribute("data-handoff-age-bucket"));
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+						return;
+					}
+
+					if (target.id === "handoffPreferencesResetButton" || target.closest("#handoffPreferencesResetButton")) {
+						applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+						return;
+					}
+
+					const outcomesScopeEntity = target.closest("[data-outcomes-scope][data-outcomes-entity]");
+					if (outcomesScopeEntity) {
+						navigateToOutcomeSelection(currentRun, asString(outcomesScopeEntity.getAttribute("data-outcomes-scope")) || "asset", asString(outcomesScopeEntity.getAttribute("data-outcomes-entity")));
+						return;
+					}
+
+					const triageAssetBtn = target.closest("[data-triage-asset-id]");
+					if (triageAssetBtn) {
+						navigateToOutcomeSelection(currentRun, "asset", asString(triageAssetBtn.getAttribute("data-triage-asset-id")));
+						return;
+					}
+
+					const triageRunBtn = target.closest("[data-triage-run-id]");
+					if (triageRunBtn) {
+						const targetRunId = asString(triageRunBtn.getAttribute("data-triage-run-id"));
+						if (targetRunId) selectRun(targetRunId).then(() => scrollDetailSection(".evidence-shell"));
+						return;
+					}
+
+					const triageEvidenceBtn = target.closest("[data-triage-evidence-asset-id]");
+					if (triageEvidenceBtn) {
+						const assetId = asString(triageEvidenceBtn.getAttribute("data-triage-evidence-asset-id"));
+						if (assetId) {
+							resolveLatestRunForAsset(assetId).then((resolvedRun) => {
+								if (resolvedRun?.run_id) openResolvedTriageRun(resolvedRun).then(() => scrollDetailSection(".evidence-shell"));
+							}).catch(() => {});
+						}
+						return;
+					}
+				});
+				elements.detailView._delegatedClickPhase2 = true;
+			}
+
+			if (!elements.detailView._delegatedChangePhase2) {
+				elements.detailView.addEventListener("change", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "handoffViewSelect") {
+						state.handoffExceptions.view = normalizeHandoffQueueView(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "handoffSortSelect") {
+						state.handoffExceptions.sort = normalizeHandoffQueueSort(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "handoffLimitSelect") {
+						state.handoffExceptions.limit = normalizeHandoffQueueLimit(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "outcomesScopeSelect") {
+						state.selectedOutcomeScopeByRunId.set(currentRun.run_id, target.value);
+						renderDetail(currentRun);
+					} else if (target.id === "outcomesEntitySelect") {
+						const scopeSelect = document.getElementById("outcomesScopeSelect");
+						const activeScope = scopeSelect ? scopeSelect.value : (state.selectedOutcomeScopeByRunId.get(currentRun.run_id) || "asset");
+						rememberOutcomeEntity(currentRun.run_id, activeScope, target.value);
+						renderDetail(currentRun);
+					} else if (target.id === "triageWarningsOnlyToggle") {
+						state.triage.warningsOnly = Boolean(target.checked);
+						resetTriageReport();
+						renderDetail(currentRun);
+					}
+				});
+				elements.detailView._delegatedChangePhase2 = true;
+			}
+
+			elements.detailView._currentRun = run;
+			elements.detailView._retryState = ctx.retryState;
+			elements.detailView._canApprove = ctx.canApprove;
+			elements.detailView._isAdmin = ctx.isAdmin;
+		}
+
 		function renderDetail(run) {
+			_destroyDetailCharts();
 			if (!run) {
 				elements.detailStamp.textContent = "No run selected";
 				elements.detailView.className = "empty-state";
@@ -6106,252 +6361,7 @@
 				</div>
 			`;
 
-			const approveButton = document.getElementById("approvePmButton");
-			if (approveButton && canApprove && retryState.enabled) {
-				approveButton.addEventListener("click", () => {
-					approveRun(run, retryState, { adminRetry: isAdmin && retryState.isRetry });
-				});
-			}
-
-			const feedbackActionSelect = document.getElementById("feedbackActionSelect");
-			const compareRunSelect = document.getElementById("compareRunSelect");
-			const feedbackReasonInput = document.getElementById("feedbackReasonInput");
-			const feedbackTitleInput = document.getElementById("feedbackTitleInput");
-			const feedbackActionsInput = document.getElementById("feedbackActionsInput");
-			const feedbackForm = document.getElementById("feedbackForm");
-			if (compareRunSelect) {
-				compareRunSelect.addEventListener("change", async () => {
-					const compareRunId = compareRunSelect.value;
-					if (!compareRunId) {
-						state.selectedCompareRunIdByRunId.delete(run.run_id);
-						state.compareErrorByRunId.delete(run.run_id);
-						renderDetail(run);
-						return;
-					}
-					state.selectedCompareRunIdByRunId.set(run.run_id, compareRunId);
-					await ensureCompareRunData(run, compareRunId);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-evidence-ref-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					focusEvidenceReference(
-						run,
-						asString(button.getAttribute("data-evidence-ref-id")),
-						asString(button.getAttribute("data-evidence-ref-type"))
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-compare-evidence-ref-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const compareRunId = asString(button.getAttribute("data-compare-evidence-run-id"));
-					const sourceSide = asString(button.getAttribute("data-compare-evidence-side")) || "current";
-					const compareRun = compareRunId ? state.detailsById.get(compareRunId) || null : null;
-					await activateCompareEvidenceReference(
-						run,
-						compareRun,
-						asString(button.getAttribute("data-compare-evidence-ref-id")),
-						asString(button.getAttribute("data-compare-evidence-ref-type")),
-						sourceSide,
-					);
-				});
-			});
-
-			if (feedbackActionSelect) {
-				feedbackActionSelect.addEventListener("change", () => {
-					updateFeedbackDraft(run.run_id, { action: feedbackActionSelect.value });
-				});
-			}
-			if (feedbackReasonInput) {
-				feedbackReasonInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { reason: feedbackReasonInput.value });
-				});
-			}
-			if (feedbackTitleInput) {
-				feedbackTitleInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { editedTitle: feedbackTitleInput.value });
-				});
-			}
-			if (feedbackActionsInput) {
-				feedbackActionsInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { editedActions: feedbackActionsInput.value });
-				});
-			}
-			if (feedbackForm) {
-				feedbackForm.addEventListener("submit", async (event) => {
-					event.preventDefault();
-					await submitFeedback(run);
-				});
-			}
-
-			const loadMoreButton = document.getElementById("loadMoreAuditButton");
-			if (loadMoreButton && approvalHistory?.has_more && !auditBusy) {
-				loadMoreButton.addEventListener("click", () => {
-					loadApprovalHistory(run, { page: (approvalHistory.page || 1) + 1, size: approvalHistory.size || 3, append: true });
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-workflow-target]").forEach((button) => {
-				button.addEventListener("click", () => {
-					focusWorkflowSection(asString(button.getAttribute("data-workflow-target")));
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-retry-proposal-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const proposalId = asString(button.getAttribute("data-handoff-retry-proposal-id"));
-					if (!proposalId) {
-						return;
-					}
-					const row = handoffExceptionRows(state.handoffExceptions.report).find((candidate) => candidate.proposalId === proposalId);
-					if (!row) {
-						return;
-					}
-					await submitHandoffQueueRetry(row);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-focus-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-handoff-focus-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-open-audit-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-handoff-open-audit-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-					focusWorkflowSection("approvalHistorySection");
-				});
-			});
-
-			const handoffViewSelect = document.getElementById("handoffViewSelect");
-			if (handoffViewSelect) {
-				handoffViewSelect.addEventListener("change", () => {
-					state.handoffExceptions.view = normalizeHandoffQueueView(handoffViewSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const handoffSortSelect = document.getElementById("handoffSortSelect");
-			if (handoffSortSelect) {
-				handoffSortSelect.addEventListener("change", () => {
-					state.handoffExceptions.sort = normalizeHandoffQueueSort(handoffSortSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const handoffLimitSelect = document.getElementById("handoffLimitSelect");
-			if (handoffLimitSelect) {
-				handoffLimitSelect.addEventListener("change", () => {
-					state.handoffExceptions.limit = normalizeHandoffQueueLimit(handoffLimitSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-handoff-age-bucket]").forEach((button) => {
-				button.addEventListener("click", () => {
-					state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(button.getAttribute("data-handoff-age-bucket"));
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			});
-
-			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
-			if (handoffPreferencesResetButton) {
-				handoffPreferencesResetButton.addEventListener("click", () => {
-					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const outcomesScopeSelect = document.getElementById("outcomesScopeSelect");
-			if (outcomesScopeSelect) {
-				outcomesScopeSelect.addEventListener("change", () => {
-					state.selectedOutcomeScopeByRunId.set(run.run_id, outcomesScopeSelect.value);
-					renderDetail(run);
-				});
-			}
-
-			const outcomesEntitySelect = document.getElementById("outcomesEntitySelect");
-			if (outcomesEntitySelect) {
-				outcomesEntitySelect.addEventListener("change", () => {
-					const activeScope = outcomesScopeSelect ? outcomesScopeSelect.value : (state.selectedOutcomeScopeByRunId.get(run.run_id) || "asset");
-					rememberOutcomeEntity(run.run_id, activeScope, outcomesEntitySelect.value);
-					renderDetail(run);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-outcomes-scope][data-outcomes-entity]").forEach((button) => {
-				button.addEventListener("click", () => {
-					navigateToOutcomeSelection(
-						run,
-						asString(button.getAttribute("data-outcomes-scope")) || "asset",
-						asString(button.getAttribute("data-outcomes-entity")),
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-asset-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					navigateToOutcomeSelection(
-						run,
-						"asset",
-						asString(button.getAttribute("data-triage-asset-id")),
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-triage-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-					scrollDetailSection(".evidence-shell");
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-evidence-asset-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const assetId = asString(button.getAttribute("data-triage-evidence-asset-id"));
-					if (!assetId) {
-						return;
-					}
-					try {
-						const resolvedRun = await resolveLatestRunForAsset(assetId);
-						if (!resolvedRun?.run_id) {
-							return;
-						}
-						await openResolvedTriageRun(resolvedRun);
-						scrollDetailSection(".evidence-shell");
-					} catch (error) {
-						void error;
-					}
-				});
-			});
-
-			const triageWarningsOnlyToggle = elements.detailView.querySelector("#triageWarningsOnlyToggle");
-			if (triageWarningsOnlyToggle) {
-				triageWarningsOnlyToggle.addEventListener("change", () => {
-					state.triage.warningsOnly = Boolean(triageWarningsOnlyToggle.checked);
-					resetTriageReport();
-					renderDetail(run);
-				});
-			}
+			_bindDetailDelegation(run, { canApprove, retryState, isAdmin, approvalHistory, auditBusy });
 
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
