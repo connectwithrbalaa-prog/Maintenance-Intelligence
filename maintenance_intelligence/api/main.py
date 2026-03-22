@@ -8,7 +8,9 @@ from maintenance_intelligence.api.middleware.identity import (
     get_identity_role,
     get_identity_subject,
     install_identity_middleware,
+    require_identity_scope,
 )
+from maintenance_intelligence.context.assembler import with_pg
 from maintenance_intelligence.api.signals import router as signals_router
 from maintenance_intelligence.api.metrics import router as metrics_router
 from maintenance_intelligence.api.feedback import router as feedback_router
@@ -47,6 +49,28 @@ class TriggerPayload(BaseModel):
     event_id: str
 
 
+def _load_event_scope(event_id: str) -> dict[str, str | None]:
+    try:
+        conn = with_pg(settings.pg_dsn)
+    except Exception:
+        return {"org_id": None}
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT org_id FROM events WHERE event_id = %s ORDER BY occurred_at DESC LIMIT 1",
+                (event_id,),
+            )
+            row = cur.fetchone()
+        return {"org_id": row[0] if row else None}
+    except Exception:
+        return {"org_id": None}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def _require_trigger_access(request: Request) -> str:
     identity = get_identity(request)
     actor_id = get_identity_subject(identity) if identity else None
@@ -65,4 +89,11 @@ def _require_trigger_access(request: Request) -> str:
 @app.post("/api/v1/agents/rca/trigger")
 def trigger_rca(p: TriggerPayload, request: Request):
     _require_trigger_access(request)
+    event_scope = _load_event_scope(p.event_id)
+    if event_scope.get("org_id"):
+        require_identity_scope(
+            request,
+            org_id=event_scope.get("org_id"),
+            detail="RCA trigger scope does not match authenticated tenant",
+        )
     return run(p.event_id, settings)

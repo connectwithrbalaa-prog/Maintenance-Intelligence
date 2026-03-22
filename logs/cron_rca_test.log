@@ -1,0 +1,12 @@
+[2026-03-21T08:34:23Z] START cron_rca_test
+[2026-03-21T08:34:23Z] RESULT: 2026-03-21 08:34:25.188 | INFO     | maintenance_intelligence.runner.core:run:10 - {'event': 'runner.start', 'event_id': 'TEST-RCA-f64c7c5b'}
+2026-03-21 08:34:25.188 | INFO     | maintenance_intelligence.runner.core:run:12 - {'event': 'recommendation.stub', 'id': 'rec-cde09f19', 'note': 'Kafka pipeline handles real flow'}
+2026-03-21 08:34:25.188 | INFO     | maintenance_intelligence.runner.logging:_wrap:26 - {'event': 'timing', 'fn': 'run', 'ms': 6}
+{"event_id": "TEST-RCA-f64c7c5b", "run_id": "cde09f19-0edf-4eca-894f-e687034b9cb0", "status": "ok", "recommendation_id": "rec-cde09f19"}
+[2026-03-21T08:34:23Z] DONE cron_rca_test
+[2026-03-21T08:34:25Z] START cron_rca_test
+[2026-03-21T08:34:25Z] RESULT: 2026-03-21 08:34:25.466 | INFO     | maintenance_intelligence.runner.core:run:10 - {'event': 'runner.start', 'event_id': 'TEST-RCA-de02eb32'}
+2026-03-21 08:34:25.466 | INFO     | maintenance_intelligence.runner.core:run:12 - {'event': 'recommendation.stub', 'id': 'rec-8658f3a5', 'note': 'Kafka pipeline handles real flow'}
+2026-03-21 08:34:25.466 | INFO     | maintenance_intelligence.runner.logging:_wrap:26 - {'event': 'timing', 'fn': 'run', 'ms': 4}
+{"event_id": "TEST-RCA-de02eb32", "run_id": "8658f3a5-f066-4169-b2ba-8e9113d27979", "status": "ok", "recommendation_id": "rec-8658f3a5"}
+[2026-03-21T08:34:25Z] DONE cron_rca_test

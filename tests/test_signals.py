@@ -54,7 +54,8 @@ def test_signals_summary_returns_recent_signals_for_authenticated_reads(monkeypa
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    mock_conn.cursor.return_value.__exit__ = MagicMock()
+    mock_conn.cursor.return_value.__exit__.return_value = False
+    mock_cur.fetchone.return_value = ("demo-org",)
     mock_cur.fetchall.side_effect = [
         [
             ("SIG-1", "vibration", 4.2, "mm/s", None, {"source": "sensor-a"}),
@@ -96,3 +97,22 @@ def test_signals_summary_returns_recent_signals_for_authenticated_reads(monkeypa
             }
         ],
     }
+
+
+def test_signals_summary_rejects_cross_tenant_asset_reads(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    mock_conn.cursor.return_value.__exit__.return_value = False
+    mock_cur.fetchone.return_value = ("demo-org",)
+    monkeypatch.setattr(signals_mod, "with_pg", lambda _dsn: mock_conn)
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/signals/summary?asset_id=PUMP-101&limit=2",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Signal scope does not match authenticated tenant"

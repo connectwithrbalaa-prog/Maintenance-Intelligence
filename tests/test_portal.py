@@ -530,6 +530,82 @@ def test_portal_run_endpoints_require_authenticated_identity(tmp_path, monkeypat
     assert detail.json()["detail"] == "Portal run data requires an authenticated identity"
 
 
+def test_portal_recent_runs_filters_cross_tenant_summaries(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-123",
+                "structured": {"title": "Tenant scoped run"},
+                "context_meta": {"asset_id": "PUMP-101", "org_id": "demo-org"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/runs",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_portal_run_detail_rejects_cross_tenant_summary_access(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-123",
+                "structured": {"title": "Tenant scoped run"},
+                "context_meta": {"asset_id": "PUMP-101", "org_id": "demo-org"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/runs/RUN-123",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Portal run scope does not match authenticated tenant"
+
+
+def test_portal_latest_run_lookup_hides_cross_tenant_summary(tmp_path, monkeypatch):
+    run_dir = tmp_path / "portal-outs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-123",
+                "structured": {"title": "Tenant scoped run"},
+                "context_meta": {"asset_id": "PUMP-101", "org_id": "demo-org"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "portal-outs"))
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/portal/runs/latest",
+        params={"asset_id": "PUMP-101"},
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Run summary not found for asset"
+
+
 def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     client = TestClient(app)
 

@@ -8,7 +8,9 @@ from maintenance_intelligence.api.middleware.identity import (
     get_identity,
     get_identity_role,
     get_identity_subject,
+    identity_matches_scope,
     require_authenticated_identity,
+    require_identity_scope,
 )
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.services.repair_plan_service import (
@@ -99,6 +101,14 @@ def _require_read_access(request: Request) -> None:
     )
 
 
+def _plan_visible_to_request(request: Request, plan: dict[str, Any]) -> bool:
+    return identity_matches_scope(
+        get_identity(request),
+        org_id=plan.get("org_id"),
+        settings=Settings(),
+    )
+
+
 @router.post(
     "/",
     response_model=RepairPlanSchema,
@@ -107,6 +117,11 @@ def _require_read_access(request: Request) -> None:
 )
 def create(plan: RepairPlanSchema, request: Request):
     _require_write_access(request)
+    require_identity_scope(
+        request,
+        org_id=plan.org_id,
+        detail="Repair plan scope does not match authenticated tenant",
+    )
     settings = _settings()
     try:
         return create_repair_plan(
@@ -139,6 +154,11 @@ def get(plan_id: str, request: Request):
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     if not obj:
         raise HTTPException(status_code=404, detail="Repair plan not found")
+    require_identity_scope(
+        request,
+        org_id=obj.get("org_id"),
+        detail="Repair plan scope does not match authenticated tenant",
+    )
     try:
         parts = list_parts_for_plan(settings.pg_dsn, plan_id)
     except Exception as exc:
@@ -156,7 +176,8 @@ def list_all(request: Request, limit: int = Query(default=100, ge=1, le=500)):
     _require_read_access(request)
     settings = _settings()
     try:
-        return list_repair_plans(settings.pg_dsn, limit=limit)
+        plans = list_repair_plans(settings.pg_dsn, limit=limit)
+        return [plan for plan in plans if _plan_visible_to_request(request, plan)]
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
 
@@ -171,11 +192,19 @@ def delete(plan_id: str, request: Request):
     _require_write_access(request)
     settings = _settings()
     try:
+        plan = get_repair_plan(settings.pg_dsn, plan_id)
+        if not plan:
+            raise HTTPException(status_code=404, detail="Repair plan not found")
+        require_identity_scope(
+            request,
+            org_id=plan.get("org_id"),
+            detail="Repair plan scope does not match authenticated tenant",
+        )
         deleted = delete_repair_plan(settings.pg_dsn, plan_id)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Repair plan not found")
     return {"ok": True}
 
 
@@ -189,8 +218,14 @@ def add_part(plan_id: str, part: RepairPartSchema, request: Request):
     _require_write_access(request)
     settings = _settings()
     try:
-        if not get_repair_plan(settings.pg_dsn, plan_id):
+        plan = get_repair_plan(settings.pg_dsn, plan_id)
+        if not plan:
             raise HTTPException(status_code=404, detail="Repair plan not found")
+        require_identity_scope(
+            request,
+            org_id=plan.get("org_id"),
+            detail="Repair plan scope does not match authenticated tenant",
+        )
         return add_part_to_plan(
             settings.pg_dsn,
             plan_id,
@@ -216,8 +251,14 @@ def list_parts(plan_id: str, request: Request):
     _require_read_access(request)
     settings = _settings()
     try:
-        if not get_repair_plan(settings.pg_dsn, plan_id):
+        plan = get_repair_plan(settings.pg_dsn, plan_id)
+        if not plan:
             raise HTTPException(status_code=404, detail="Repair plan not found")
+        require_identity_scope(
+            request,
+            org_id=plan.get("org_id"),
+            detail="Repair plan scope does not match authenticated tenant",
+        )
         return list_parts_for_plan(settings.pg_dsn, plan_id)
     except HTTPException:
         raise

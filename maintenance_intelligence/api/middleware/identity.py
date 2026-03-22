@@ -10,15 +10,107 @@ APPROVAL_ROLES = frozenset({"planner", "maintainer", "admin"})
 ADMIN_ROLES = frozenset({"admin", "maintainer"})
 
 
+def _as_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _parse_csv_text(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, (list, tuple, set)):
+        out: list[str] = []
+        for item in value:
+            text = _as_text(item)
+            if text:
+                out.append(text)
+        return out
+    text = _as_text(value)
+    return [text] if text else []
+
+
 def _normalize_identity(user: Any) -> Optional[Dict[str, Any]]:
     if isinstance(user, dict):
         subject = user.get("subject") or user.get("sub") or user.get("user_id")
         if subject:
-            return {"subject": subject, **user}
+            normalized = {"subject": subject, **user}
+            role = _as_text(normalized.get("role"))
+            roles = _parse_csv_text(normalized.get("roles") or role)
+            if roles:
+                normalized["roles"] = [item.lower() for item in roles]
+                normalized["role"] = normalized["roles"][0]
+            org_id = _as_text(normalized.get("org_id")) or _as_text(normalized.get("org"))
+            if org_id is not None:
+                normalized["org_id"] = org_id
+            site_id = _as_text(normalized.get("site_id")) or _as_text(normalized.get("site"))
+            site_ids = _parse_csv_text(normalized.get("site_ids") or normalized.get("sites"))
+            if site_id and site_id not in site_ids:
+                site_ids = [site_id, *site_ids]
+            if site_id is not None:
+                normalized["site_id"] = site_id
+            if site_ids:
+                normalized["site_ids"] = site_ids
+            return normalized
         return None
     if isinstance(user, str) and user:
         return {"subject": user}
     return None
+
+
+def _trusted_header_identity(request: Request, settings: Settings) -> Optional[Dict[str, Any]]:
+    if not settings.auth_trust_forwarded_headers:
+        return None
+    subject = request.headers.get(settings.auth_subject_header)
+    if not subject:
+        return None
+    roles = _parse_csv_text(request.headers.get(settings.auth_role_header))
+    org_id = _as_text(request.headers.get(settings.auth_org_header))
+    site_id = _as_text(request.headers.get(settings.auth_site_header))
+    site_ids = _parse_csv_text(request.headers.get(settings.auth_sites_header))
+    if site_id and site_id not in site_ids:
+        site_ids = [site_id, *site_ids]
+    identity: Dict[str, Any] = {
+        "subject": subject,
+        "auth_source": "trusted-header",
+        "org_id": org_id,
+        "site_id": site_id,
+        "site_ids": site_ids,
+    }
+    if roles:
+        identity["roles"] = [item.lower() for item in roles]
+        identity["role"] = identity["roles"][0]
+    return identity
+
+
+def _dev_header_identity(request: Request, settings: Settings) -> Optional[Dict[str, Any]]:
+    if not settings.dev_allow_headers:
+        return None
+    subject = request.headers.get("x-user-id") or request.headers.get("x-dev-user")
+    if not subject:
+        return None
+    roles = _parse_csv_text(request.headers.get("x-user-role") or "planner")
+    org_id = _as_text(request.headers.get("x-user-org"))
+    site_id = _as_text(request.headers.get("x-user-site"))
+    site_ids = _parse_csv_text(request.headers.get("x-user-sites"))
+    if site_id and site_id not in site_ids:
+        site_ids = [site_id, *site_ids]
+    return {
+        "subject": subject,
+        "role": roles[0].lower() if roles else "planner",
+        "roles": [item.lower() for item in roles] if roles else ["planner"],
+        "org_id": org_id,
+        "site_id": site_id,
+        "site_ids": site_ids,
+        "auth_source": "dev-header",
+    }
 
 
 def resolve_identity(
@@ -30,11 +122,13 @@ def resolve_identity(
     if existing:
         return existing
 
-    if settings.dev_allow_headers:
-        subject = request.headers.get("x-user-id") or request.headers.get("x-dev-user")
-        if subject:
-            role = request.headers.get("x-user-role") or "planner"
-            return {"subject": subject, "role": role, "auth_source": "dev-header"}
+    trusted = _trusted_header_identity(request, settings)
+    if trusted:
+        return _normalize_identity(trusted)
+
+    dev_identity = _dev_header_identity(request, settings)
+    if dev_identity:
+        return _normalize_identity(dev_identity)
 
     return None
 
@@ -69,9 +163,77 @@ def get_identity_role(identity: Optional[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+def get_identity_roles(identity: Optional[Dict[str, Any]]) -> list[str]:
+    normalized = _normalize_identity(identity)
+    if not normalized:
+        return []
+    roles = _parse_csv_text(normalized.get("roles"))
+    if roles:
+        return [item.lower() for item in roles]
+    role = get_identity_role(normalized)
+    return [role] if role else []
+
+
+def get_identity_org_id(identity: Optional[Dict[str, Any]]) -> Optional[str]:
+    normalized = _normalize_identity(identity)
+    return _as_text(normalized.get("org_id")) if normalized else None
+
+
+def get_identity_site_ids(identity: Optional[Dict[str, Any]]) -> list[str]:
+    normalized = _normalize_identity(identity)
+    if not normalized:
+        return []
+    site_id = _as_text(normalized.get("site_id"))
+    site_ids = _parse_csv_text(normalized.get("site_ids"))
+    if site_id and site_id not in site_ids:
+        site_ids = [site_id, *site_ids]
+    return site_ids
+
+
 def identity_has_role(identity: Optional[Dict[str, Any]], allowed_roles: frozenset[str]) -> bool:
-    role = get_identity_role(identity)
-    return role in allowed_roles if role else False
+    return any(role in allowed_roles for role in get_identity_roles(identity))
+
+
+def identity_matches_scope(
+    identity: Optional[Dict[str, Any]],
+    *,
+    org_id: Optional[str] = None,
+    site_id: Optional[str] = None,
+    settings: Optional[Settings] = None,
+) -> bool:
+    normalized = _normalize_identity(identity)
+    if normalized is None:
+        return False
+    settings = settings or Settings()
+    actor_org_id = get_identity_org_id(normalized)
+    actor_site_ids = get_identity_site_ids(normalized)
+    if org_id:
+        if actor_org_id:
+            if actor_org_id != org_id:
+                return False
+        elif not settings.dev_allow_headers:
+            return False
+    if site_id:
+        if actor_site_ids:
+            if site_id not in actor_site_ids:
+                return False
+        elif not settings.dev_allow_headers:
+            return False
+    return True
+
+
+def require_identity_scope(
+    request: Request,
+    *,
+    org_id: Optional[str] = None,
+    site_id: Optional[str] = None,
+    detail: str = "Authenticated identity does not have access to this tenant scope",
+) -> Dict[str, Any]:
+    settings = Settings()
+    identity = require_authenticated_identity(request, detail=detail)
+    if not identity_matches_scope(identity, org_id=org_id, site_id=site_id, settings=settings):
+        raise HTTPException(status_code=403, detail=detail)
+    return identity
 
 
 def install_identity_middleware(app: FastAPI) -> None:

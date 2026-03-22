@@ -2,7 +2,11 @@ from datetime import datetime
 from fastapi import APIRouter, Query, Request
 from typing import List, Dict, Any, Optional
 import psycopg2
-from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.api.middleware.identity import (
+    get_identity,
+    get_identity_org_id,
+    require_authenticated_identity,
+)
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.services.pdm_scorer import build_early_warning_report
 
@@ -43,6 +47,26 @@ def with_pg(dsn: str):
 
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
+
+
+def _sql_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _allowed_asset_ids(conn: Any, request: Request, window: int) -> Optional[set[str]]:
+    identity = get_identity(request)
+    actor_org_id = get_identity_org_id(identity)
+    if not actor_org_id:
+        return None
+    with conn, conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT DISTINCT asset_id
+            FROM events
+            WHERE occurred_at > {_window_clause(window)}
+              AND org_id = '{_sql_quote(actor_org_id)}'
+              AND asset_id IS NOT NULL
+        """)
+        return {str(row[0]) for row in cur.fetchall() or [] if row and row[0]}
 
 
 def _to_isoformat(value: Any) -> Optional[str]:
@@ -165,6 +189,7 @@ def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[D
     s = Settings()
     conn = with_pg(s.pg_dsn)
     try:
+        allowed_asset_ids = _allowed_asset_ids(conn, request, 90)
         with conn, conn.cursor() as cur:
             # events count (90d)
             cur.execute("""
@@ -197,6 +222,8 @@ def bad_actors(request: Request, limit: int = Query(20, ge=1, le=200)) -> List[D
 
         rows = []
         asset_ids = set(ev.keys()) | set(wo.keys())
+        if allowed_asset_ids is not None:
+            asset_ids &= allowed_asset_ids
         for a in asset_ids:
             ec = ev.get(a, {}).get("ev_count", 0)
             wc = wo.get(a, 0)
@@ -233,6 +260,7 @@ def prioritized_assets(
     s = Settings()
     conn = with_pg(s.pg_dsn)
     try:
+        allowed_asset_ids = _allowed_asset_ids(conn, request, window)
         with conn, conn.cursor() as cur:
             cur.execute(f"""
                 SELECT asset_id, COUNT(*) AS ev_count, MAX(occurred_at) AS last_evt_at
@@ -242,6 +270,8 @@ def prioritized_assets(
                 GROUP BY asset_id
             """)
             event_rows = cur.fetchall()
+            if allowed_asset_ids is not None:
+                event_rows = [row for row in event_rows or [] if row and str(row[0]) in allowed_asset_ids]
             events = {
                 str(row[0]): {"event_count": int(row[1] or 0), "last_event_at": row[2]}
                 for row in event_rows or []
@@ -255,7 +285,10 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
                 ORDER BY asset_id, occurred_at DESC
             """)
-            severities = {str(row[0]): row[1] for row in cur.fetchall() or [] if row and row[0]}
+            severity_rows = cur.fetchall() or []
+            if allowed_asset_ids is not None:
+                severity_rows = [row for row in severity_rows if row and str(row[0]) in allowed_asset_ids]
+            severities = {str(row[0]): row[1] for row in severity_rows if row and row[0]}
 
             cur.execute(f"""
                 SELECT asset_id,
@@ -266,12 +299,15 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
                 GROUP BY asset_id
             """)
+            workorder_rows = cur.fetchall() or []
+            if allowed_asset_ids is not None:
+                workorder_rows = [row for row in workorder_rows if row and str(row[0]) in allowed_asset_ids]
             workorders = {
                 str(row[0]): {
                     "workorder_count": int(row[1] or 0),
                     "open_workorder_count": int(row[2] or 0),
                 }
-                for row in cur.fetchall() or []
+                for row in workorder_rows
                 if row and row[0]
             }
 
@@ -284,7 +320,10 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
                 GROUP BY asset_id
             """)
-            feedback = _feedback_summary(cur.fetchall())
+            feedback_rows = cur.fetchall() or []
+            if allowed_asset_ids is not None:
+                feedback_rows = [row for row in feedback_rows if row and str(row[0]) in allowed_asset_ids]
+            feedback = _feedback_summary(feedback_rows)
 
             cur.execute("""
                 SELECT asset_id, signal_type, period, end_time, mean, max, anomaly_flags
@@ -293,6 +332,8 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
             """)
             rollup_rows = cur.fetchall()
+            if allowed_asset_ids is not None:
+                rollup_rows = [row for row in rollup_rows or [] if row and str(row[0]) in allowed_asset_ids]
             signal_scores = _signal_anomaly_scores(
                 [
                     (row[0], row[2], row[6])
@@ -307,7 +348,12 @@ def prioritized_assets(
                 WHERE occurred_at > {_window_clause(window)}
                   AND asset_id IS NOT NULL
             """)
-            early_warning_report = build_early_warning_report(cur.fetchall(), rollup_rows)
+            early_warning_event_rows = cur.fetchall() or []
+            if allowed_asset_ids is not None:
+                early_warning_event_rows = [
+                    row for row in early_warning_event_rows if row and str(row[0]) in allowed_asset_ids
+                ]
+            early_warning_report = build_early_warning_report(early_warning_event_rows, rollup_rows)
             early_warning_metrics = (
                 early_warning_report.get("asset_metrics", {})
                 if isinstance(early_warning_report, dict)
@@ -321,7 +367,10 @@ def prioritized_assets(
                   AND asset_id IS NOT NULL
                 ORDER BY asset_id, occurred_at
             """)
-            mtbf_by_asset = _asset_mtbf(cur.fetchall())
+            mtbf_rows = cur.fetchall() or []
+            if allowed_asset_ids is not None:
+                mtbf_rows = [row for row in mtbf_rows if row and str(row[0]) in allowed_asset_ids]
+            mtbf_by_asset = _asset_mtbf(mtbf_rows)
 
         rows = []
         asset_ids = (

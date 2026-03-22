@@ -4,7 +4,11 @@ from datetime import datetime, timedelta, timezone
 import io
 import csv
 import psycopg2
-from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.api.middleware.identity import (
+    get_identity,
+    get_identity_org_id,
+    require_authenticated_identity,
+)
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.services.pdm_scorer import (
     build_early_warning_report,
@@ -42,6 +46,71 @@ def with_pg(dsn: str):
 
 def _window_clause(days: int) -> str:
     return f"(NOW() - INTERVAL '{int(days)} days')"
+
+
+def _sql_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _allowed_asset_ids(conn: Any, request: Request, window: int) -> set[str] | None:
+    identity = get_identity(request)
+    actor_org_id = get_identity_org_id(identity)
+    if not actor_org_id:
+        return None
+    with conn.cursor() as cur:
+        cur.execute(f"""
+            SELECT DISTINCT asset_id
+            FROM events
+            WHERE occurred_at > {_window_clause(window)}
+              AND org_id = '{_sql_quote(actor_org_id)}'
+              AND asset_id IS NOT NULL
+        """)
+        return {str(row[0]) for row in cur.fetchall() or [] if row and row[0]}
+
+
+def _filter_asset_rows(rows: List[Any], allowed_asset_ids: set[str] | None, index: int = 0) -> List[Any]:
+    if allowed_asset_ids is None:
+        return rows or []
+    return [row for row in rows or [] if row and len(row) > index and str(row[index]) in allowed_asset_ids]
+
+
+def _feedback_org_clause(request: Request) -> str:
+    identity = get_identity(request)
+    actor_org_id = get_identity_org_id(identity)
+    if not actor_org_id:
+        return ""
+    return f"\n                      AND org_id = '{_sql_quote(actor_org_id)}'"
+
+
+def _filter_early_warning_report(report: Dict[str, Any], allowed_asset_ids: set[str] | None) -> Dict[str, Any]:
+    if allowed_asset_ids is None or not isinstance(report, dict):
+        return report
+    asset_metrics = {
+        asset_id: metrics
+        for asset_id, metrics in (report.get("asset_metrics") or {}).items()
+        if asset_id in allowed_asset_ids
+    }
+    summary = report.get("summary") or {}
+    top_assets = [
+        item
+        for item in (summary.get("top_assets") or [])
+        if isinstance(item, dict) and str(item.get("asset_id") or "") in allowed_asset_ids
+    ]
+    status_counts = {"critical": 0, "elevated": 0, "watch": 0, "normal": 0}
+    for metrics in asset_metrics.values():
+        status = str(metrics.get("early_warning_status") or "normal").lower()
+        if status in status_counts:
+            status_counts[status] += 1
+    return {
+        **report,
+        "asset_metrics": asset_metrics,
+        "summary": {
+            **summary,
+            "total_assets": len(asset_metrics),
+            "status_counts": status_counts,
+            "top_assets": top_assets,
+        },
+    }
 
 
 def _empty_cmms_summary() -> Dict[str, Any]:
@@ -463,12 +532,15 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
     try:
         out = _base_outcomes(window)
         bucket_dates = _bucket_dates(window)
+        allowed_asset_ids = _allowed_asset_ids(conn, request, window)
+        feedback_org_clause = _feedback_org_clause(request)
         with conn.cursor() as cur:
             # Feedback counts by action (accept/reject/edited)
             try:
                 cur.execute(f"""
                     SELECT action, COUNT(*) FROM rca_feedback
                     WHERE created_at > {_window_clause(window)}
+                    {feedback_org_clause}
                     GROUP BY action
                 """)
                 fb = {r[0]: int(r[1]) for r in cur.fetchall() if r and r[0]}
@@ -499,7 +571,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     LIMIT 500
                 """)
                 ttrs = []
-                for row in cur.fetchall() or []:
+                for row in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids, index=3):
                     wo_ts, rec_ts = row[1], row[2]
                     if wo_ts and rec_ts:
                         delta = (wo_ts - rec_ts).total_seconds()
@@ -522,7 +594,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                 """)
                 last_seen: Dict[str, Any] = {}
                 intervals: List[float] = []
-                for row in cur.fetchall() or []:
+                for row in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids):
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
@@ -546,13 +618,14 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     SELECT w.wo_id,
                            w.workorder_created_at AS created_ts,
                            w.workorder_completed_at AS completed_ts,
-                           w.status
+                           w.status,
+                           w.asset_id
                     FROM workorders w
                     WHERE COALESCE(w.workorder_created_at, w.handoff_completed_at, w.workorder_completed_at, NOW()) > {_window_clause(window)}
                       AND UPPER(COALESCE(w.status, '')) IN ('COMP', 'COMPLETE', 'COMPLETED', 'CLOSE', 'CLOSED', 'DONE')
                 """)
                 mttrs = []
-                for row in cur.fetchall() or []:
+                for row in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids, index=4):
                     if not row:
                         continue
                     created_ts = row[1]
@@ -580,7 +653,9 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     LIMIT 10
                 """)
                 out["top_assets_by_wo_volume"] = [
-                    {"asset_id": r[0], "count": int(r[1])} for r in cur.fetchall() if r
+                    {"asset_id": r[0], "count": int(r[1])}
+                    for r in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids)
+                    if r
                 ]
             except Exception as exc:
                 _safe_rollback(conn)
@@ -597,7 +672,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     ORDER BY w.asset_id, bucket_date
                 """)
                 workorder_volume: Dict[str, Dict[str, int]] = {}
-                for row in cur.fetchall() or []:
+                for row in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids):
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
@@ -623,13 +698,14 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                            SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected_count
                     FROM rca_feedback
                     WHERE created_at > {_window_clause(window)}
+                      {feedback_org_clause}
                       AND action IN ('accept', 'reject')
                       AND asset_id IS NOT NULL
                     GROUP BY asset_id, bucket_date
                     ORDER BY asset_id, bucket_date
                 """)
                 acceptance_rate: Dict[str, Dict[str, float | None]] = {}
-                for row in cur.fetchall() or []:
+                for row in _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids):
                     if not row or not row[0] or not row[1]:
                         continue
                     asset_id = str(row[0])
@@ -661,7 +737,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                       AND kind IN ('alarm', 'anomaly', 'measurement')
                     ORDER BY asset_id, occurred_at DESC
                 """)
-                early_warning_event_rows = cur.fetchall()
+                early_warning_event_rows = _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids)
 
                 cur.execute(f"""
                     SELECT asset_id,
@@ -677,9 +753,12 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                       AND period IN ('1h', '6h', '24h')
                     ORDER BY asset_id, end_time DESC
                 """)
-                early_warning_rollup_rows = cur.fetchall()
-                early_warning = build_early_warning_report(
-                    early_warning_event_rows, early_warning_rollup_rows
+                early_warning_rollup_rows = _filter_asset_rows(cur.fetchall() or [], allowed_asset_ids)
+                early_warning = _filter_early_warning_report(
+                    build_early_warning_report(
+                        early_warning_event_rows, early_warning_rollup_rows
+                    ),
+                    allowed_asset_ids,
                 )
                 out["early_warning_summary"] = early_warning["summary"]
                 for asset_id, asset_warning in (early_warning.get("asset_metrics") or {}).items():
@@ -706,7 +785,12 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                     LEFT JOIN workorders w ON w.wo_id = p.work_order_id
                     WHERE p.created_at > {_window_clause(window)}
                 """)
-                cmms_rows = cur.fetchall()
+                cmms_rows = [
+                    row
+                    for row in (cur.fetchall() or [])
+                    if allowed_asset_ids is None
+                    or str(row[5] or row[6] or "") in allowed_asset_ids
+                ]
                 _update_cmms_summary(out, cmms_rows, max_attempts)
                 _update_backend_metrics(out, cmms_rows, bucket_dates)
             except Exception as exc:
@@ -722,6 +806,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                         SELECT {entity_field} AS entity_id, action, COUNT(*) AS n
                         FROM rca_feedback
                         WHERE created_at > {_window_clause(window)}
+                                                    {feedback_org_clause}
                           AND {entity_field} IS NOT NULL
                         GROUP BY entity_id, action
                         ORDER BY entity_id, action
@@ -738,6 +823,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                                COUNT(*) AS n
                         FROM rca_feedback
                         WHERE created_at > {_window_clause(window)}
+                                                    {feedback_org_clause}
                           AND {entity_field} IS NOT NULL
                         GROUP BY entity_id, bucket_date
                         ORDER BY entity_id, bucket_date
@@ -770,6 +856,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                                SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected_count
                         FROM rca_feedback
                         WHERE created_at > {_window_clause(window)}
+                                                    {feedback_org_clause}
                           AND action IN ('accept', 'reject')
                           AND {entity_field} IS NOT NULL
                         GROUP BY entity_id, bucket_date
@@ -805,6 +892,7 @@ def rca_outcomes(request: Request, window: int = Query(30, ge=1, le=365)) -> Dic
                         SELECT {entity_field} AS entity_id, COUNT(*) AS n
                         FROM rca_feedback
                         WHERE created_at > {_window_clause(window)}
+                                                    {feedback_org_clause}
                           AND {entity_field} IS NOT NULL
                         GROUP BY entity_id
                         ORDER BY n DESC, entity_id ASC

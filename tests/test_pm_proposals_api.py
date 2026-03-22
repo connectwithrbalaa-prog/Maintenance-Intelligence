@@ -247,7 +247,7 @@ def _write_summary(base_dir, name="RUN-1.json"):
                     "pm_suggestions": ["Schedule seal replacement"],
                     "confidence": 0.81,
                 },
-                "context_meta": {"asset_id": "PUMP-101"},
+                "context_meta": {"asset_id": "PUMP-101", "org_id": "demo-org"},
             }
         ),
         encoding="utf-8",
@@ -282,6 +282,28 @@ def test_list_proposals_from_run_summaries(monkeypatch, tmp_path):
     assert payload[0]["admin_retry_required"] is False
     assert payload[0]["last_attempt_info"] == {}
     assert payload[0]["work_order_snapshot"] == {}
+
+
+def test_list_proposals_filters_cross_tenant_results(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(
+        pm_mod,
+        "connection_factory",
+        lambda _dsn: (_ for _ in ()).throw(RuntimeError("db unavailable")),
+    )
+
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/agents/pm/proposals",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_list_proposals_includes_retry_metadata_for_exceptions(monkeypatch, tmp_path):
@@ -477,6 +499,23 @@ def test_approve_proposal_requires_allowed_role(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "PM approval requires planner, maintainer, or admin role"
+
+
+def test_approve_proposal_rejects_cross_tenant_identity(monkeypatch, tmp_path):
+    summaries = tmp_path / "outputs"
+    _write_summary(summaries)
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(summaries))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(pm_mod, "connection_factory", lambda _dsn: FakeConnection())
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/agents/pm/proposals/REC-1/approve",
+        headers={"x-user-id": "planner-1", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "PM approval scope does not match authenticated tenant"
 
 
 def test_list_proposals_includes_work_order_snapshot_after_handoff(monkeypatch, tmp_path):

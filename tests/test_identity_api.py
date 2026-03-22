@@ -26,3 +26,27 @@ def test_whoami_uses_dev_headers_when_enabled(monkeypatch):
     assert payload["authenticated"] is True
     assert payload["user"]["subject"] == "dev-user"
     assert payload["user"]["auth_source"] == "dev-header"
+
+
+def test_whoami_uses_trusted_forwarded_headers_when_enabled(monkeypatch):
+    monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
+    monkeypatch.setenv("MI_AUTH_TRUST_FORWARDED_HEADERS", "true")
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/whoami",
+        headers={
+            "x-auth-request-user": "proxy-user",
+            "x-auth-request-role": "planner,admin",
+            "x-auth-request-org": "ORG-1",
+            "x-auth-request-sites": "SITE-A,SITE-B",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert payload["user"]["subject"] == "proxy-user"
+    assert payload["user"]["auth_source"] == "trusted-header"
+    assert payload["user"]["org_id"] == "ORG-1"
+    assert payload["user"]["roles"] == ["planner", "admin"]
