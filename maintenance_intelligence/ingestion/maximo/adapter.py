@@ -194,20 +194,55 @@ class MaximoIngestionAdapter(BaseIngestionAdapter):
             restoration_ts=_parse_maximo_ts(record.get("actfinish")),
         )
 
-    def fetch_equipment(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalEquipment]:
+    def _get_oslc(self, resource: str, page_size: int = 100, where: Optional[str] = None) -> List[Dict]:
+        if not self.base_url:
+            return []
+        url = f"{self.base_url}/os/{resource}"
+        params = {"oslc.pageSize": str(page_size), "lean": "1"}
+        where_clause = f'siteid="{self.site_id}"'
+        if where:
+            where_clause += f" and {where}"
+        params["oslc.where"] = where_clause
+        try:
+            resp = httpx.get(url, headers=self._headers(), params=params, timeout=self.timeout_s)
+            resp.raise_for_status()
+            data = resp.json()
+            members = data.get("member", data.get("rdfs:member", []))
+            return members if isinstance(members, list) else []
+        except Exception as exc:
+            from loguru import logger
+            logger.warning({"event": "maximo.fetch_error", "resource": resource, "error": str(exc)})
+            return []
+
+    def fetch_equipment(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalEquipment]:
         if records:
             return [self.normalize_asset(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        raw = self._get_oslc("mxasset", page_size=page_size)
+        from loguru import logger
+        logger.info({"event": "maximo.fetch_assets", "count": len(raw)})
+        return [self.normalize_asset(r) for r in raw]
 
-    def fetch_failure_events(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalFailureEvent]:
+    def fetch_failure_events(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalFailureEvent]:
         if records:
             return [self.normalize_failure_report(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        raw = self._get_oslc("mxwo", page_size=page_size, where='worktype="CM"')
+        from loguru import logger
+        logger.info({"event": "maximo.fetch_failure_reports", "count": len(raw)})
+        return [self.normalize_failure_report(r) for r in raw]
 
-    def fetch_work_orders(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalWorkOrder]:
+    def fetch_work_orders(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalWorkOrder]:
         if records:
             return [self.normalize_work_order(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        raw = self._get_oslc("mxwo", page_size=page_size)
+        from loguru import logger
+        logger.info({"event": "maximo.fetch_work_orders", "count": len(raw)})
+        return [self.normalize_work_order(r) for r in raw]
 
 
 def _parse_maximo_ts(value) -> Optional[datetime]:

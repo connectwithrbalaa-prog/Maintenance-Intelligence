@@ -18,6 +18,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
+from loguru import logger
+
 from maintenance_intelligence.ingestion.base import (
     BaseIngestionAdapter,
     CanonicalEquipment,
@@ -101,15 +104,42 @@ class SAPPMAdapter(BaseIngestionAdapter):
         self.tenant_id = tenant_id
         self._mapper = code_mapper or CodeMapper()
 
+    def _headers(self) -> Dict[str, str]:
+        h = {"Accept": "application/json", "Content-Type": "application/json"}
+        if self.api_key:
+            h["APIKey"] = self.api_key
+        if self.client:
+            h["sap-client"] = self.client
+        return h
+
+    def _get(self, path: str, params: Optional[Dict] = None) -> List[Dict]:
+        if not self.base_url:
+            return []
+        url = f"{self.base_url}{path}"
+        try:
+            resp = httpx.get(url, headers=self._headers(), params=params or {}, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("d", {}).get("results", data.get("value", []))
+            return results if isinstance(results, list) else []
+        except Exception as exc:
+            logger.warning({"event": "sap_pm.fetch_error", "path": path, "error": str(exc)})
+            return []
+
     def test_connection(self) -> Dict[str, Any]:
         if not self.base_url:
             return {"status": "not_configured", "adapter": self.adapter_name}
-        return {
-            "status": "configured",
-            "adapter": self.adapter_name,
-            "base_url": self.base_url,
-            "plant": self.plant,
-        }
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/sap/opu/odata/sap/API_EQUIPMENT/A_Equipment?$top=1",
+                headers=self._headers(), timeout=15,
+            )
+            return {
+                "status": "ok" if resp.status_code == 200 else "error",
+                "adapter": self.adapter_name, "http_status": resp.status_code,
+            }
+        except Exception as e:
+            return {"status": "error", "adapter": self.adapter_name, "error": str(e)}
 
     def normalize_equipment(self, record: Dict[str, Any]) -> CanonicalEquipment:
         """Normalize a single SAP equipment master record."""
@@ -214,20 +244,41 @@ class SAPPMAdapter(BaseIngestionAdapter):
             raw_source_ids={"order_id": order_id, "notification_id": record.get("QMNUM")},
         )
 
-    def fetch_equipment(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalEquipment]:
+    def fetch_equipment(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalEquipment]:
         if records:
             return [self.normalize_equipment(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        params = {"$top": str(page_size), "$format": "json"}
+        if self.plant:
+            params["$filter"] = f"PlanningPlant eq '{self.plant}'"
+        raw = self._get("/sap/opu/odata/sap/API_EQUIPMENT/A_Equipment", params)
+        logger.info({"event": "sap_pm.fetch_equipment", "count": len(raw)})
+        return [self.normalize_equipment(r) for r in raw]
 
-    def fetch_failure_events(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalFailureEvent]:
+    def fetch_failure_events(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalFailureEvent]:
         if records:
             return [self.normalize_notification(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        params = {"$top": str(page_size), "$format": "json", "$orderby": "CreationDate desc"}
+        if self.plant:
+            params["$filter"] = f"PlannerGroup eq '{self.plant}'"
+        raw = self._get("/sap/opu/odata/sap/API_MAINTNOTIFICATION/A_MaintenanceNotification", params)
+        logger.info({"event": "sap_pm.fetch_notifications", "count": len(raw)})
+        return [self.normalize_notification(r) for r in raw]
 
-    def fetch_work_orders(self, *, records: Optional[List[Dict]] = None, **kwargs) -> List[CanonicalWorkOrder]:
+    def fetch_work_orders(self, *, records: Optional[List[Dict]] = None, page_size: int = 100, **kwargs) -> List[CanonicalWorkOrder]:
         if records:
             return [self.normalize_order(r) for r in records]
-        return []
+        if not self.base_url:
+            return []
+        params = {"$top": str(page_size), "$format": "json", "$orderby": "CreationDate desc"}
+        if self.plant:
+            params["$filter"] = f"MaintenancePlanningPlant eq '{self.plant}'"
+        raw = self._get("/sap/opu/odata/sap/API_MAINTORDER/A_MaintenanceOrder", params)
+        logger.info({"event": "sap_pm.fetch_orders", "count": len(raw)})
+        return [self.normalize_order(r) for r in raw]
 
 
 def _parse_sap_datetime(value) -> Optional[datetime]:
