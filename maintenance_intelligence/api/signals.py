@@ -1,9 +1,28 @@
 from fastapi import APIRouter, HTTPException, Query, Request
-from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.api.middleware.identity import (
+    require_authenticated_identity,
+    require_identity_scope,
+)
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.context.assembler import with_pg
 
 router = APIRouter()
+
+
+def _load_asset_scope(conn, asset_id: str) -> dict[str, str | None]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT org_id
+            FROM events
+            WHERE asset_id = %s
+            ORDER BY occurred_at DESC
+            LIMIT 1
+        """,
+            (asset_id,),
+        )
+        row = cur.fetchone()
+    return {"org_id": row[0] if row else None}
 
 
 @router.get("/api/v1/signals/summary")
@@ -17,9 +36,18 @@ async def get_signals_summary(
         request, detail="Signal summaries require an authenticated identity"
     )
     settings = Settings()
+    conn = None
     try:
         conn = with_pg(settings.pg_dsn)
         with conn, conn.cursor() as cur:
+            asset_scope = _load_asset_scope(conn, asset_id)
+            if asset_scope.get("org_id"):
+                require_identity_scope(
+                    request,
+                    org_id=asset_scope.get("org_id"),
+                    detail="Signal scope does not match authenticated tenant",
+                )
+
             # Get recent signals
             cur.execute(
                 """
@@ -72,5 +100,13 @@ async def get_signals_summary(
                 for r in rollups
             ],
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass

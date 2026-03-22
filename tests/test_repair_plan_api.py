@@ -217,3 +217,30 @@ def test_repair_plan_read_endpoints_require_authenticated_identity(monkeypatch):
     assert get_response.json()["detail"] == "Repair plan reads require an authenticated identity"
     assert parts_response.status_code == 403
     assert parts_response.json()["detail"] == "Repair plan reads require an authenticated identity"
+
+
+def test_repair_plan_rejects_cross_tenant_reads(monkeypatch):
+    fake = FakeService()
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(
+        repair_plan_mod,
+        "get_repair_plan",
+        lambda dsn, plan_id: fake.created if plan_id == "RP-123" else None,
+    )
+    monkeypatch.setattr(repair_plan_mod, "list_repair_plans", lambda dsn, limit=100: [fake.created])
+    monkeypatch.setattr(
+        repair_plan_mod,
+        "list_parts_for_plan",
+        lambda dsn, plan_id: [fake.part] if plan_id == "RP-123" else [],
+    )
+
+    client = TestClient(app)
+    headers = {"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"}
+
+    list_response = client.get("/api/v1/repair-plans/?limit=10", headers=headers)
+    get_response = client.get("/api/v1/repair-plans/RP-123", headers=headers)
+
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+    assert get_response.status_code == 403
+    assert get_response.json()["detail"] == "Repair plan scope does not match authenticated tenant"

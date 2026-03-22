@@ -22,7 +22,9 @@ from maintenance_intelligence.api.middleware.identity import (
     get_identity,
     get_identity_role,
     get_identity_subject,
+    identity_matches_scope,
     require_authenticated_identity,
+    require_identity_scope,
 )
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
@@ -464,6 +466,27 @@ def _require_read_access(request: Request) -> None:
     )
 
 
+def _proposal_scope(proposal: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    metadata = proposal.get("metadata") if isinstance(proposal.get("metadata"), dict) else {}
+    context_meta = (
+        metadata.get("context_meta") if isinstance(metadata.get("context_meta"), dict) else {}
+    )
+    org_id = _as_text(proposal.get("org_id")) or _as_text(context_meta.get("org_id"))
+    site_id = _as_text(proposal.get("site_id")) or _as_text(context_meta.get("site_id"))
+    return org_id, site_id
+
+
+def _proposal_visible_to_request(request: Request, proposal: Dict[str, Any]) -> bool:
+    identity = get_identity(request)
+    org_id, site_id = _proposal_scope(proposal)
+    return identity_matches_scope(identity, org_id=org_id, site_id=site_id, settings=Settings())
+
+
+def _require_proposal_scope(request: Request, proposal: Dict[str, Any], detail: str) -> None:
+    org_id, site_id = _proposal_scope(proposal)
+    require_identity_scope(request, org_id=org_id, site_id=site_id, detail=detail)
+
+
 def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
     structured = payload.get("structured") or {}
     context_meta = payload.get("context_meta") or {}
@@ -476,6 +499,8 @@ def _proposal_from_summary(payload: Dict[str, Any], source_path: Path) -> Dict[s
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
+        "org_id": context_meta.get("org_id"),
+        "site_id": context_meta.get("site_id"),
         "title": structured.get("title") or "RCA Draft",
         "status": payload.get("status", "unknown"),
         "asset_id": context_meta.get("asset_id"),
@@ -504,6 +529,8 @@ def _proposal_record_from_summary(
         "run_id": payload.get("run_id") or source_path.stem,
         "recommendation_id": payload.get("recommendation_id"),
         "event_id": payload.get("event_id"),
+        "org_id": context_meta.get("org_id"),
+        "site_id": context_meta.get("site_id"),
         "asset_id": context_meta.get("asset_id"),
         "title": structured.get("title") or "RCA Draft",
         "rationale": rationale,
@@ -553,11 +580,14 @@ def _find_proposal_payload(proposal_id: str) -> Dict[str, Any]:
 def _proposal_from_row(row: Any) -> Dict[str, Any]:
     metadata = row[13] or {}
     approval = _approval_fields(metadata)
+    context_meta = metadata.get("context_meta") if isinstance(metadata.get("context_meta"), dict) else {}
     return {
         "proposal_id": row[0],
         "run_id": row[1],
         "recommendation_id": row[2],
         "event_id": row[3],
+        "org_id": context_meta.get("org_id"),
+        "site_id": context_meta.get("site_id"),
         "asset_id": row[4],
         "title": row[5],
         "rationale": row[6],
@@ -764,11 +794,17 @@ def analyze_run(payload: AnalyzePayload, request: Request):
     found = _find_proposal_payload(payload.run_id)
     summary = found["payload"]
     source_path = found["source_path"]
+    scoped_proposal = _proposal_record_from_summary(summary, source_path, proposed_by=proposed_by)
+    _require_proposal_scope(
+        request,
+        scoped_proposal,
+        "PM proposal scope does not match authenticated tenant",
+    )
 
     try:
         conn = _with_proposal_connection()
         try:
-            proposal = _proposal_record_from_summary(summary, source_path, proposed_by=proposed_by)
+            proposal = scoped_proposal
             persisted = _upsert_proposal(conn, proposal)
         finally:
             conn.close()
@@ -791,7 +827,11 @@ def list_proposals(request: Request) -> List[Dict[str, Any]]:
         try:
             persisted = _list_persisted_proposals(conn)
             if persisted:
-                proposals = [_proposal_with_retry_fields(item, max_attempts) for item in persisted]
+                proposals = [
+                    _proposal_with_retry_fields(item, max_attempts)
+                    for item in persisted
+                    if _proposal_visible_to_request(request, item)
+                ]
                 snapshots = _load_work_order_snapshots(
                     conn, [str(item.get("work_order_id") or "") for item in proposals]
                 )
@@ -808,7 +848,9 @@ def list_proposals(request: Request) -> List[Dict[str, Any]]:
             continue
         if not payload.get("recommendation_id") and not payload.get("run_id"):
             continue
-        items.append(_proposal_from_summary(payload, path))
+        proposal = _proposal_from_summary(payload, path)
+        if _proposal_visible_to_request(request, proposal):
+            items.append(proposal)
     return _attach_work_order_snapshots(
         [_proposal_with_retry_fields(item, max_attempts) for item in items], {}
     )
@@ -832,6 +874,11 @@ def proposal_history(
     if proposal is None:
         found = _find_proposal_payload(proposal_id)
         proposal = _proposal_from_summary(found["payload"], found["source_path"])
+    _require_proposal_scope(
+        request,
+        proposal,
+        "PM proposal scope does not match authenticated tenant",
+    )
 
     retry_fields = _retry_fields(proposal, _proposal_attempt_limit(settings))
     attempts = proposal.get("approval_history") or []
@@ -868,6 +915,13 @@ def approve_proposal(
         existing = _load_persisted_proposal(proposal_id)
     except Exception:
         existing = None
+
+    scoped_proposal = existing or _proposal_from_summary(payload, found["source_path"])
+    _require_proposal_scope(
+        request,
+        scoped_proposal,
+        "PM approval scope does not match authenticated tenant",
+    )
 
     if existing and existing.get("status") == "approved" and existing.get("work_order_id"):
         return _approval_response(

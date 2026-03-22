@@ -58,6 +58,26 @@ The following are not part of the implemented RCA production flow in this branch
 
 This separation is intentional: the branch currently defines and tests the RCA generation pipeline, while downstream PM workflow, identity, connector hardening, and vendor integration remain follow-on work.
 
+## Identity Modes
+
+- Local demo mode:
+  - Enable `MI_DEV_ALLOW_HEADERS=true`
+  - The API accepts local headers such as `x-user-id`, `x-user-role`, `x-user-org`, `x-user-site`, and `x-user-sites`
+  - This mode is intended for local development and demos only
+- Trusted production header mode:
+  - Enable `MI_AUTH_TRUST_FORWARDED_HEADERS=true`
+  - The API reads identity only from trusted upstream headers:
+    - `MI_AUTH_SUBJECT_HEADER` (default: `x-auth-request-user`)
+    - `MI_AUTH_ROLE_HEADER` (default: `x-auth-request-role`)
+    - `MI_AUTH_ORG_HEADER` (default: `x-auth-request-org`)
+    - `MI_AUTH_SITE_HEADER` (default: `x-auth-request-site`)
+    - `MI_AUTH_SITES_HEADER` (default: `x-auth-request-sites`)
+  - This mode assumes a reverse proxy or auth gateway has already authenticated the caller and injected tenant-scoped identity headers
+- Production trust model:
+  - Do not enable `MI_DEV_ALLOW_HEADERS` in production
+  - Only enable `MI_AUTH_TRUST_FORWARDED_HEADERS` behind a trusted ingress/auth proxy boundary
+  - Protected PM, RCA, repair-plan, and feedback flows now enforce tenant scope when org/site identity is present
+
 ## GenAI Gateway (OpenAI) & Run Summaries
 
 - Set OPENAI_API_KEY to enable GenAI RCA drafts.
@@ -166,6 +186,13 @@ If your OpenClaw runner can execute shell commands directly, schedule:
 and tail `logs/cron_rca_test.log`.
 
 The wrapper outputs a single JSON line from `mi-runner rca-test`, which includes the event_id and run_id. The full run summary is stored at `outputs/YYYY-MM-DD/<run_id>.json`.
+
+## Customer Demo Playbook
+
+- See `docs/CUSTOMER_DEMO_PLAYBOOK.md` for:
+  - 10-minute and 20-minute customer demo flows
+  - portal-first and Grafana-second presentation strategy
+  - pre-demo checklist and fallback handling guidance
 
 ## Bad Actor Dashboard (Seed)
 

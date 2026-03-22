@@ -16,6 +16,12 @@ class FakePrioritizedCursor:
 
     def execute(self, sql):
         normalized = " ".join(sql.split())
+        if "SELECT DISTINCT asset_id FROM events" in normalized:
+            if "org_id = 'other-org'" in normalized:
+                self.rows = []
+            else:
+                self.rows = [("PUMP-101",), ("PUMP-202",)]
+            return
         if (
             "SELECT asset_id, COUNT(*) AS ev_count, MAX(occurred_at) AS last_evt_at FROM events"
             in normalized
@@ -244,3 +250,18 @@ def test_prioritized_assets_filters_to_warning_status_assets(monkeypatch):
     payload = response.json()
     assert [row["asset_id"] for row in payload] == ["PUMP-202", "PUMP-101"]
     assert all(row["early_warning_status"] in {"critical", "elevated", "watch"} for row in payload)
+
+
+def test_prioritized_assets_filters_cross_tenant_assets(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_conn = FakePrioritizedConnection()
+    monkeypatch.setattr(reports_mod, "with_pg", lambda _dsn: fake_conn)
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/reports/prioritized-assets?limit=5&window=30",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []

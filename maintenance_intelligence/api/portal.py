@@ -5,7 +5,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
-from maintenance_intelligence.api.middleware.identity import require_authenticated_identity
+from maintenance_intelligence.api.middleware.identity import (
+    get_identity,
+    identity_matches_scope,
+    require_authenticated_identity,
+    require_identity_scope,
+)
 from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.edge_command_buffer import EdgeCommandBuffer
 from maintenance_intelligence.runner.edge_agent import EdgeEventBuffer
@@ -327,6 +332,43 @@ def _require_read_access(request: Request) -> None:
     )
 
 
+def _summary_scope(summary: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    context_meta = summary.get("context_meta") if isinstance(summary.get("context_meta"), dict) else {}
+    org_id = _as_text(context_meta.get("org_id"))
+    site_id = _as_text(context_meta.get("site_id"))
+    return org_id, site_id
+
+
+def _summary_visible_to_request(request: Request, summary: Dict[str, Any]) -> bool:
+    org_id, site_id = _summary_scope(summary)
+    return identity_matches_scope(
+        get_identity(request),
+        org_id=org_id,
+        site_id=site_id,
+        settings=Settings(),
+    )
+
+
+def _require_summary_scope(request: Request, summary: Dict[str, Any]) -> None:
+    org_id, site_id = _summary_scope(summary)
+    require_identity_scope(
+        request,
+        org_id=org_id,
+        site_id=site_id,
+        detail="Portal run scope does not match authenticated tenant",
+    )
+
+
+def _require_repair_plan_scope(request: Request, repair_plan: Optional[Dict[str, Any]]) -> None:
+    if not isinstance(repair_plan, dict):
+        return
+    require_identity_scope(
+        request,
+        org_id=_as_text(repair_plan.get("org_id")),
+        detail="Portal run scope does not match authenticated tenant",
+    )
+
+
 def _portal_index_path() -> Path:
     index_path = WEB_DIR / "index.html"
     if not index_path.exists():
@@ -459,7 +501,10 @@ def recent_runs(request: Request, limit: int = Query(12, ge=1, le=50)) -> List[D
         payload = _load_run_payload(path)
         if payload is None:
             continue
-        items.append(_extract_run_summary(payload, path))
+        summary = _extract_run_summary(payload, path)
+        if not _summary_visible_to_request(request, summary):
+            continue
+        items.append(summary)
         if len(items) >= limit:
             break
     return items
@@ -480,10 +525,17 @@ def latest_run_for_asset(
 ) -> Dict[str, Any]:
     _require_read_access(request)
     resolved_asset_id = _validate_asset_id(asset_id)
-    latest_run = _find_latest_run_by_asset(_run_summary_root(), resolved_asset_id)
-    if latest_run is None:
-        raise HTTPException(status_code=404, detail="Run summary not found for asset")
-    return latest_run
+    for path in _list_run_files(_run_summary_root()):
+        payload = _load_run_payload(path)
+        if payload is None:
+            continue
+        latest_run = _extract_run_summary(payload, path)
+        if _as_safe_text(latest_run.get("context_meta", {}).get("asset_id")) != resolved_asset_id:
+            continue
+        if not _summary_visible_to_request(request, latest_run):
+            continue
+        return latest_run
+    raise HTTPException(status_code=404, detail="Run summary not found for asset")
 
 
 @router.get("/api/v1/portal/runs/{run_id}")
@@ -496,10 +548,14 @@ def run_details(run_id: str, request: Request) -> Dict[str, Any]:
         payload = _load_run_payload(path)
         if payload is None:
             raise HTTPException(status_code=422, detail="Run summary is malformed")
+        summary = _extract_run_summary(payload, path)
+        _require_summary_scope(request, summary)
+        repair_plan = _extract_repair_plan(payload)
+        _require_repair_plan_scope(request, repair_plan)
         return {
-            **_extract_run_summary(payload, path),
+            **summary,
             "structured": _sanitize_structured(payload.get("structured")),
-            "repair_plan": _extract_repair_plan(payload),
+            "repair_plan": repair_plan,
             "context_items": _sanitize_context_items(payload.get("context_items")),
         }
     raise HTTPException(status_code=404, detail="Run summary not found")

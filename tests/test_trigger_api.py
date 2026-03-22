@@ -20,6 +20,7 @@ def test_trigger_requires_allowed_role(monkeypatch):
 
 def test_trigger_runs_for_allowed_role(monkeypatch):
     monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(main_mod, "_load_event_scope", lambda event_id: {"org_id": "ORG-1"})
     monkeypatch.setattr(
         main_mod,
         "run",
@@ -34,7 +35,7 @@ def test_trigger_runs_for_allowed_role(monkeypatch):
     response = client.post(
         "/api/v1/agents/rca/trigger",
         json={"event_id": "EV-123"},
-        headers={"x-user-id": "planner-1", "x-user-role": "planner"},
+        headers={"x-user-id": "planner-1", "x-user-role": "planner", "x-user-org": "ORG-1"},
     )
 
     assert response.status_code == 200
@@ -43,3 +44,18 @@ def test_trigger_runs_for_allowed_role(monkeypatch):
         "status": "ok",
         "recommendation_id": "REC-EV-123",
     }
+
+
+def test_trigger_rejects_cross_tenant_access(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(main_mod, "_load_event_scope", lambda event_id: {"org_id": "ORG-1"})
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/agents/rca/trigger",
+        json={"event_id": "EV-123"},
+        headers={"x-user-id": "planner-1", "x-user-role": "planner", "x-user-org": "ORG-2"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "RCA trigger scope does not match authenticated tenant"

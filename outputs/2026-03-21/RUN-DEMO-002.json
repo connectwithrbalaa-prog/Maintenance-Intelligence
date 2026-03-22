@@ -1,0 +1,24 @@
+{
+  "run_id": "RUN-DEMO-002",
+  "event_id": "EV-DEMO-002",
+  "status": "ok",
+  "structured": {
+    "title": "Compressor drift under peak throughput",
+    "hypothesis": "Bearing wear is causing intermittent vibration spikes under high throughput.",
+    "confidence": 0.81,
+    "immediate_actions": [
+      "Run controlled load step test during off-peak",
+      "Validate bearing temperature sensor calibration"
+    ],
+    "pm_suggestions": [
+      "Plan bearing inspection in next planned stop",
+      "Review lubrication interval for compressor train"
+    ]
+  },
+  "context_meta": {
+    "org_id": "demo-org",
+    "site_id": "site-01",
+    "asset_id": "COMP-220"
+  },
+  "created_at": "2026-03-21T08:41:00Z"
+}

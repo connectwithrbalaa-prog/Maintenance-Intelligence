@@ -13,7 +13,9 @@ from maintenance_intelligence.api.middleware.identity import (
     get_identity,
     get_identity_role,
     get_identity_subject,
+    identity_matches_scope,
     require_authenticated_identity,
+    require_identity_scope,
 )
 from maintenance_intelligence.api.metrics import REGISTRY
 from prometheus_client import Counter
@@ -158,6 +160,11 @@ def submit_feedback(p: FeedbackPayload, request: Request):
     actor_id = _authorize_feedback_submission(request, p.user_id)
     org_id = _as_text(p.org_id) or defaults["org_id"]
     asset_id = _as_text(p.asset_id) or defaults["asset_id"]
+    require_identity_scope(
+        request,
+        org_id=org_id,
+        detail="Feedback scope does not match authenticated tenant",
+    )
 
     s = Settings()
     try:
@@ -241,6 +248,11 @@ def list_feedback(
         with conn, conn.cursor() as cur:
             cur.execute(sql, tuple(params + [limit]))
             rows = cur.fetchall() or []
-        return [_feedback_row_to_dict(row) for row in rows]
+        identity = get_identity(request)
+        return [
+            _feedback_row_to_dict(row)
+            for row in rows
+            if identity_matches_scope(identity, org_id=_as_text(row[3]), settings=Settings())
+        ]
     finally:
         conn.close()

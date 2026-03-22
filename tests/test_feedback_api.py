@@ -260,6 +260,33 @@ def test_list_feedback_requires_run_or_recommendation_filter(monkeypatch):
     assert response.json()["detail"] == "run_id or recommendation_id is required"
 
 
+def test_submit_feedback_rejects_cross_tenant_submission(monkeypatch, tmp_path):
+    run_dir = tmp_path / "outputs" / "2026-03-15"
+    run_dir.mkdir(parents=True)
+    (run_dir / "RUN-123.json").write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-123",
+                "recommendation_id": "REC-123",
+                "context_meta": {"org_id": "demo-org", "asset_id": "PUMP-101"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MI_RUN_SUMMARY_DIR", str(tmp_path / "outputs"))
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/rca/feedback",
+        json={"run_id": "RUN-123", "action": "accept"},
+        headers={"x-user-id": "planner-1", "x-user-role": "planner", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Feedback scope does not match authenticated tenant"
+
+
 def test_list_feedback_requires_authenticated_identity(monkeypatch):
     monkeypatch.delenv("MI_DEV_ALLOW_HEADERS", raising=False)
     client = TestClient(app)

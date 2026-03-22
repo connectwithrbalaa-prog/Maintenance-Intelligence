@@ -729,6 +729,68 @@ def test_outcomes_endpoints_require_authenticated_identity(monkeypatch):
     assert csv_response.json()["detail"] == "Outcomes reports require an authenticated identity"
 
 
+def test_outcomes_filters_cross_tenant_asset_and_org_metrics(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    monkeypatch.setattr(
+        outcomes_mod,
+        "build_early_warning_report",
+        lambda event_rows, rollup_rows: {
+            "summary": {
+                "total_assets": 0,
+                "status_counts": {"critical": 0, "elevated": 0, "watch": 0, "normal": 0},
+                "top_assets": [],
+                "last_evaluated_at": "2026-03-15T12:00:00Z",
+            },
+            "asset_metrics": {},
+        },
+    )
+
+    class EmptyCursor:
+        def __init__(self):
+            self.fetch_rows = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, sql):
+            self.fetch_rows = []
+
+        def fetchall(self):
+            return self.fetch_rows
+
+    class EmptyConnection:
+        def __init__(self):
+            self.closed = False
+
+        def cursor(self):
+            return EmptyCursor()
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(outcomes_mod, "with_pg", lambda _dsn: EmptyConnection())
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/reports/rca-outcomes?window=30",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["feedback_counts"] == {"accept": 0, "reject": 0, "edited": 0}
+    assert payload["top_assets_by_wo_volume"] == []
+    assert payload["asset_metrics"] == {}
+    assert payload["top_orgs_by_feedback"] == []
+    assert payload["org_metrics"] == {}
+
+
 def test_outcomes_csv_includes_stable_placeholder_rows(monkeypatch):
     monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
     monkeypatch.setattr(
@@ -908,6 +970,12 @@ class _BadActorCursor:
 
     def execute(self, sql):
         normalized = " ".join(sql.split())
+        if "SELECT DISTINCT asset_id FROM events" in normalized:
+            if "org_id = 'other-org'" in normalized:
+                self.rows = []
+            else:
+                self.rows = [("PUMP-101",)]
+            return
         if "SELECT asset_id, COUNT(*) AS ev_count" in normalized:
             self.rows = [("PUMP-101", 4, datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc))]
             return
@@ -977,3 +1045,18 @@ def test_bad_actor_report_returns_ranked_assets_for_authenticated_reads(monkeypa
         }
     ]
     assert fake_conn.closed is True
+
+
+def test_bad_actor_report_filters_cross_tenant_assets(monkeypatch):
+    monkeypatch.setenv("MI_DEV_ALLOW_HEADERS", "true")
+    fake_conn = _BadActorConnection()
+    monkeypatch.setattr(reports_mod, "with_pg", lambda _dsn: fake_conn)
+
+    client = TestClient(app)
+    response = client.get(
+        "/api/v1/reports/bad-actors?limit=5",
+        headers={"x-user-id": "viewer-1", "x-user-role": "viewer", "x-user-org": "other-org"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
