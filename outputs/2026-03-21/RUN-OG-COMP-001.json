@@ -1,0 +1,76 @@
+{
+  "run_id": "RUN-OG-COMP-001",
+  "status": "ok",
+  "event_id": "EVT-OG-VIB-4821",
+  "recommendation_id": "RUN-OG-COMP-001",
+  "model": {
+    "name": "gpt-4.1",
+    "version": "og-v1",
+    "confidence": 0.89,
+    "latency_ms": 1840
+  },
+  "structured": {
+    "title": "High vibration on Compressor Train CT-301A — bearing degradation suspected",
+    "summary": "Vibration readings on CT-301A have exceeded the 7.5 mm/s alarm threshold for the third consecutive 6-hour window. Trend analysis shows progressive RMS increase from 5.2 to 9.4 mm/s over 72 hours, consistent with early-stage bearing degradation in the drive-end position. Seal oil pressure has remained stable, ruling out seal-path contribution.",
+    "confidence": 0.89,
+    "hypothesis": [
+      "Drive-end bearing degradation on CT-301A is the primary cause of progressive vibration increase, consistent with inner-race defect frequency signature in the 72-hour trend.",
+      "Lubrication degradation may be accelerating wear — last oil analysis showed elevated iron particulate at 18 ppm vs 8 ppm baseline."
+    ],
+    "root_causes": [
+      "Inner-race bearing defect progressing on drive-end position of CT-301A",
+      "Possible lubrication degradation contributing to accelerated wear rate"
+    ],
+    "contributing_factors": [
+      "Extended run since last scheduled bearing inspection (147 days vs 120-day interval)",
+      "Ambient temperature increase of 8°C over the past week may have reduced lubricant viscosity margin"
+    ],
+    "evidence_ids": [
+      "SIG-VIB-CT301A-001",
+      "SIG-TEMP-CT301A-002",
+      "EVT-OG-VIB-4821"
+    ],
+    "immediate_actions": [
+      "Schedule vibration spectrum analysis on CT-301A drive-end bearing within the next shift",
+      "Collect oil sample from CT-301A bearing housing for expedited particulate analysis",
+      "Review compressor performance curves for capacity derating if vibration exceeds 11 mm/s"
+    ],
+    "pm_suggestions": [
+      "Create planned work order for CT-301A drive-end bearing replacement during the next available maintenance window",
+      "Add CT-301A to the 90-day bearing inspection cycle to prevent recurrence",
+      "Schedule lubricant flush and refill with high-temperature synthetic grade for the compressor train"
+    ],
+    "repair_plan": {
+      "plan_id": "RP-OG-COMP-001",
+      "summary": "Replace drive-end bearing assembly on CT-301A compressor train",
+      "rationale": "Progressive vibration trend and elevated iron particulate indicate bearing degradation that will lead to unplanned shutdown if not addressed within the next 2-3 weeks.",
+      "confidence": 0.87,
+      "status": "draft",
+      "permit_type": "Hot work permit required for compressor isolation",
+      "estimated_duration_hrs": 16,
+      "spare_parts_cost_estimate": 12400,
+      "parts_list": [
+        {"part_no": "SKF-7320-BECBM", "description": "Angular contact ball bearing, drive-end", "qty": 2, "lead_time_days": 3},
+        {"part_no": "SEAL-CT301-DE", "description": "Bearing housing seal kit", "qty": 1, "lead_time_days": 1},
+        {"part_no": "LUB-SYNTH-HT-20L", "description": "High-temperature synthetic lubricant, 20L", "qty": 1, "lead_time_days": 0}
+      ],
+      "procedure_steps": [
+        {"seq": 1, "action": "Isolate CT-301A from process gas and depressurize per LOTO procedure CT-301-ISO", "safety_note": "Verify zero energy state before proceeding", "estimated_mins": 45},
+        {"seq": 2, "action": "Remove coupling guard and disconnect drive coupling", "safety_note": "Use proper rigging for coupling weight", "estimated_mins": 30},
+        {"seq": 3, "action": "Remove drive-end bearing cap and extract bearing assembly", "safety_note": "Retain old bearing for failure analysis", "estimated_mins": 60},
+        {"seq": 4, "action": "Inspect shaft journal and housing bore for scoring or damage", "safety_note": null, "estimated_mins": 20},
+        {"seq": 5, "action": "Install new bearing with proper preload per OEM specification", "safety_note": "Use induction heater — do not direct-flame heat bearing", "estimated_mins": 45},
+        {"seq": 6, "action": "Reassemble, align coupling, and perform post-maintenance vibration check", "safety_note": null, "estimated_mins": 60}
+      ],
+      "tools_required": ["Induction bearing heater", "Dial indicator alignment set", "Vibration analyzer", "Torque wrench set (metric)"],
+      "safety_requirements": ["LOTO per CT-301-ISO procedure", "Hot work permit for compressor bay", "Confined space entry not required"]
+    }
+  },
+  "context_meta": {
+    "asset_id": "CT-301A",
+    "event_kind": "alarm",
+    "asset_class": "compressor_train",
+    "site_id": "PLANT-GULF-01",
+    "severity": "high"
+  }
+}

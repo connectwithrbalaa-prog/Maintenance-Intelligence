@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Maintenance Intelligence Portal</title>
+	<title>Maintenance Intelligence — Oil &amp; Gas</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1922,10 +1922,10 @@
 	<main>
 		<section class="hero">
 			<article class="hero-card">
-				<div class="eyebrow">RCA portal · structured summaries</div>
-				<h1>Run evidence without digging through raw JSON.</h1>
-				<p class="hero-copy">
-					Inspect the latest RCA runs, compare confidence and action sets, and drill into the structured payload that was persisted for each recommendation.
+				<div class="eyebrow" id="heroEyebrow">Maintenance Intelligence · Oil &amp; Gas</div>
+				<h1 id="heroTitle">See why your equipment alarmed — and what to do next.</h1>
+				<p class="hero-copy" id="heroCopy">
+					Every alarm on compressor trains, pump skids, and rotating equipment gets an AI-powered root cause analysis with recommended actions, repair plans, and one-click work order approval.
 				</p>
 				<div class="identity-panel" aria-label="portal identity">
 					<div class="identity-row">
@@ -1975,7 +1975,7 @@
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
 				<article class="metric">
-					<div class="metric-label">Loaded runs</div>
+					<div class="metric-label">Analyses</div>
 					<div class="metric-value" id="metricRuns">0</div>
 				</article>
 				<article class="metric">
@@ -1997,13 +1997,13 @@
 			<aside class="panel">
 				<div class="panel-header">
 					<div>
-						<div class="eyebrow">Run queue</div>
-						<h2 class="panel-title">Recent summaries</h2>
+						<div class="eyebrow">Equipment alerts</div>
+						<h2 class="panel-title">Recent analyses</h2>
 					</div>
 					<span class="muted tiny" id="resultsCount">0 visible</span>
 				</div>
 				<div class="toolbar">
-					<input id="searchInput" type="search" placeholder="Filter by asset, run, title, or status">
+					<input id="searchInput" type="search" placeholder="Filter by equipment, alarm type, or status">
 					<button id="refreshButton" type="button">Refresh</button>
 				</div>
 				<div id="runList" class="run-list" aria-live="polite"></div>
@@ -2012,16 +2012,16 @@
 			<section class="panel detail-shell">
 				<div class="panel-header">
 					<div>
-						<div class="eyebrow">Run detail</div>
-						<h2 class="panel-title">Structured output</h2>
+						<div class="eyebrow">Analysis detail</div>
+						<h2 class="panel-title">Root cause &amp; actions</h2>
 					</div>
 					<span class="muted tiny" id="detailStamp">No run selected</span>
 				</div>
 				<div id="detailView" class="empty-state">
 					<div>
 						<div class="pulse"></div>
-						<h3>Select a run</h3>
-						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+						<h3>Select an analysis</h3>
+						<p>Choose an equipment alert from the left to see what likely caused the alarm, recommended actions, and work order status.</p>
 					</div>
 				</div>
 			</section>
@@ -5893,10 +5893,10 @@
 
 		function renderWorkflowRail() {
 			const steps = [
-				{ targetId: "pmSuggestionsSection", label: "Review PM proposal" },
-				{ targetId: "approvalHistorySection", label: "Open approval history" },
-				{ targetId: "repairPlanSection", label: "Open repair plan" },
-				{ targetId: "followThroughSection", label: "Open follow-through" },
+				{ targetId: "pmSuggestionsSection", label: "Planned maintenance" },
+				{ targetId: "approvalHistorySection", label: "Approval history" },
+				{ targetId: "repairPlanSection", label: "Repair plan" },
+				{ targetId: "followThroughSection", label: "Work order status" },
 			];
 			return `
 				<div class="workflow-rail" aria-label="Run workflow navigation">
@@ -6153,13 +6153,13 @@
 		function renderDetail(run) {
 			_destroyDetailCharts();
 			if (!run) {
-				elements.detailStamp.textContent = "No run selected";
+				elements.detailStamp.textContent = "No equipment selected";
 				elements.detailView.className = "empty-state";
 				elements.detailView.innerHTML = `
 					<div>
 						<div class="pulse"></div>
-						<h3>Select a run</h3>
-						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+						<h3>Select an analysis</h3>
+						<p>Choose an equipment alert from the left to see what likely caused the alarm, recommended actions, and work order status.</p>
 					</div>
 				`;
 				return;
@@ -6235,48 +6235,48 @@
 
 					<div id="evidenceSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Live evidence</h3>
-							<span class="muted tiny">Recent signals and rollups for the asset tied to this RCA run.</span>
+							<h3>Sensor readings</h3>
+							<span class="muted tiny">Recent vibration, temperature, and pressure signals for this equipment.</span>
 						</div>
 						${renderEvidencePanel(run)}
 					</div>
 
 					<div class="section">
-						<h3>Hypotheses</h3>
-						${renderList(run.hypothesis, "No hypotheses were stored for this run.")}
+						<h3>Probable cause</h3>
+						${renderList(run.hypothesis, "No probable cause was determined for this alarm.")}
 					</div>
 
 					<div class="section">
 						<h3>Root causes</h3>
-						${renderList(run.root_causes, "No root causes were stored for this run.")}
+						${renderList(run.root_causes, "No root causes were identified for this alarm.")}
 					</div>
 
 					<div class="section">
 						<h3>Contributing factors</h3>
-						${renderList(run.contributing_factors, "No contributing factors were stored for this run.")}
+						${renderList(run.contributing_factors, "No contributing factors were identified.")}
 					</div>
 
 					<div class="section">
-						<h3>Evidence references</h3>
+						<h3>Supporting evidence</h3>
 						${renderEvidenceReferences(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Context scope</h3>
-							<span class="muted tiny">Show whether this RCA run used only local evidence or pulled in fleet-wide references.</span>
+							<h3>Analysis scope</h3>
+							<span class="muted tiny">Whether this analysis used only local equipment data or included fleet-wide references from similar assets.</span>
 						</div>
 						${renderFleetContextSummary(run)}
 					</div>
 
 					<div class="section">
 						<h3>Immediate actions</h3>
-						${renderList(run.immediate_actions, "No immediate actions were stored for this run.")}
+						${renderList(run.immediate_actions, "No immediate actions were recommended for this alarm.")}
 					</div>
 
 					<div id="pmSuggestionsSection" class="section workflow-target" tabindex="-1">
-						<h3>PM suggestions</h3>
-						${renderList(run.pm_suggestions, "No PM suggestions were stored for this run.")}
+						<h3>Planned maintenance</h3>
+						${renderList(run.pm_suggestions, "No planned maintenance was recommended for this alarm.")}
 						${!portalUserCanApprove(retryState) ? `<div class="outcomes-note warn">${escapeHtml(approvalPermissionMessage(retryState))}</div>` : ""}
 						<div class="pm-actions">
 							<button id="approvePmButton" type="button" ${canApproveAction ? "" : "disabled"}>
@@ -6289,16 +6289,16 @@
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Run comparison</h3>
-							<span class="muted tiny">Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run.</span>
+							<h3>Analysis comparison</h3>
+							<span class="muted tiny">Compare confidence, actions, and repair plan changes between analyses of the same equipment.</span>
 						</div>
 						${renderComparePanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Feedback loop</h3>
-							<span class="muted tiny">Submit operator feedback to improve future RCA runs.</span>
+							<h3>Operator feedback</h3>
+							<span class="muted tiny">Record whether the recommendation was accepted, rejected, or modified by the maintenance team.</span>
 						</div>
 						${renderFeedbackPanel(run)}
 					</div>
@@ -6306,47 +6306,47 @@
 					<div id="approvalHistorySection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
 							<h3>Approval history</h3>
-							<span class="muted tiny">Trace every approval and retry attempt without leaving the run view.</span>
+							<span class="muted tiny">Trace every work order approval and retry attempt for this equipment.</span>
 						</div>
 						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
 					</div>
 
 					<div id="repairPlanSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Repair plan snapshot</h3>
-							<span class="muted tiny">Expose the persisted repair-plan record and the structured execution outline tied to this RCA run.</span>
+							<h3>Repair plan</h3>
+							<span class="muted tiny">Procedure steps, parts, and safety requirements for this maintenance action.</span>
 						</div>
 						${renderRepairPlanPanel(run)}
 					</div>
 
 					<div id="followThroughSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Recommendation follow-through snapshot</h3>
-							<span class="muted tiny">Track whether the current PM proposal is still waiting on approval, sitting in handoff, or already moving through a work order lifecycle.</span>
+							<h3>Work order status</h3>
+							<span class="muted tiny">Track whether the work order is awaiting approval, in CMMS handoff, or already in execution.</span>
 						</div>
 						${renderFollowThroughPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Handoff exceptions queue</h3>
-							<span class="muted tiny">Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish.</span>
+							<h3>Handoff exceptions</h3>
+							<span class="muted tiny">Work orders that need retry, escalation, or connector cleanup before CMMS handoff completes.</span>
 						</div>
 						${renderHandoffExceptionsPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Asset trend snapshot</h3>
-							<span class="muted tiny">Compact outcomes view for demos in the portal.</span>
+							<h3>Equipment trends</h3>
+							<span class="muted tiny">Acceptance rates, work order volume, and CMMS handoff health for this equipment class.</span>
 						</div>
 						${renderOutcomesPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Asset triage queue</h3>
-							<span class="muted tiny">Rank nearby prioritized assets so operators can pull the highest-risk assets forward first.</span>
+							<h3>Priority queue</h3>
+							<span class="muted tiny">Rank equipment by risk so the maintenance team addresses the most critical assets first.</span>
 						</div>
 						${renderTriagePanel(run)}
 					</div>

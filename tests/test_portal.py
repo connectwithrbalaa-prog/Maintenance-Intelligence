@@ -75,7 +75,7 @@ def test_portal_routes_with_run_summaries(tmp_path, monkeypatch):
 
     page = client.get("/portal")
     assert page.status_code == 200
-    assert "Maintenance Intelligence Portal" in page.text
+    assert "Maintenance Intelligence" in page.text
     assert "Early warning summary" in page.text
     assert "Edge mode status" in page.text
     assert "Queued handoffs" in page.text
@@ -623,10 +623,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Operator" in page.text
     assert "Maintainer" in page.text
     assert "Admin" in page.text
-    assert "No hypotheses were stored for this run." in page.text
-    assert "No root causes were stored for this run." in page.text
-    assert "No contributing factors were stored for this run." in page.text
-    assert "No evidence references were stored for this run." in page.text
+    assert "No probable cause was determined for this alarm." in page.text
+    assert "No root causes were identified for this alarm." in page.text
+    assert "No contributing factors were identified." in page.text
+    assert "No evidence references were stored for this run." in page.text  # evidence refs kept in JS, not section label
     assert "Missing fields were left empty so the detail view can still load safely." in page.text
     assert "Portal request failed" in page.text
     assert "Approve PM proposal" in page.text
@@ -640,19 +640,19 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "admin_retry" in page.text
     assert "Admin retry attempts remaining:" in page.text
     assert "Retrying handoff..." in page.text
-    assert "Recommendation follow-through snapshot" in page.text
+    assert "Work order status" in page.text
     assert "renderFollowThroughPanel" in page.text
     assert "Current proposal follow-through" in page.text
     assert "Work order completion" in page.text
-    assert "Repair plan snapshot" in page.text
+    assert "Repair plan" in page.text
     assert "Persisted repair plan" in page.text
     assert "Repair plan record could not be loaded" in page.text
     assert "No persisted repair plan is linked to this run yet." in page.text
-    assert "Run comparison" in page.text
+    assert "Analysis comparison" in page.text
     assert "Compare against" in page.text
     assert "Confidence drift" in page.text
     assert (
-        "Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run."
+        "Compare confidence, actions, and repair plan changes between analyses of the same equipment."
         in page.text
     )
     assert "Repair plan drift" in page.text
@@ -716,10 +716,10 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "Retries remaining:" in page.text
     assert "Connector:" in page.text
     assert "Latest connector outcome" in page.text
-    assert "Trace every approval and retry attempt without leaving the run view." in page.text
-    assert "Handoff exceptions queue" in page.text
+    assert "Trace every work order approval and retry attempt for this equipment." in page.text
+    assert "Handoff exceptions" in page.text
     assert (
-        "Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish."
+        "Work orders that need retry, escalation, or connector cleanup before CMMS handoff completes."
         in page.text
     )
     assert "Current proposal exception state" in page.text
@@ -823,11 +823,11 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
         in page.text
     )
     assert "headers: portalIdentityHeaders()" in page.text
-    assert "Live evidence" in page.text
-    assert "Recent signals and rollups for the asset tied to this RCA run." in page.text
+    assert "Sensor readings" in page.text
+    assert "Recent vibration, temperature, and pressure signals for this equipment." in page.text
     assert "Root causes" in page.text
     assert "Contributing factors" in page.text
-    assert "Evidence references" in page.text
+    assert "Supporting evidence" in page.text
     assert "No asset evidence link yet" in page.text
     assert "This run does not include an asset_id, so live signals cannot be fetched." in page.text
     assert "Loading live evidence" in page.text
@@ -855,9 +855,9 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
     assert "evidenceLoadingByAssetId" in page.text
     assert "evidenceErrorByAssetId" in page.text
     assert "/api/v1/signals/summary?asset_id=${encodeURIComponent(assetId)}&limit=6" in page.text
-    assert "Asset triage queue" in page.text
+    assert "Priority queue" in page.text
     assert (
-        "Rank nearby prioritized assets so operators can pull the highest-risk assets forward first."
+        "Rank equipment by risk so the maintenance team addresses the most critical assets first."
         in page.text
     )
     assert "Current asset queue rank" in page.text
@@ -925,8 +925,8 @@ def test_portal_index_includes_safe_detail_messages_for_partial_runs():
         '/api/v1/reports/prioritized-assets?limit=${encodeURIComponent(state.triage.limit)}&window=30&warnings_only=${state.triage.warningsOnly ? "true" : "false"}'
         in page.text
     )
-    assert "Asset trend snapshot" in page.text
-    assert "Compact outcomes view for demos in the portal." in page.text
+    assert "Equipment trends" in page.text
+    assert "Acceptance rates, work order volume, and CMMS handoff health for this equipment class." in page.text
     assert "outcomesScopeSelect" in page.text
     assert "Select analytics scope" in page.text
     assert "outcomesEntitySelect" in page.text
@@ -1042,8 +1042,8 @@ def test_portal_index_includes_feedback_loop_controls():
 
     page = client.get("/portal")
     assert page.status_code == 200
-    assert "Feedback loop" in page.text
-    assert "Submit operator feedback to improve future RCA runs." in page.text
+    assert "Operator feedback" in page.text
+    assert "Record whether the recommendation was accepted, rejected, or modified by the maintenance team." in page.text
     assert "Feedback decision" in page.text
     assert "Reason or field note" in page.text
     assert "Edited title (optional)" in page.text
