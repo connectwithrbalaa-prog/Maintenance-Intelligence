@@ -1,0 +1,229 @@
+{
+  "title": "Maintenance Intelligence — Reliability (ISO 14224)",
+  "description": "MTBF/MTTR trends, failure mode distributions, and fleet availability sourced from failure_events and equipment_units tables.",
+  "time": { "from": "now-365d", "to": "now" },
+  "refresh": "5m",
+  "templating": {
+    "list": [
+      {
+        "name": "postgres_ds",
+        "label": "Postgres Datasource",
+        "type": "datasource",
+        "query": "postgres",
+        "refresh": 1
+      },
+      {
+        "name": "equipment_family",
+        "label": "Equipment Family",
+        "type": "custom",
+        "query": "ALL,EF-ROT,EF-STAT,EF-ELEC,EF-INST,EF-SAFE,EF-PACK",
+        "current": { "text": "ALL", "value": "ALL" }
+      },
+      {
+        "name": "site_id",
+        "label": "Site",
+        "type": "query",
+        "query": "SELECT site_id AS __text, site_id AS __value FROM sites ORDER BY name",
+        "datasource": { "uid": "${postgres_ds}" },
+        "refresh": 2
+      },
+      {
+        "name": "window_days",
+        "label": "Window (days)",
+        "type": "custom",
+        "query": "30,90,180,365",
+        "current": { "text": "365", "value": "365" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Fleet Availability",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT CASE WHEN SUM(dt.op_hours) > 0 THEN ROUND((SUM(dt.op_hours) / (SUM(dt.op_hours) + SUM(dt.down_hours)))::numeric, 4) ELSE NULL END AS availability FROM (SELECT COALESCE(EXTRACT(EPOCH FROM (now() - fe.failure_start_ts))/3600, 0) AS op_hours, COALESCE(fe.downtime_hours, 0) AS down_hours FROM failure_events fe WHERE fe.failure_start_ts >= now() - interval '${window_days} days') dt",
+        "format": "table"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Total Failures",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 6, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS failures FROM failure_events WHERE failure_start_ts >= now() - interval '${window_days} days'",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Total Downtime (hours)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT ROUND(COALESCE(SUM(downtime_hours), 0)::numeric, 1) AS downtime_hours FROM failure_events WHERE failure_start_ts >= now() - interval '${window_days} days'",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Equipment with Most Failures",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 12, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(eu.tag, fe.asset_id, 'Unknown') AS worst_asset FROM failure_events fe LEFT JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' GROUP BY eu.tag, fe.asset_id ORDER BY COUNT(*) DESC LIMIT 1",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Avg MTBF (hours)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 15, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT ROUND(AVG(mtbf)::numeric, 0) AS avg_mtbf FROM (SELECT equipment_unit_id, (EXTRACT(EPOCH FROM (now() - MIN(failure_start_ts)))/3600 - COALESCE(SUM(downtime_hours),0)) / NULLIF(COUNT(*),0) AS mtbf FROM failure_events WHERE failure_start_ts >= now() - interval '${window_days} days' AND equipment_unit_id IS NOT NULL GROUP BY equipment_unit_id) sub WHERE mtbf > 0",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Avg MTTR (hours)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 18, "y": 0 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT ROUND(AVG(downtime_hours)::numeric, 1) AS avg_mttr FROM failure_events WHERE failure_start_ts >= now() - interval '${window_days} days' AND downtime_hours IS NOT NULL AND downtime_hours > 0",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Failure Mode Distribution (ISO 14224)",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 6 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(fm.name, fe.failure_mode_code, 'Unclassified') AS mode, COUNT(*) AS count FROM failure_events fe LEFT JOIN iso_failure_modes fm ON fe.failure_mode_code = fm.code WHERE fe.failure_start_ts >= now() - interval '${window_days} days' GROUP BY fm.name, fe.failure_mode_code ORDER BY count DESC LIMIT 12",
+        "format": "table"
+      }],
+      "options": { "legend": { "placement": "right" }, "pieType": "donut" }
+    },
+    {
+      "title": "Failure Cause Distribution (ISO 14224)",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 6 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(fc.name, fe.failure_cause_code, 'Unclassified') AS cause, COUNT(*) AS count FROM failure_events fe LEFT JOIN iso_failure_causes fc ON fe.failure_cause_code = fc.code WHERE fe.failure_start_ts >= now() - interval '${window_days} days' GROUP BY fc.name, fe.failure_cause_code ORDER BY count DESC",
+        "format": "table"
+      }],
+      "options": { "legend": { "placement": "right" }, "pieType": "donut" }
+    },
+    {
+      "title": "Failure Mechanism Distribution",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 6 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(fmech.name, fe.failure_mechanism_code, 'Unclassified') AS mechanism, COUNT(*) AS count FROM failure_events fe LEFT JOIN iso_failure_mechanisms fmech ON fe.failure_mechanism_code = fmech.code WHERE fe.failure_start_ts >= now() - interval '${window_days} days' GROUP BY fmech.name, fe.failure_mechanism_code ORDER BY count DESC LIMIT 12",
+        "format": "table"
+      }],
+      "options": { "legend": { "placement": "right" }, "pieType": "donut" }
+    },
+    {
+      "title": "Failure Timeline by Equipment",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT fe.failure_start_ts AS time, COALESCE(eu.tag, fe.asset_id, 'Unknown') AS metric, fe.downtime_hours AS value FROM failure_events fe LEFT JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' ORDER BY fe.failure_start_ts",
+        "format": "time_series"
+      }],
+      "fieldConfig": { "defaults": { "unit": "h", "custom": { "drawStyle": "points", "pointSize": 8 } } }
+    },
+    {
+      "title": "MTBF by Equipment (hours)",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(eu.tag, fe.equipment_unit_id) AS equipment, ROUND(((EXTRACT(EPOCH FROM (now() - MIN(fe.failure_start_ts)))/3600 - COALESCE(SUM(fe.downtime_hours),0)) / NULLIF(COUNT(*),0))::numeric, 0) AS mtbf_hours FROM failure_events fe LEFT JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' AND fe.equipment_unit_id IS NOT NULL GROUP BY eu.tag, fe.equipment_unit_id HAVING COUNT(*) > 0 ORDER BY mtbf_hours ASC LIMIT 20",
+        "format": "table"
+      }],
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "title": "MTTR by Equipment (hours)",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(eu.tag, fe.equipment_unit_id) AS equipment, ROUND(AVG(fe.downtime_hours)::numeric, 1) AS mttr_hours FROM failure_events fe LEFT JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' AND fe.downtime_hours IS NOT NULL AND fe.downtime_hours > 0 AND fe.equipment_unit_id IS NOT NULL GROUP BY eu.tag, fe.equipment_unit_id ORDER BY mttr_hours DESC LIMIT 20",
+        "format": "table"
+      }],
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "title": "Fleet Equipment Availability Heatmap",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(eu.tag, fe.equipment_unit_id) AS equipment, COALESCE(eu.iso_equipment_class, '') AS iso_class, COALESCE(eu.equipment_family, '') AS family, COALESCE(eu.criticality, '') AS criticality, COUNT(*) AS failures, ROUND(COALESCE(SUM(fe.downtime_hours), 0)::numeric, 1) AS total_downtime_h, ROUND(AVG(fe.downtime_hours)::numeric, 1) AS avg_mttr_h, ROUND(((EXTRACT(EPOCH FROM (now() - MIN(fe.failure_start_ts)))/3600 - COALESCE(SUM(fe.downtime_hours),0)) / NULLIF(COUNT(*),0))::numeric, 0) AS mtbf_h, CASE WHEN (EXTRACT(EPOCH FROM (now() - MIN(fe.failure_start_ts)))/3600) > 0 THEN ROUND(((EXTRACT(EPOCH FROM (now() - MIN(fe.failure_start_ts)))/3600 - COALESCE(SUM(fe.downtime_hours),0)) / (EXTRACT(EPOCH FROM (now() - MIN(fe.failure_start_ts)))/3600))::numeric, 4) ELSE NULL END AS availability FROM failure_events fe LEFT JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' AND fe.equipment_unit_id IS NOT NULL GROUP BY eu.tag, fe.equipment_unit_id, eu.iso_equipment_class, eu.equipment_family, eu.criticality ORDER BY availability ASC NULLS LAST",
+        "format": "table"
+      }],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "availability" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "continuous-GrYlRd" } }] },
+          { "matcher": { "id": "byName", "options": "criticality" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }] }
+        ]
+      }
+    },
+    {
+      "title": "Maintenance Action Distribution",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(ma.name, fe.maintenance_action_code, 'Unclassified') AS action, COUNT(*) AS count FROM failure_events fe LEFT JOIN iso_maintenance_actions ma ON fe.maintenance_action_code = ma.code WHERE fe.failure_start_ts >= now() - interval '${window_days} days' AND fe.maintenance_action_code IS NOT NULL GROUP BY ma.name, fe.maintenance_action_code ORDER BY count DESC",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Detection Method Distribution",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT COALESCE(dm.name, fe.detection_method_code, 'Unclassified') AS method, COUNT(*) AS count FROM failure_events fe LEFT JOIN iso_detection_methods dm ON fe.detection_method_code = dm.code WHERE fe.failure_start_ts >= now() - interval '${window_days} days' AND fe.detection_method_code IS NOT NULL GROUP BY dm.name, fe.detection_method_code ORDER BY count DESC",
+        "format": "table"
+      }]
+    },
+    {
+      "title": "Failure Events by ISO Equipment Class",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 54 },
+      "datasource": { "uid": "${postgres_ds}" },
+      "targets": [{
+        "rawSql": "SELECT REPLACE(eu.iso_equipment_class, '_', ' ') AS equipment_class, COUNT(*) AS failures, ROUND(COALESCE(SUM(fe.downtime_hours), 0)::numeric, 1) AS total_downtime_h FROM failure_events fe JOIN equipment_units eu ON fe.equipment_unit_id = eu.equipment_unit_id WHERE fe.failure_start_ts >= now() - interval '${window_days} days' GROUP BY eu.iso_equipment_class ORDER BY failures DESC",
+        "format": "table"
+      }]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true
+}
