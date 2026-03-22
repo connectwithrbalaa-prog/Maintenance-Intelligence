@@ -1,0 +1,51 @@
+{
+  "run_id": "RUN-OG-TURB-003",
+  "status": "ok",
+  "event_id": "EVT-OG-TEMP-9105",
+  "recommendation_id": "RUN-OG-TURB-003",
+  "model": {
+    "name": "gpt-4.1",
+    "version": "og-v1",
+    "confidence": 0.76,
+    "latency_ms": 2540
+  },
+  "structured": {
+    "title": "Exhaust gas temperature spread on Gas Turbine GT-201 — combustion imbalance detected",
+    "summary": "EGT spread across the 12 thermocouple positions on GT-201 has widened from a normal 15°C to 38°C over the past 5 days, with cans 7 and 8 consistently reading 22°C above the ring average. This pattern indicates localized combustion imbalance, most likely caused by fuel nozzle fouling or crossfire tube degradation. No vibration anomaly or bearing temperature change accompanies the EGT drift.",
+    "confidence": 0.76,
+    "hypothesis": [
+      "Fuel nozzle fouling on combustion cans 7 and 8 of GT-201 is creating a localized hot zone and widening the EGT spread.",
+      "Crossfire tube erosion between cans 7-8 may be contributing to uneven flame propagation."
+    ],
+    "root_causes": [
+      "Fuel nozzle fouling or partial blockage on cans 7 and 8",
+      "Possible crossfire tube erosion affecting flame distribution"
+    ],
+    "contributing_factors": [
+      "Recent fuel quality variation — sulfur content increased 12% in the last fuel batch delivery",
+      "GT-201 has accumulated 4,200 fired hours since last hot gas path inspection (HGP interval: 4,000 hours)"
+    ],
+    "evidence_ids": [
+      "SIG-EGT-GT201-001",
+      "SIG-EGT-GT201-002",
+      "EVT-OG-TEMP-9105"
+    ],
+    "immediate_actions": [
+      "Review EGT trend data and confirm whether spread is stable or accelerating",
+      "Initiate fuel nozzle inspection planning for GT-201 cans 7 and 8",
+      "Consider derating GT-201 load by 5-10% to reduce thermal stress on affected cans until inspection"
+    ],
+    "pm_suggestions": [
+      "Schedule combustion inspection for GT-201 cans 7-8 during the next planned outage window",
+      "Order replacement fuel nozzle tips and crossfire tube gaskets as contingency spares",
+      "Advance the hot gas path inspection date if EGT spread exceeds 45°C before scheduled outage"
+    ]
+  },
+  "context_meta": {
+    "asset_id": "GT-201",
+    "event_kind": "anomaly",
+    "asset_class": "gas_turbine",
+    "site_id": "PLANT-GULF-01",
+    "severity": "medium"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "run_id": "RUN-OG-PUMP-002",
+  "status": "ok",
+  "event_id": "EVT-OG-SEAL-7203",
+  "recommendation_id": "RUN-OG-PUMP-002",
+  "model": {
+    "name": "gpt-4.1",
+    "version": "og-v1",
+    "confidence": 0.84,
+    "latency_ms": 2210
+  },
+  "structured": {
+    "title": "Seal oil pressure drop on Pump Skid PS-105B — mechanical seal leak probable",
+    "summary": "Seal oil differential pressure on PS-105B has dropped 22% over 48 hours from 3.8 bar to 2.96 bar. Process fluid traces detected in the seal oil return. Pattern is consistent with Stage 1 mechanical seal face wear. No temperature anomaly detected on the pump body, suggesting the leak is slow and containable if addressed within the current maintenance window.",
+    "confidence": 0.84,
+    "hypothesis": [
+      "Primary mechanical seal face wear on PS-105B is allowing process fluid to migrate into the seal oil circuit, causing progressive pressure loss.",
+      "Seal face carbon buildup from suspended solids in the process stream may be accelerating wear beyond the expected 18-month seal life."
+    ],
+    "root_causes": [
+      "Mechanical seal face wear on the inboard seal of PS-105B",
+      "Possible contamination-accelerated wear from suspended solids in process fluid"
+    ],
+    "contributing_factors": [
+      "Pump has been operating at 108% of design flow for 3 weeks during a throughput surge",
+      "Last seal replacement was 16 months ago — approaching the 18-month expected life"
+    ],
+    "evidence_ids": [
+      "SIG-SEAL-PS105B-001",
+      "SIG-FLOW-PS105B-002",
+      "EVT-OG-SEAL-7203"
+    ],
+    "immediate_actions": [
+      "Increase seal oil monitoring frequency to every 2 hours until maintenance window",
+      "Confirm standby pump PS-105C is ready for immediate switchover if pressure drops below 2.5 bar",
+      "Notify operations of potential pump swap requirement within 48-72 hours"
+    ],
+    "pm_suggestions": [
+      "Create planned work order for PS-105B mechanical seal replacement during the next scheduled pump swap window",
+      "Order replacement seal cartridge and verify spare availability in warehouse",
+      "Add seal oil differential pressure to the high-frequency monitoring list for all PS-105 series pumps"
+    ]
+  },
+  "context_meta": {
+    "asset_id": "PS-105B",
+    "event_kind": "anomaly",
+    "asset_class": "pump_skid",
+    "site_id": "PLANT-GULF-01",
+    "severity": "medium"
+  }
+}

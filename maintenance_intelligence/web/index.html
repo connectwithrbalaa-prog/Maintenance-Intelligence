@@ -3,26 +3,39 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Maintenance Intelligence Portal</title>
+	<title>Maintenance Intelligence — Oil &amp; Gas</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/izitoast@1.4.0/dist/css/iziToast.min.css">
+	<script src="https://cdn.jsdelivr.net/npm/izitoast@1.4.0/dist/js/iziToast.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 	<style>
 		:root {
 			color-scheme: light;
-			--bg: #f3efe5;
-			--panel: rgba(255, 251, 245, 0.88);
-			--panel-strong: #fffdf8;
-			--line: rgba(29, 42, 45, 0.12);
-			--text: #182226;
-			--muted: #5f6b6d;
-			--accent: #0e7c66;
-			--accent-soft: rgba(14, 124, 102, 0.12);
-			--warn: #c5672f;
-			--danger: #a63b2d;
-			--shadow: 0 24px 60px rgba(24, 34, 38, 0.12);
-			--radius-xl: 28px;
-			--radius-lg: 20px;
-			--radius-md: 14px;
-			--font-display: "Space Grotesk", "Segoe UI", sans-serif;
-			--font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+			--bg: #f8f9fb;
+			--panel: rgba(255, 255, 255, 0.92);
+			--panel-strong: #ffffff;
+			--line: rgba(15, 23, 42, 0.08);
+			--text: #0f172a;
+			--muted: #64748b;
+			--accent: #0d9373;
+			--accent-soft: rgba(13, 147, 115, 0.10);
+			--warn: #d97706;
+			--danger: #dc2626;
+			--shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
+			--shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+			--shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.06), 0 20px 48px rgba(15, 23, 42, 0.10);
+			--radius-xl: 16px;
+			--radius-lg: 12px;
+			--radius-md: 8px;
+			--radius-sm: 4px;
+			--font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			--font-mono: "SF Mono", "Fira Code", "Cascadia Mono", monospace;
+			--transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+			--transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 		}
 
 		* {
@@ -33,11 +46,12 @@
 			margin: 0;
 			min-height: 100vh;
 			font-family: var(--font-body);
+			font-size: 14px;
+			line-height: 1.6;
 			color: var(--text);
-			background:
-				radial-gradient(circle at top left, rgba(14, 124, 102, 0.18), transparent 32%),
-				radial-gradient(circle at bottom right, rgba(197, 103, 47, 0.14), transparent 30%),
-				linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+			background: var(--bg);
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
 		}
 
 		body::before {
@@ -45,11 +59,9 @@
 			position: fixed;
 			inset: 0;
 			pointer-events: none;
-			background-image:
-				linear-gradient(rgba(24, 34, 38, 0.02) 1px, transparent 1px),
-				linear-gradient(90deg, rgba(24, 34, 38, 0.02) 1px, transparent 1px);
-			background-size: 24px 24px;
-			mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent);
+			background:
+				radial-gradient(ellipse at 0% 0%, rgba(13, 147, 115, 0.06), transparent 50%),
+				radial-gradient(ellipse at 100% 100%, rgba(99, 102, 241, 0.04), transparent 50%);
 		}
 
 		main {
@@ -72,12 +84,12 @@
 			background: var(--panel);
 			border: 1px solid var(--line);
 			box-shadow: var(--shadow);
-			backdrop-filter: blur(18px);
+			backdrop-filter: blur(12px);
 		}
 
 		.hero-card {
 			border-radius: var(--radius-xl);
-			padding: 28px;
+			padding: 32px;
 			position: relative;
 			overflow: hidden;
 		}
@@ -85,12 +97,12 @@
 		.hero-card::after {
 			content: "";
 			position: absolute;
-			width: 240px;
-			height: 240px;
-			right: -70px;
-			top: -90px;
+			width: 320px;
+			height: 320px;
+			right: -100px;
+			top: -120px;
 			border-radius: 50%;
-			background: radial-gradient(circle, rgba(14, 124, 102, 0.18), transparent 68%);
+			background: radial-gradient(circle, rgba(13, 147, 115, 0.08), transparent 70%);
 		}
 
 		.eyebrow {
@@ -111,20 +123,23 @@
 		h2,
 		h3 {
 			font-family: var(--font-display);
+			font-weight: 600;
 			margin: 0;
-			letter-spacing: -0.04em;
+			letter-spacing: -0.025em;
 		}
 
 		h1 {
-			max-width: 10ch;
-			font-size: clamp(2.5rem, 4.6vw, 4.5rem);
-			line-height: 0.94;
-			margin-bottom: 18px;
+			max-width: 14ch;
+			font-size: clamp(2rem, 3.8vw, 3.2rem);
+			font-weight: 700;
+			line-height: 1.08;
+			margin-bottom: 16px;
+			letter-spacing: -0.035em;
 		}
 
 		.hero-copy {
-			max-width: 60ch;
-			font-size: 16px;
+			max-width: 56ch;
+			font-size: 15px;
 			line-height: 1.65;
 			color: var(--muted);
 			margin: 0;
@@ -136,10 +151,15 @@
 			margin-top: 18px;
 			padding: 16px;
 			border-radius: var(--radius-lg);
-			background: rgba(255, 255, 255, 0.68);
+			background: rgba(255, 255, 255, 0.72);
 			border: 1px solid var(--line);
 			position: relative;
 			z-index: 1;
+			transition: border-color var(--transition-fast);
+		}
+
+		.identity-panel:hover {
+			border-color: rgba(13, 147, 115, 0.18);
 		}
 
 		.identity-row {
@@ -226,9 +246,15 @@
 
 		.metric {
 			border-radius: var(--radius-lg);
-			padding: 18px;
+			padding: 20px;
 			background: var(--panel-strong);
 			border: 1px solid var(--line);
+			transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+		}
+
+		.metric:hover {
+			border-color: rgba(13, 147, 115, 0.16);
+			box-shadow: var(--shadow-sm);
 		}
 
 		.metric-label {
@@ -291,16 +317,28 @@
 		}
 
 		.toolbar button {
-			padding: 12px 14px;
+			padding: 10px 16px;
 			background: var(--text);
 			color: #fff;
 			cursor: pointer;
-			transition: transform 160ms ease, opacity 160ms ease;
+			font-weight: 500;
+			transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast);
 		}
 
 		.toolbar button:hover {
 			transform: translateY(-1px);
-			opacity: 0.94;
+			opacity: 0.92;
+			box-shadow: var(--shadow-sm);
+		}
+
+		.toolbar button:active {
+			transform: translateY(0);
+			opacity: 0.88;
+		}
+
+		.toolbar button:focus-visible {
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
 		}
 
 		.run-list {
@@ -314,20 +352,31 @@
 		.run-card {
 			width: 100%;
 			text-align: left;
-			padding: 16px;
-			border-radius: 18px;
+			padding: 14px 16px;
+			border-radius: var(--radius-lg);
 			cursor: pointer;
-			transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
-			animation: enter 420ms ease both;
+			transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+			animation: enter 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
 		}
 
-		.run-card:hover,
-		.run-card:focus-visible,
+		.run-card:hover {
+			transform: translateY(-1px);
+			border-color: rgba(13, 147, 115, 0.24);
+			background: var(--panel-strong);
+			box-shadow: var(--shadow-sm);
+		}
+
+		.run-card:focus-visible {
+			border-color: var(--accent);
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
+			background: var(--panel-strong);
+		}
+
 		.run-card.active {
-			transform: translateY(-2px);
-			border-color: rgba(14, 124, 102, 0.36);
-			background: rgba(255, 255, 255, 0.96);
-			outline: none;
+			border-color: rgba(13, 147, 115, 0.36);
+			background: var(--panel-strong);
+			box-shadow: 0 0 0 1px rgba(13, 147, 115, 0.12), var(--shadow-sm);
 		}
 
 		.run-card-header,
@@ -509,23 +558,34 @@
 		}
 
 		.workflow-link {
-			padding: 9px 14px;
+			padding: 8px 14px;
 			border: 1px solid var(--line);
 			border-radius: 999px;
-			background: rgba(24, 34, 38, 0.04);
+			background: rgba(15, 23, 42, 0.03);
 			color: var(--text);
 			font: inherit;
-			font-size: 0.9rem;
+			font-size: 0.85rem;
+			font-weight: 500;
 			cursor: pointer;
-			transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+			transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 		}
 
-		.workflow-link:hover,
-		.workflow-link:focus-visible {
-			background: rgba(14, 124, 102, 0.12);
-			border-color: rgba(14, 124, 102, 0.35);
+		.workflow-link:hover {
+			background: rgba(13, 147, 115, 0.08);
+			border-color: rgba(13, 147, 115, 0.28);
 			transform: translateY(-1px);
-			outline: none;
+			box-shadow: var(--shadow-sm);
+		}
+
+		.workflow-link:focus-visible {
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
+			background: rgba(13, 147, 115, 0.08);
+			border-color: var(--accent);
+		}
+
+		.workflow-link:active {
+			transform: translateY(0);
 		}
 
 		.workflow-target {
@@ -558,12 +618,14 @@
 		.json-box {
 			margin-top: 16px;
 			padding: 16px;
-			border-radius: 18px;
-			background: #1c2527;
-			color: #dff0ea;
+			border-radius: var(--radius-lg);
+			background: #0f172a;
+			color: #e2e8f0;
 			overflow: auto;
+			font-family: var(--font-mono);
 			font-size: 12px;
-			line-height: 1.6;
+			line-height: 1.7;
+			border: 1px solid rgba(30, 41, 59, 0.8);
 		}
 
 		.empty-state,
@@ -576,9 +638,44 @@
 			padding: 24px;
 			text-align: center;
 			border: 1px dashed var(--line);
-			border-radius: 22px;
-			background: rgba(255, 255, 255, 0.36);
+			border-radius: var(--radius-xl);
+			background: rgba(255, 255, 255, 0.48);
 			color: var(--muted);
+		}
+
+		.skeleton {
+			background: linear-gradient(90deg, rgba(15, 23, 42, 0.06) 25%, rgba(15, 23, 42, 0.10) 50%, rgba(15, 23, 42, 0.06) 75%);
+			background-size: 200% 100%;
+			animation: skeletonShimmer 1.5s ease-in-out infinite;
+			border-radius: var(--radius-sm);
+		}
+
+		.skeleton-text {
+			height: 14px;
+			margin-bottom: 8px;
+			border-radius: var(--radius-sm);
+		}
+
+		.skeleton-text.short { width: 60%; }
+		.skeleton-text.medium { width: 80%; }
+		.skeleton-text.long { width: 100%; }
+
+		.skeleton-card {
+			padding: 16px;
+			border-radius: var(--radius-lg);
+			border: 1px solid var(--line);
+			background: var(--panel);
+		}
+
+		.skeleton-chart {
+			height: 160px;
+			border-radius: var(--radius-md);
+		}
+
+		.skeleton-metric {
+			height: 42px;
+			width: 80px;
+			border-radius: var(--radius-md);
 		}
 
 		.result-banner {
@@ -1605,31 +1702,69 @@
 		}
 
 		.chart-empty {
-			min-height: 154px;
+			min-height: 160px;
 			display: grid;
 			place-items: center;
 			border: 1px dashed var(--line);
 			border-radius: 14px;
-			background: rgba(24, 34, 38, 0.03);
+			background: rgba(15, 23, 42, 0.02);
 			color: var(--muted);
 			text-align: center;
 			padding: 16px;
 			font-size: 13px;
 		}
 
+		.chart-card {
+			min-height: 240px;
+			contain: layout style;
+		}
+
+		.outcomes-panel {
+			min-height: 200px;
+			contain: layout style;
+		}
+
+		.triage-panel,
+		.handoff-panel {
+			min-height: 160px;
+			contain: layout style;
+		}
+
+		.detail-shell {
+			contain: layout style;
+		}
+
 		.pm-actions button {
-			padding: 12px 14px;
-			border: 1px solid var(--line);
-			border-radius: 12px;
+			padding: 10px 18px;
+			border: 1px solid transparent;
+			border-radius: var(--radius-md);
 			background: var(--accent);
 			color: #fff;
 			font: inherit;
+			font-weight: 500;
 			cursor: pointer;
+			transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast);
+		}
+
+		.pm-actions button:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 4px 12px rgba(13, 147, 115, 0.24);
+		}
+
+		.pm-actions button:active {
+			transform: translateY(0);
+		}
+
+		.pm-actions button:focus-visible {
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
 		}
 
 		.pm-actions button[disabled] {
-			opacity: 0.6;
-			cursor: progress;
+			opacity: 0.5;
+			cursor: not-allowed;
+			transform: none;
+			box-shadow: none;
 		}
 
 		.pulse {
@@ -1650,6 +1785,11 @@
 		@keyframes pulse {
 			0%, 100% { transform: scale(0.92); opacity: 0.45; }
 			50% { transform: scale(1.08); opacity: 1; }
+		}
+
+		@keyframes skeletonShimmer {
+			0% { background-position: 200% 0; }
+			100% { background-position: -200% 0; }
 		}
 
 		@keyframes enter {
@@ -1695,7 +1835,8 @@
 			.outcomes-hero-kpi,
 			.outcomes-chip-row,
 			.outcomes-note,
-			.chart-card {
+			.chart-card,
+			.skeleton {
 				animation: none;
 				transition: none;
 				opacity: 1;
@@ -1781,10 +1922,10 @@
 	<main>
 		<section class="hero">
 			<article class="hero-card">
-				<div class="eyebrow">RCA portal · structured summaries</div>
-				<h1>Run evidence without digging through raw JSON.</h1>
-				<p class="hero-copy">
-					Inspect the latest RCA runs, compare confidence and action sets, and drill into the structured payload that was persisted for each recommendation.
+				<div class="eyebrow" id="heroEyebrow">Maintenance Intelligence · Oil &amp; Gas</div>
+				<h1 id="heroTitle">See why your equipment alarmed — and what to do next.</h1>
+				<p class="hero-copy" id="heroCopy">
+					Every alarm on compressor trains, pump skids, and rotating equipment gets an AI-powered root cause analysis with recommended actions, repair plans, and one-click work order approval.
 				</p>
 				<div class="identity-panel" aria-label="portal identity">
 					<div class="identity-row">
@@ -1834,7 +1975,7 @@
 			</article>
 			<section class="hero-metrics" aria-label="portal metrics">
 				<article class="metric">
-					<div class="metric-label">Loaded runs</div>
+					<div class="metric-label">Analyses</div>
 					<div class="metric-value" id="metricRuns">0</div>
 				</article>
 				<article class="metric">
@@ -1856,13 +1997,13 @@
 			<aside class="panel">
 				<div class="panel-header">
 					<div>
-						<div class="eyebrow">Run queue</div>
-						<h2 class="panel-title">Recent summaries</h2>
+						<div class="eyebrow">Equipment alerts</div>
+						<h2 class="panel-title">Recent analyses</h2>
 					</div>
 					<span class="muted tiny" id="resultsCount">0 visible</span>
 				</div>
 				<div class="toolbar">
-					<input id="searchInput" type="search" placeholder="Filter by asset, run, title, or status">
+					<input id="searchInput" type="search" placeholder="Filter by equipment, alarm type, or status">
 					<button id="refreshButton" type="button">Refresh</button>
 				</div>
 				<div id="runList" class="run-list" aria-live="polite"></div>
@@ -1871,16 +2012,16 @@
 			<section class="panel detail-shell">
 				<div class="panel-header">
 					<div>
-						<div class="eyebrow">Run detail</div>
-						<h2 class="panel-title">Structured output</h2>
+						<div class="eyebrow">Analysis detail</div>
+						<h2 class="panel-title">Root cause &amp; actions</h2>
 					</div>
 					<span class="muted tiny" id="detailStamp">No run selected</span>
 				</div>
 				<div id="detailView" class="empty-state">
 					<div>
 						<div class="pulse"></div>
-						<h3>Select a run</h3>
-						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+						<h3>Select an analysis</h3>
+						<p>Choose an equipment alert from the left to see what likely caused the alarm, recommended actions, and work order status.</p>
 					</div>
 				</div>
 			</section>
@@ -1888,6 +2029,13 @@
 	</main>
 
 	<script>
+		const DETAIL_CACHE_LIMIT = 50;
+		function evictMapIfNeeded(map, limit = DETAIL_CACHE_LIMIT) {
+			if (map.size <= limit) return;
+			const keysToEvict = [...map.keys()].slice(0, map.size - limit);
+			for (const key of keysToEvict) map.delete(key);
+		}
+
 		const state = {
 			runs: [],
 			filteredRuns: [],
@@ -3508,6 +3656,7 @@
 			});
 			const normalized = normalizeRun(detail);
 			state.detailsById.set(runId, normalized);
+			evictMapIfNeeded(state.detailsById);
 			return normalized;
 		}
 
@@ -5096,36 +5245,101 @@
 			return { segments, lastPoint };
 		}
 
+		const _chartInstances = new Map();
+
 		function renderTrendChartSvg(points, metricName, color, options = {}) {
-			const width = 340;
-			const height = 160;
-			const padding = 16;
-			const { segments, lastPoint } = buildTrendSegments(points, width, height, padding);
-			if (!segments.length) {
+			const validPoints = asPointList(points);
+			if (!validPoints.length) {
 				const emptyLabel = metricKind(metricName, options) === "rate"
 					? (options.emptyAcceptanceLabel || "No acceptance decisions yet")
 					: (options.emptyVolumeLabel || "No work order volume yet");
 				return `<div class="chart-empty">${escapeHtml(emptyLabel)}</div>`;
 			}
-			const firstLabel = asString(points[0]?.date, "-");
-			const lastLabel = asString(points[points.length - 1]?.date, "-");
-			const polylines = segments.map((segment) => `
-				<polyline class="chart-line" points="${segment.map((point) => `${point.x},${point.y}`).join(" ")}" style="stroke: ${escapeHtml(color)}"></polyline>
-			`).join("");
-			const dot = lastPoint
-				? `<circle class="chart-dot" cx="${lastPoint.x}" cy="${lastPoint.y}" r="5" fill="${escapeHtml(color)}"></circle>`
-				: "";
-			return `
-				<svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(metricName)} trend chart">
-					<line class="chart-grid-line" x1="${padding}" y1="${padding}" x2="${width - padding}" y2="${padding}"></line>
-					<line class="chart-grid-line" x1="${padding}" y1="${height / 2}" x2="${width - padding}" y2="${height / 2}"></line>
-					<line class="chart-grid-line" x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}"></line>
-					${polylines}
-					${dot}
-					<text class="chart-axis" x="${padding}" y="${height - 2}">${escapeHtml(firstLabel)}</text>
-					<text class="chart-axis" x="${width - padding}" y="${height - 2}" text-anchor="end">${escapeHtml(lastLabel)}</text>
-				</svg>
-			`;
+			const chartId = `chart-${metricName}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+			const isRate = metricKind(metricName, options) === "rate";
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					const canvas = document.getElementById(chartId);
+					if (!canvas || typeof Chart === "undefined") return;
+					if (_chartInstances.has(chartId)) {
+						_chartInstances.get(chartId).destroy();
+					}
+					const ctx = canvas.getContext("2d");
+					const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+					gradient.addColorStop(0, color + "28");
+					gradient.addColorStop(1, color + "04");
+					const labels = validPoints.map(p => asString(p.date, ""));
+					const values = validPoints.map(p => asNumber(p.value) ?? 0);
+					const chart = new Chart(ctx, {
+						type: "line",
+						data: {
+							labels: labels,
+							datasets: [{
+								data: values,
+								borderColor: color,
+								backgroundColor: gradient,
+								borderWidth: 2.5,
+								pointRadius: 0,
+								pointHoverRadius: 5,
+								pointHoverBackgroundColor: color,
+								pointHoverBorderColor: "#fff",
+								pointHoverBorderWidth: 2,
+								fill: true,
+								tension: 0.35,
+							}],
+						},
+						options: {
+							responsive: true,
+							maintainAspectRatio: false,
+							interaction: { intersect: false, mode: "index" },
+							plugins: {
+								legend: { display: false },
+								tooltip: {
+									backgroundColor: "rgba(15, 23, 42, 0.92)",
+									titleColor: "#e2e8f0",
+									bodyColor: "#e2e8f0",
+									borderColor: "rgba(255, 255, 255, 0.08)",
+									borderWidth: 1,
+									cornerRadius: 8,
+									padding: 10,
+									displayColors: false,
+									callbacks: {
+										label: function(context) {
+											const v = context.parsed.y;
+											return isRate ? (v * 100).toFixed(1) + "%" : v.toLocaleString();
+										}
+									}
+								},
+							},
+							scales: {
+								x: {
+									display: true,
+									grid: { display: false },
+									ticks: { maxTicksLimit: 4, color: "#94a3b8", font: { size: 10 } },
+									border: { display: false },
+								},
+								y: {
+									display: true,
+									grid: { color: "rgba(15, 23, 42, 0.05)", drawBorder: false },
+									ticks: {
+										maxTicksLimit: 4,
+										color: "#94a3b8",
+										font: { size: 10 },
+										callback: function(value) {
+											return isRate ? (value * 100).toFixed(0) + "%" : value;
+										}
+									},
+									border: { display: false },
+									beginAtZero: true,
+								},
+							},
+							animation: { duration: 600, easing: "easeOutQuart" },
+						},
+					});
+					_chartInstances.set(chartId, chart);
+				});
+			});
+			return `<div style="position:relative;height:160px"><canvas id="${chartId}" role="img" aria-label="${escapeHtml(metricName)} trend chart"></canvas></div>`;
 		}
 
 		function renderTrendCard(title, metricName, points, color, options = {}) {
@@ -5659,11 +5873,14 @@
 				`;
 			}).join("");
 
-			elements.runList.querySelectorAll("[data-run-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					selectRun(button.getAttribute("data-run-id"));
-				});
+		}
+
+		if (!elements.runList._delegated) {
+			elements.runList.addEventListener("click", (event) => {
+				const card = event.target.closest("[data-run-id]");
+				if (card) selectRun(card.getAttribute("data-run-id"));
 			});
+			elements.runList._delegated = true;
 		}
 
 		function renderMetrics() {
@@ -5676,10 +5893,10 @@
 
 		function renderWorkflowRail() {
 			const steps = [
-				{ targetId: "pmSuggestionsSection", label: "Review PM proposal" },
-				{ targetId: "approvalHistorySection", label: "Open approval history" },
-				{ targetId: "repairPlanSection", label: "Open repair plan" },
-				{ targetId: "followThroughSection", label: "Open follow-through" },
+				{ targetId: "pmSuggestionsSection", label: "Planned maintenance" },
+				{ targetId: "approvalHistorySection", label: "Approval history" },
+				{ targetId: "repairPlanSection", label: "Repair plan" },
+				{ targetId: "followThroughSection", label: "Work order status" },
 			];
 			return `
 				<div class="workflow-rail" aria-label="Run workflow navigation">
@@ -5710,15 +5927,239 @@
 			}
 		}
 
+		function _destroyDetailCharts() {
+			for (const [id, chart] of _chartInstances) {
+				chart.destroy();
+			}
+			_chartInstances.clear();
+		}
+
+		function _bindDetailDelegation(run, ctx) {
+			if (!elements.detailView._delegatedClick) {
+				elements.detailView.addEventListener("click", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					const workflowBtn = target.closest("[data-workflow-target]");
+					if (workflowBtn) {
+						focusWorkflowSection(asString(workflowBtn.getAttribute("data-workflow-target")));
+						return;
+					}
+
+					const evidenceRefBtn = target.closest("[data-evidence-ref-id]");
+					if (evidenceRefBtn) {
+						focusEvidenceReference(currentRun, asString(evidenceRefBtn.getAttribute("data-evidence-ref-id")), asString(evidenceRefBtn.getAttribute("data-evidence-ref-type")));
+						return;
+					}
+
+					const compareRefBtn = target.closest("[data-compare-evidence-ref-id]");
+					if (compareRefBtn) {
+						const compareRunId = asString(compareRefBtn.getAttribute("data-compare-evidence-run-id"));
+						const sourceSide = asString(compareRefBtn.getAttribute("data-compare-evidence-side")) || "current";
+						const compareRun = compareRunId ? state.detailsById.get(compareRunId) || null : null;
+						activateCompareEvidenceReference(currentRun, compareRun, asString(compareRefBtn.getAttribute("data-compare-evidence-ref-id")), asString(compareRefBtn.getAttribute("data-compare-evidence-ref-type")), sourceSide);
+						return;
+					}
+
+					const handoffRetryBtn = target.closest("[data-handoff-retry-proposal-id]");
+					if (handoffRetryBtn) {
+						const proposalId = asString(handoffRetryBtn.getAttribute("data-handoff-retry-proposal-id"));
+						if (proposalId) {
+							const row = handoffExceptionRows(state.handoffExceptions.report).find((c) => c.proposalId === proposalId);
+							if (row) submitHandoffQueueRetry(row);
+						}
+						return;
+					}
+
+					const handoffFocusBtn = target.closest("[data-handoff-focus-run-id]");
+					if (handoffFocusBtn) {
+						selectRun(asString(handoffFocusBtn.getAttribute("data-handoff-focus-run-id")));
+						return;
+					}
+
+					const handoffAuditBtn = target.closest("[data-handoff-open-audit-run-id]");
+					if (handoffAuditBtn) {
+						selectRun(asString(handoffAuditBtn.getAttribute("data-handoff-open-audit-run-id"))).then(() => focusWorkflowSection("approvalHistorySection"));
+						return;
+					}
+
+					const cmmsBreakdownLink = target.closest(".cmms-breakdown-link");
+					if (cmmsBreakdownLink) return;
+
+					if (target.id === "approvePmButton" || target.closest("#approvePmButton")) {
+						const rs = elements.detailView._retryState;
+						if (rs && elements.detailView._canApprove && rs.enabled) {
+							approveRun(currentRun, rs, { adminRetry: elements.detailView._isAdmin && rs.isRetry });
+						}
+						return;
+					}
+
+					if (target.id === "loadMoreAuditButton" || target.closest("#loadMoreAuditButton")) {
+						const ah = state.approvalHistoryById.get(currentRun.run_id);
+						if (ah?.has_more) loadApprovalHistory(currentRun, { page: (ah.page || 1) + 1, size: ah.size || 3, append: true });
+						return;
+					}
+				});
+				elements.detailView._delegatedClick = true;
+			}
+
+			if (!elements.detailView._delegatedChange) {
+				elements.detailView.addEventListener("change", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "feedbackActionSelect") {
+						updateFeedbackDraft(currentRun.run_id, { action: target.value });
+					} else if (target.id === "compareRunSelect") {
+						const compareRunId = target.value;
+						if (!compareRunId) {
+							state.selectedCompareRunIdByRunId.delete(currentRun.run_id);
+							state.compareErrorByRunId.delete(currentRun.run_id);
+							renderDetail(currentRun);
+						} else {
+							state.selectedCompareRunIdByRunId.set(currentRun.run_id, compareRunId);
+							ensureCompareRunData(currentRun, compareRunId);
+						}
+					}
+				});
+				elements.detailView._delegatedChange = true;
+			}
+
+			if (!elements.detailView._delegatedInput) {
+				elements.detailView.addEventListener("input", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "feedbackReasonInput") {
+						updateFeedbackDraft(currentRun.run_id, { reason: target.value });
+					} else if (target.id === "feedbackTitleInput") {
+						updateFeedbackDraft(currentRun.run_id, { editedTitle: target.value });
+					} else if (target.id === "feedbackActionsInput") {
+						updateFeedbackDraft(currentRun.run_id, { editedActions: target.value });
+					}
+				});
+				elements.detailView._delegatedInput = true;
+			}
+
+			if (!elements.detailView._delegatedSubmit) {
+				elements.detailView.addEventListener("submit", (event) => {
+					if (event.target.id === "feedbackForm") {
+						event.preventDefault();
+						const currentRun = elements.detailView._currentRun;
+						if (currentRun) submitFeedback(currentRun);
+					}
+				});
+				elements.detailView._delegatedSubmit = true;
+			}
+
+			if (!elements.detailView._delegatedClickPhase2) {
+				elements.detailView.addEventListener("click", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					const ageBucketBtn = target.closest("[data-handoff-age-bucket]");
+					if (ageBucketBtn) {
+						state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(ageBucketBtn.getAttribute("data-handoff-age-bucket"));
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+						return;
+					}
+
+					if (target.id === "handoffPreferencesResetButton" || target.closest("#handoffPreferencesResetButton")) {
+						applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+						return;
+					}
+
+					const outcomesScopeEntity = target.closest("[data-outcomes-scope][data-outcomes-entity]");
+					if (outcomesScopeEntity) {
+						navigateToOutcomeSelection(currentRun, asString(outcomesScopeEntity.getAttribute("data-outcomes-scope")) || "asset", asString(outcomesScopeEntity.getAttribute("data-outcomes-entity")));
+						return;
+					}
+
+					const triageAssetBtn = target.closest("[data-triage-asset-id]");
+					if (triageAssetBtn) {
+						navigateToOutcomeSelection(currentRun, "asset", asString(triageAssetBtn.getAttribute("data-triage-asset-id")));
+						return;
+					}
+
+					const triageRunBtn = target.closest("[data-triage-run-id]");
+					if (triageRunBtn) {
+						const targetRunId = asString(triageRunBtn.getAttribute("data-triage-run-id"));
+						if (targetRunId) selectRun(targetRunId).then(() => scrollDetailSection(".evidence-shell"));
+						return;
+					}
+
+					const triageEvidenceBtn = target.closest("[data-triage-evidence-asset-id]");
+					if (triageEvidenceBtn) {
+						const assetId = asString(triageEvidenceBtn.getAttribute("data-triage-evidence-asset-id"));
+						if (assetId) {
+							resolveLatestRunForAsset(assetId).then((resolvedRun) => {
+								if (resolvedRun?.run_id) openResolvedTriageRun(resolvedRun).then(() => scrollDetailSection(".evidence-shell"));
+							}).catch(() => {});
+						}
+						return;
+					}
+				});
+				elements.detailView._delegatedClickPhase2 = true;
+			}
+
+			if (!elements.detailView._delegatedChangePhase2) {
+				elements.detailView.addEventListener("change", (event) => {
+					const target = event.target;
+					const currentRun = elements.detailView._currentRun;
+					if (!currentRun) return;
+
+					if (target.id === "handoffViewSelect") {
+						state.handoffExceptions.view = normalizeHandoffQueueView(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "handoffSortSelect") {
+						state.handoffExceptions.sort = normalizeHandoffQueueSort(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "handoffLimitSelect") {
+						state.handoffExceptions.limit = normalizeHandoffQueueLimit(target.value);
+						writeHandoffQueuePreferences();
+						renderDetail(currentRun);
+					} else if (target.id === "outcomesScopeSelect") {
+						state.selectedOutcomeScopeByRunId.set(currentRun.run_id, target.value);
+						renderDetail(currentRun);
+					} else if (target.id === "outcomesEntitySelect") {
+						const scopeSelect = document.getElementById("outcomesScopeSelect");
+						const activeScope = scopeSelect ? scopeSelect.value : (state.selectedOutcomeScopeByRunId.get(currentRun.run_id) || "asset");
+						rememberOutcomeEntity(currentRun.run_id, activeScope, target.value);
+						renderDetail(currentRun);
+					} else if (target.id === "triageWarningsOnlyToggle") {
+						state.triage.warningsOnly = Boolean(target.checked);
+						resetTriageReport();
+						renderDetail(currentRun);
+					}
+				});
+				elements.detailView._delegatedChangePhase2 = true;
+			}
+
+			elements.detailView._currentRun = run;
+			elements.detailView._retryState = ctx.retryState;
+			elements.detailView._canApprove = ctx.canApprove;
+			elements.detailView._isAdmin = ctx.isAdmin;
+		}
+
 		function renderDetail(run) {
+			_destroyDetailCharts();
 			if (!run) {
-				elements.detailStamp.textContent = "No run selected";
+				elements.detailStamp.textContent = "No equipment selected";
 				elements.detailView.className = "empty-state";
 				elements.detailView.innerHTML = `
 					<div>
 						<div class="pulse"></div>
-						<h3>Select a run</h3>
-						<p>Choose a summary from the left to inspect hypotheses, immediate actions, PM suggestions, and the raw structured payload.</p>
+						<h3>Select an analysis</h3>
+						<p>Choose an equipment alert from the left to see what likely caused the alarm, recommended actions, and work order status.</p>
 					</div>
 				`;
 				return;
@@ -5794,48 +6235,48 @@
 
 					<div id="evidenceSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Live evidence</h3>
-							<span class="muted tiny">Recent signals and rollups for the asset tied to this RCA run.</span>
+							<h3>Sensor readings</h3>
+							<span class="muted tiny">Recent vibration, temperature, and pressure signals for this equipment.</span>
 						</div>
 						${renderEvidencePanel(run)}
 					</div>
 
 					<div class="section">
-						<h3>Hypotheses</h3>
-						${renderList(run.hypothesis, "No hypotheses were stored for this run.")}
+						<h3>Probable cause</h3>
+						${renderList(run.hypothesis, "No probable cause was determined for this alarm.")}
 					</div>
 
 					<div class="section">
 						<h3>Root causes</h3>
-						${renderList(run.root_causes, "No root causes were stored for this run.")}
+						${renderList(run.root_causes, "No root causes were identified for this alarm.")}
 					</div>
 
 					<div class="section">
 						<h3>Contributing factors</h3>
-						${renderList(run.contributing_factors, "No contributing factors were stored for this run.")}
+						${renderList(run.contributing_factors, "No contributing factors were identified.")}
 					</div>
 
 					<div class="section">
-						<h3>Evidence references</h3>
+						<h3>Supporting evidence</h3>
 						${renderEvidenceReferences(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Context scope</h3>
-							<span class="muted tiny">Show whether this RCA run used only local evidence or pulled in fleet-wide references.</span>
+							<h3>Analysis scope</h3>
+							<span class="muted tiny">Whether this analysis used only local equipment data or included fleet-wide references from similar assets.</span>
 						</div>
 						${renderFleetContextSummary(run)}
 					</div>
 
 					<div class="section">
 						<h3>Immediate actions</h3>
-						${renderList(run.immediate_actions, "No immediate actions were stored for this run.")}
+						${renderList(run.immediate_actions, "No immediate actions were recommended for this alarm.")}
 					</div>
 
 					<div id="pmSuggestionsSection" class="section workflow-target" tabindex="-1">
-						<h3>PM suggestions</h3>
-						${renderList(run.pm_suggestions, "No PM suggestions were stored for this run.")}
+						<h3>Planned maintenance</h3>
+						${renderList(run.pm_suggestions, "No planned maintenance was recommended for this alarm.")}
 						${!portalUserCanApprove(retryState) ? `<div class="outcomes-note warn">${escapeHtml(approvalPermissionMessage(retryState))}</div>` : ""}
 						<div class="pm-actions">
 							<button id="approvePmButton" type="button" ${canApproveAction ? "" : "disabled"}>
@@ -5848,16 +6289,16 @@
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Run comparison</h3>
-							<span class="muted tiny">Check confidence drift, feedback deltas, action-set changes, and repair-plan changes against another run.</span>
+							<h3>Analysis comparison</h3>
+							<span class="muted tiny">Compare confidence, actions, and repair plan changes between analyses of the same equipment.</span>
 						</div>
 						${renderComparePanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Feedback loop</h3>
-							<span class="muted tiny">Submit operator feedback to improve future RCA runs.</span>
+							<h3>Operator feedback</h3>
+							<span class="muted tiny">Record whether the recommendation was accepted, rejected, or modified by the maintenance team.</span>
 						</div>
 						${renderFeedbackPanel(run)}
 					</div>
@@ -5865,47 +6306,47 @@
 					<div id="approvalHistorySection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
 							<h3>Approval history</h3>
-							<span class="muted tiny">Trace every approval and retry attempt without leaving the run view.</span>
+							<span class="muted tiny">Trace every work order approval and retry attempt for this equipment.</span>
 						</div>
 						${renderApprovalHistoryPanel(approvalHistory, proposalId, auditBusy)}
 					</div>
 
 					<div id="repairPlanSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Repair plan snapshot</h3>
-							<span class="muted tiny">Expose the persisted repair-plan record and the structured execution outline tied to this RCA run.</span>
+							<h3>Repair plan</h3>
+							<span class="muted tiny">Procedure steps, parts, and safety requirements for this maintenance action.</span>
 						</div>
 						${renderRepairPlanPanel(run)}
 					</div>
 
 					<div id="followThroughSection" class="section workflow-target" tabindex="-1">
 						<div class="section-head">
-							<h3>Recommendation follow-through snapshot</h3>
-							<span class="muted tiny">Track whether the current PM proposal is still waiting on approval, sitting in handoff, or already moving through a work order lifecycle.</span>
+							<h3>Work order status</h3>
+							<span class="muted tiny">Track whether the work order is awaiting approval, in CMMS handoff, or already in execution.</span>
 						</div>
 						${renderFollowThroughPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Handoff exceptions queue</h3>
-							<span class="muted tiny">Surface PM proposals that need retry, escalation, or connector cleanup before handoff can finish.</span>
+							<h3>Handoff exceptions</h3>
+							<span class="muted tiny">Work orders that need retry, escalation, or connector cleanup before CMMS handoff completes.</span>
 						</div>
 						${renderHandoffExceptionsPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Asset trend snapshot</h3>
-							<span class="muted tiny">Compact outcomes view for demos in the portal.</span>
+							<h3>Equipment trends</h3>
+							<span class="muted tiny">Acceptance rates, work order volume, and CMMS handoff health for this equipment class.</span>
 						</div>
 						${renderOutcomesPanel(run)}
 					</div>
 
 					<div class="section">
 						<div class="section-head">
-							<h3>Asset triage queue</h3>
-							<span class="muted tiny">Rank nearby prioritized assets so operators can pull the highest-risk assets forward first.</span>
+							<h3>Priority queue</h3>
+							<span class="muted tiny">Rank equipment by risk so the maintenance team addresses the most critical assets first.</span>
 						</div>
 						${renderTriagePanel(run)}
 					</div>
@@ -5920,252 +6361,7 @@
 				</div>
 			`;
 
-			const approveButton = document.getElementById("approvePmButton");
-			if (approveButton && canApprove && retryState.enabled) {
-				approveButton.addEventListener("click", () => {
-					approveRun(run, retryState, { adminRetry: isAdmin && retryState.isRetry });
-				});
-			}
-
-			const feedbackActionSelect = document.getElementById("feedbackActionSelect");
-			const compareRunSelect = document.getElementById("compareRunSelect");
-			const feedbackReasonInput = document.getElementById("feedbackReasonInput");
-			const feedbackTitleInput = document.getElementById("feedbackTitleInput");
-			const feedbackActionsInput = document.getElementById("feedbackActionsInput");
-			const feedbackForm = document.getElementById("feedbackForm");
-			if (compareRunSelect) {
-				compareRunSelect.addEventListener("change", async () => {
-					const compareRunId = compareRunSelect.value;
-					if (!compareRunId) {
-						state.selectedCompareRunIdByRunId.delete(run.run_id);
-						state.compareErrorByRunId.delete(run.run_id);
-						renderDetail(run);
-						return;
-					}
-					state.selectedCompareRunIdByRunId.set(run.run_id, compareRunId);
-					await ensureCompareRunData(run, compareRunId);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-evidence-ref-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					focusEvidenceReference(
-						run,
-						asString(button.getAttribute("data-evidence-ref-id")),
-						asString(button.getAttribute("data-evidence-ref-type"))
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-compare-evidence-ref-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const compareRunId = asString(button.getAttribute("data-compare-evidence-run-id"));
-					const sourceSide = asString(button.getAttribute("data-compare-evidence-side")) || "current";
-					const compareRun = compareRunId ? state.detailsById.get(compareRunId) || null : null;
-					await activateCompareEvidenceReference(
-						run,
-						compareRun,
-						asString(button.getAttribute("data-compare-evidence-ref-id")),
-						asString(button.getAttribute("data-compare-evidence-ref-type")),
-						sourceSide,
-					);
-				});
-			});
-
-			if (feedbackActionSelect) {
-				feedbackActionSelect.addEventListener("change", () => {
-					updateFeedbackDraft(run.run_id, { action: feedbackActionSelect.value });
-				});
-			}
-			if (feedbackReasonInput) {
-				feedbackReasonInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { reason: feedbackReasonInput.value });
-				});
-			}
-			if (feedbackTitleInput) {
-				feedbackTitleInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { editedTitle: feedbackTitleInput.value });
-				});
-			}
-			if (feedbackActionsInput) {
-				feedbackActionsInput.addEventListener("input", () => {
-					updateFeedbackDraft(run.run_id, { editedActions: feedbackActionsInput.value });
-				});
-			}
-			if (feedbackForm) {
-				feedbackForm.addEventListener("submit", async (event) => {
-					event.preventDefault();
-					await submitFeedback(run);
-				});
-			}
-
-			const loadMoreButton = document.getElementById("loadMoreAuditButton");
-			if (loadMoreButton && approvalHistory?.has_more && !auditBusy) {
-				loadMoreButton.addEventListener("click", () => {
-					loadApprovalHistory(run, { page: (approvalHistory.page || 1) + 1, size: approvalHistory.size || 3, append: true });
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-workflow-target]").forEach((button) => {
-				button.addEventListener("click", () => {
-					focusWorkflowSection(asString(button.getAttribute("data-workflow-target")));
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-retry-proposal-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const proposalId = asString(button.getAttribute("data-handoff-retry-proposal-id"));
-					if (!proposalId) {
-						return;
-					}
-					const row = handoffExceptionRows(state.handoffExceptions.report).find((candidate) => candidate.proposalId === proposalId);
-					if (!row) {
-						return;
-					}
-					await submitHandoffQueueRetry(row);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-focus-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-handoff-focus-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-handoff-open-audit-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-handoff-open-audit-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-					focusWorkflowSection("approvalHistorySection");
-				});
-			});
-
-			const handoffViewSelect = document.getElementById("handoffViewSelect");
-			if (handoffViewSelect) {
-				handoffViewSelect.addEventListener("change", () => {
-					state.handoffExceptions.view = normalizeHandoffQueueView(handoffViewSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const handoffSortSelect = document.getElementById("handoffSortSelect");
-			if (handoffSortSelect) {
-				handoffSortSelect.addEventListener("change", () => {
-					state.handoffExceptions.sort = normalizeHandoffQueueSort(handoffSortSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const handoffLimitSelect = document.getElementById("handoffLimitSelect");
-			if (handoffLimitSelect) {
-				handoffLimitSelect.addEventListener("change", () => {
-					state.handoffExceptions.limit = normalizeHandoffQueueLimit(handoffLimitSelect.value);
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-handoff-age-bucket]").forEach((button) => {
-				button.addEventListener("click", () => {
-					state.handoffExceptions.ageBucket = normalizeHandoffQueueAgeBucket(button.getAttribute("data-handoff-age-bucket"));
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			});
-
-			const handoffPreferencesResetButton = document.getElementById("handoffPreferencesResetButton");
-			if (handoffPreferencesResetButton) {
-				handoffPreferencesResetButton.addEventListener("click", () => {
-					applyHandoffQueuePreferences({ view: "all", sort: "priority", ageBucket: "all", limit: 6 });
-					writeHandoffQueuePreferences();
-					renderDetail(run);
-				});
-			}
-
-			const outcomesScopeSelect = document.getElementById("outcomesScopeSelect");
-			if (outcomesScopeSelect) {
-				outcomesScopeSelect.addEventListener("change", () => {
-					state.selectedOutcomeScopeByRunId.set(run.run_id, outcomesScopeSelect.value);
-					renderDetail(run);
-				});
-			}
-
-			const outcomesEntitySelect = document.getElementById("outcomesEntitySelect");
-			if (outcomesEntitySelect) {
-				outcomesEntitySelect.addEventListener("change", () => {
-					const activeScope = outcomesScopeSelect ? outcomesScopeSelect.value : (state.selectedOutcomeScopeByRunId.get(run.run_id) || "asset");
-					rememberOutcomeEntity(run.run_id, activeScope, outcomesEntitySelect.value);
-					renderDetail(run);
-				});
-			}
-
-			elements.detailView.querySelectorAll("[data-outcomes-scope][data-outcomes-entity]").forEach((button) => {
-				button.addEventListener("click", () => {
-					navigateToOutcomeSelection(
-						run,
-						asString(button.getAttribute("data-outcomes-scope")) || "asset",
-						asString(button.getAttribute("data-outcomes-entity")),
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-asset-id]").forEach((button) => {
-				button.addEventListener("click", () => {
-					navigateToOutcomeSelection(
-						run,
-						"asset",
-						asString(button.getAttribute("data-triage-asset-id")),
-					);
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-run-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const targetRunId = asString(button.getAttribute("data-triage-run-id"));
-					if (!targetRunId) {
-						return;
-					}
-					await selectRun(targetRunId);
-					scrollDetailSection(".evidence-shell");
-				});
-			});
-
-			elements.detailView.querySelectorAll("[data-triage-evidence-asset-id]").forEach((button) => {
-				button.addEventListener("click", async () => {
-					const assetId = asString(button.getAttribute("data-triage-evidence-asset-id"));
-					if (!assetId) {
-						return;
-					}
-					try {
-						const resolvedRun = await resolveLatestRunForAsset(assetId);
-						if (!resolvedRun?.run_id) {
-							return;
-						}
-						await openResolvedTriageRun(resolvedRun);
-						scrollDetailSection(".evidence-shell");
-					} catch (error) {
-						void error;
-					}
-				});
-			});
-
-			const triageWarningsOnlyToggle = elements.detailView.querySelector("#triageWarningsOnlyToggle");
-			if (triageWarningsOnlyToggle) {
-				triageWarningsOnlyToggle.addEventListener("change", () => {
-					state.triage.warningsOnly = Boolean(triageWarningsOnlyToggle.checked);
-					resetTriageReport();
-					renderDetail(run);
-				});
-			}
+			_bindDetailDelegation(run, { canApprove, retryState, isAdmin, approvalHistory, auditBusy });
 
 			if (!state.outcomes.report && !state.outcomes.loading && !state.outcomes.error) {
 				void ensureOutcomesReport();
@@ -6452,15 +6648,15 @@
 		}
 
 		function setListLoading() {
-			elements.runList.innerHTML = `
-				<div class="loading-state">
-					<div>
-						<div class="pulse"></div>
-						<h3>Loading runs</h3>
-						<p>Fetching the latest RCA summaries from the API.</p>
-					</div>
+			const skeletonCards = Array.from({ length: 4 }, (_, i) => `
+				<div class="skeleton-card" style="animation-delay: ${i * 80}ms">
+					<div class="skeleton skeleton-text short" style="height: 12px; margin-bottom: 12px"></div>
+					<div class="skeleton skeleton-text long" style="height: 16px; margin-bottom: 10px"></div>
+					<div class="skeleton skeleton-text medium" style="height: 12px; margin-bottom: 8px"></div>
+					<div class="skeleton skeleton-text short" style="height: 12px"></div>
 				</div>
-			`;
+			`).join("");
+			elements.runList.innerHTML = skeletonCards;
 		}
 
 		function setError(message) {
@@ -6608,9 +6804,15 @@
 				await loadFeedbackHistory(run, { force: true });
 				resetOutcomesReport();
 				void ensureOutcomesReport();
+				if (typeof iziToast !== "undefined") {
+					iziToast.success({ title: "Feedback saved", message: `${draft.action} feedback recorded for ${run.run_id}`, position: "topRight", timeout: 3500 });
+				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Unknown feedback error";
 				state.feedbackErrorByRunId.set(run.run_id, message);
+				if (typeof iziToast !== "undefined") {
+					iziToast.error({ title: "Feedback failed", message: message, position: "topRight", timeout: 5000 });
+				}
 			} finally {
 				state.feedbackSubmittingByRunId.delete(run.run_id);
 				renderDetail(run);
@@ -6641,11 +6843,27 @@
 				return;
 			}
 			const adminRetry = Boolean(options.adminRetry);
-			const confirmation = retryState.isRetry
+			const confirmTitle = retryState.isRetry
+				? `${adminRetry ? "Admin retry" : "Retry"} CMMS handoff`
+				: "Approve PM proposal";
+			const confirmText = retryState.isRetry
 				? `${adminRetry ? "Admin retry" : "Retry"} the PM handoff for ${run.run_id}? ${retryState.attemptsRemaining} attempts remaining.`
 				: `Approve the PM proposal for ${run.run_id}?`;
-			if (!window.confirm(confirmation)) {
-				return;
+			if (typeof Swal !== "undefined") {
+				const result = await Swal.fire({
+					title: confirmTitle,
+					text: confirmText,
+					icon: "question",
+					showCancelButton: true,
+					confirmButtonText: retryState.isRetry ? "Retry handoff" : "Approve",
+					cancelButtonText: "Cancel",
+					confirmButtonColor: "#0d9373",
+					cancelButtonColor: "#64748b",
+					customClass: { popup: "swal2-modern" },
+				});
+				if (!result.isConfirmed) return;
+			} else {
+				if (!window.confirm(confirmText)) return;
 			}
 
 			state.approvalInFlightById.add(run.run_id);
@@ -6658,6 +6876,9 @@
 				await loadApprovalHistory({ ...run, recommendation_id: proposalId });
 				resetHandoffExceptionsReport();
 				void ensureHandoffExceptionsReport();
+				if (typeof iziToast !== "undefined") {
+					iziToast.success({ title: "Approved", message: `PM proposal approved and handed off to CMMS`, position: "topRight", timeout: 4000 });
+				}
 				renderDetail({
 					...run,
 					approved_by: approval.proposal?.approved_by || approval.approved_by,
@@ -6665,6 +6886,9 @@
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Unknown approval error";
+				if (typeof iziToast !== "undefined") {
+					iziToast.error({ title: "Approval failed", message: message, position: "topRight", timeout: 5000 });
+				}
 				const existingHistory = state.approvalHistoryById.get(run.run_id);
 				const existingRetryState = getRetryState(state.approvalResultsById.get(run.run_id), existingHistory);
 				state.approvalResultsById.set(run.run_id, {
@@ -6825,12 +7049,19 @@
 			}
 
 			elements.detailStamp.textContent = `${runId} · loading`;
-			elements.detailView.className = "loading-state";
+			elements.detailView.className = "";
 			elements.detailView.innerHTML = `
-				<div>
-					<div class="pulse"></div>
-					<h3>Loading detail</h3>
-					<p>Fetching structured RCA output for ${escapeHtml(runId)}.</p>
+				<div style="display:grid;gap:16px;padding:8px 0">
+					<div class="skeleton skeleton-text long" style="height:20px"></div>
+					<div class="skeleton skeleton-text medium" style="height:14px"></div>
+					<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+						<div class="skeleton-card"><div class="skeleton skeleton-metric"></div></div>
+						<div class="skeleton-card"><div class="skeleton skeleton-metric"></div></div>
+					</div>
+					<div class="skeleton skeleton-chart"></div>
+					<div class="skeleton skeleton-text long" style="height:14px"></div>
+					<div class="skeleton skeleton-text medium" style="height:14px"></div>
+					<div class="skeleton skeleton-text short" style="height:14px"></div>
 				</div>
 			`;
 
