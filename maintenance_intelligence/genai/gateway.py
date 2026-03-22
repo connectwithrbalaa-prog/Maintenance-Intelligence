@@ -1,11 +1,17 @@
 import time
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from loguru import logger
 
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
+
+from maintenance_intelligence.ai.prompts.rca_templates import (
+    SYSTEM_PROMPT,
+    build_rca_prompt,
+)
+from maintenance_intelligence.ai.rag.structured_retriever import RCAContext
 
 
 class GenAIGateway:
@@ -16,17 +22,19 @@ class GenAIGateway:
             raise RuntimeError("openai package not installed")
         self.client = OpenAI(api_key=api_key)
 
-    def call_rca(self, event: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    def call_rca(
+        self,
+        event: Dict[str, Any],
+        context: Dict[str, Any],
+        iso_context: Optional[RCAContext] = None,
+    ) -> Dict[str, Any]:
         t0 = time.time()
-        prompt = self._build_prompt(event, context)
+        prompt = self._build_prompt(event, context, iso_context=iso_context)
         try:
             resp = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an industrial maintenance RCA assistant. Be concise and cite signals/WOs/docs when possible.",
-                    },
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
@@ -49,25 +57,59 @@ class GenAIGateway:
             "latency_ms": latency,
         }
 
-    def _build_prompt(self, event: Dict[str, Any], context: Dict[str, Any]) -> str:
-        lines = []
-        lines.append(
-            "You are an industrial maintenance RCA assistant. Respond with STRICT JSON only."
-        )
-        lines.append(
-            "Do NOT include markdown, backticks, or commentary — return ONLY the JSON object."
-        )
-        lines.append(
-            "Use this schema and fill every field; if unknown, produce your best estimate:"
-        )
-        lines.append(
-            '\nSCHEMA (strict JSON; do not include extra keys):\n{\n  "title": "string",\n  "summary": "string",\n  "hypothesis": ["string", "..."],\n  "root_causes": ["string", "..."],\n  "contributing_factors": ["string", "..."],\n  "evidence_ids": ["string", "..."],\n  "immediate_actions": ["string", "..."],\n  "pm_suggestions": ["string", "..."],\n  "repair_plan": {\n    "parts_list": [{"part_no":"string","description":"string","qty":1,"lead_time_days":0}],\n    "tools_required": ["string", "..."],\n    "procedure_steps": [{"seq":1,"action":"string","safety_note":"string","estimated_mins":0}],\n    "estimated_duration_hrs": 0.0,\n    "safety_requirements": ["string", "..."],\n    "permit_type": "string",\n    "spare_parts_cost_estimate": 0.0\n  },\n  "confidence": 0.0\n}\n'
-        )
-        lines.append("Event JSON:")
-        lines.append(str(event))
-        lines.append("Context JSON:")
-        lines.append(str(context))
+    def _build_prompt(
+        self,
+        event: Dict[str, Any],
+        context: Dict[str, Any],
+        iso_context: Optional[RCAContext] = None,
+    ) -> str:
+        event_summary = event.get("summary") or f"{event.get('kind', 'event')} on {event.get('asset_id', 'unknown')}"
+
+        if iso_context:
+            return build_rca_prompt(
+                event_summary,
+                context=iso_context,
+                asset_id=event.get("asset_id"),
+                event_kind=event.get("kind"),
+                severity=event.get("severity"),
+            )
+
+        lines = [
+            "Respond with STRICT JSON only. Do NOT include markdown, backticks, or commentary.",
+            "Use ISO 14224 failure classification codes where applicable.",
+            self._JSON_SCHEMA_INSTRUCTION,
+            f"Event: {event_summary}",
+            f"Asset: {event.get('asset_id', 'unknown')}",
+            f"Kind: {event.get('kind', 'unknown')}",
+            f"Severity: {event.get('severity', 'unknown')}",
+        ]
+        if context.get("last_wo_titles"):
+            lines.append(f"Recent work orders: {context['last_wo_titles']}")
+        if context.get("recent_signals"):
+            lines.append(f"Recent signals: {context['recent_signals'][:5]}")
+        if context.get("doc_chunks"):
+            lines.append(f"Reference docs: {[c.get('title') for c in context['doc_chunks'][:3]]}")
         return "\n".join(lines)
+
+
+    _JSON_SCHEMA_INSTRUCTION = (
+        'Output schema (strict JSON):\n'
+        '{\n'
+        '  "title": "string", "summary": "string",\n'
+        '  "failure_mode_code": "ISO 14224 code e.g. VIB, ELP, FTS",\n'
+        '  "failure_mechanism_code": "ISO 14224 code e.g. WEA, COR, FAT",\n'
+        '  "failure_cause_code": "ISO 14224 code e.g. OPC, MNT, DES",\n'
+        '  "maintenance_action_code": "ISO 14224 code e.g. RPL, REP, OVH",\n'
+        '  "detection_method_code": "ISO 14224 code e.g. MON, INS, PRD",\n'
+        '  "hypothesis": ["string"], "root_causes": ["string"],\n'
+        '  "contributing_factors": ["string"], "evidence_ids": ["string"],\n'
+        '  "immediate_actions": ["string"], "pm_suggestions": ["string"],\n'
+        '  "repair_plan": {"parts_list": [], "tools_required": [], "procedure_steps": [],\n'
+        '    "estimated_duration_hrs": 0.0, "safety_requirements": [], "permit_type": "",\n'
+        '    "spare_parts_cost_estimate": 0.0},\n'
+        '  "confidence": 0.0\n'
+        '}'
+    )
 
     def _parse_structured(self, text: str) -> Dict[str, Any]:
         import json

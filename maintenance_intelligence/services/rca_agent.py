@@ -23,6 +23,87 @@ from maintenance_intelligence.api.metrics import (
     rca_duration_seconds,
 )
 
+
+def _try_assemble_iso_context(evt: dict, settings: Settings):
+    """Attempt to assemble structured ISO 14224 context for the event.
+
+    Returns RCAContext if equipment is registered in the hierarchy,
+    None otherwise (falls back to legacy context path).
+    """
+    try:
+        from maintenance_intelligence.ai.rag.structured_retriever import assemble_rca_context
+        import psycopg2
+
+        asset_id = evt.get("asset_id")
+        if not asset_id:
+            return None
+        conn = psycopg2.connect(settings.pg_dsn)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT equipment_unit_id FROM equipment_units WHERE tag = %s OR equipment_unit_id = %s LIMIT 1",
+                    (asset_id, asset_id),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                equipment_unit_id = row[0]
+            return assemble_rca_context(equipment_unit_id, conn=conn)
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.debug({"event": "rca.iso_context.skipped", "reason": str(exc)})
+        return None
+
+
+def _persist_failure_event(settings: Settings, evt: dict, structured: dict):
+    """Write a canonical failure_event record with ISO codes from GenAI output."""
+    try:
+        import psycopg2
+
+        event_id = f"FE-RCA-{evt.get('event_id', uuid.uuid4().hex[:8])}"
+        asset_id = evt.get("asset_id")
+        conn = psycopg2.connect(settings.pg_dsn)
+        try:
+            equipment_unit_id = None
+            if asset_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT equipment_unit_id FROM equipment_units WHERE tag = %s OR equipment_unit_id = %s LIMIT 1",
+                        (asset_id, asset_id),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        equipment_unit_id = row[0]
+
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO failure_events (
+                            event_id, source_system, equipment_unit_id, asset_id,
+                            failure_mode_code, failure_mechanism_code, failure_cause_code,
+                            maintenance_action_code, detection_method_code,
+                            severity, kind, summary, details, lineage
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+                        ON CONFLICT (event_id) DO NOTHING""",
+                        (
+                            event_id, "RCA_AGENT", equipment_unit_id, asset_id,
+                            structured.get("failure_mode_code"),
+                            structured.get("failure_mechanism_code"),
+                            structured.get("failure_cause_code"),
+                            structured.get("maintenance_action_code"),
+                            structured.get("detection_method_code"),
+                            evt.get("severity"), evt.get("kind"),
+                            structured.get("title") or structured.get("summary"),
+                            json.dumps(evt.get("details")) if evt.get("details") else None,
+                            json.dumps({"source": "rca_agent", "source_event_id": evt.get("event_id")}),
+                        ),
+                    )
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.debug({"event": "rca.failure_event_persist.skipped", "reason": str(exc)})
+
 EDGE_LOCAL_FALLBACK_VERSION = "edge-fallback-v1"
 
 
@@ -208,10 +289,10 @@ def _genai_result_indicates_failure(result: dict) -> bool:
     return isinstance(text, str) and text.startswith("[GENAI_ERROR]")
 
 
-def _resolve_inference(evt: dict, settings: Settings, ctx: dict, gateway=None):
+def _resolve_inference(evt: dict, settings: Settings, ctx: dict, gateway=None, iso_context=None):
     if gateway is not None:
         try:
-            result = gateway.call_rca(evt, ctx)
+            result = gateway.call_rca(evt, ctx, iso_context=iso_context)
         except Exception as exc:
             if settings.edge_mode_enabled:
                 return _edge_local_fallback(evt, ctx, reason=str(exc))
@@ -326,8 +407,9 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
 
     _t0 = time.time()
     ctx = _context_with_fallback(evt, settings)
+    iso_context = _try_assemble_iso_context(evt, settings)
     structured, rationale, model_meta, lineage_source, inference_mode = _resolve_inference(
-        evt, settings, ctx, gateway=gateway
+        evt, settings, ctx, gateway=gateway, iso_context=iso_context
     )
 
     rec_id = str(uuid.uuid4())
@@ -379,6 +461,12 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             ),
             "inference_mode": inference_mode,
             "degraded_inference": inference_mode == "local-deterministic",
+            "iso_context_available": iso_context is not None,
+            "failure_mode_code": structured.get("failure_mode_code"),
+            "failure_mechanism_code": structured.get("failure_mechanism_code"),
+            "failure_cause_code": structured.get("failure_cause_code"),
+            "maintenance_action_code": structured.get("maintenance_action_code"),
+            "detection_method_code": structured.get("detection_method_code"),
         },
     }
 
@@ -403,6 +491,8 @@ def process_event(evt: dict, settings: Settings, producer, gateway=None):
             **(structured.get("repair_plan") or {}),
             "plan_id": persisted_plan["plan_id"],
         }
+
+    _persist_failure_event(settings, evt, structured)
 
     summary_payload = {
         "run_id": run_id,

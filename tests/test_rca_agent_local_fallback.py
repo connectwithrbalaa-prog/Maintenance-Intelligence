@@ -75,7 +75,7 @@ def test_process_event_uses_deterministic_local_fallback_when_gateway_reports_ge
     sent = {}
 
     class FakeGateway:
-        def call_rca(self, event, context):
+        def call_rca(self, event, context, iso_context=None):
             return {
                 "text": "[GENAI_ERROR] upstream timeout",
                 "model_version": "gpt-4.1",

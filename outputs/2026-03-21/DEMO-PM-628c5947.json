@@ -1,0 +1,28 @@
+{
+  "run_id": "DEMO-PM-628c5947",
+  "status": "ok",
+  "recommendation_id": "DEMO-PM-628c5947",
+  "event_id": "DEMO-EVT-001",
+  "model": {
+    "name": "demo-script",
+    "version": "local",
+    "confidence": 0.82
+  },
+  "structured": {
+    "title": "Inspect vibration excursion on PUMP-101",
+    "hypothesis": [
+      "Repeated vibration anomalies were detected alongside elevated temperature readings."
+    ],
+    "immediate_actions": [
+      "Inspect bearings and confirm lubrication condition during the next maintenance window."
+    ],
+    "pm_suggestions": [
+      "Create a planned inspection and bearing check for the next maintenance window."
+    ],
+    "confidence": 0.82
+  },
+  "context_meta": {
+    "asset_id": "PUMP-101",
+    "event_kind": "anomaly"
+  }
+}

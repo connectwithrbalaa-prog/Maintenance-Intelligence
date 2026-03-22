@@ -58,7 +58,7 @@ def test_rca_agent_loop_processes_event_end_to_end(monkeypatch, tmp_path):
                 "timeout_s": timeout_s,
             }
 
-        def call_rca(self, event, context):
+        def call_rca(self, event, context, iso_context=None):
             gateway_calls["event"] = event
             gateway_calls["context"] = context
             return {
@@ -180,7 +180,7 @@ def test_process_event_logs_and_continues_when_repair_plan_persistence_fails(mon
     sent = {}
 
     class FakeGateway:
-        def call_rca(self, event, context):
+        def call_rca(self, event, context, iso_context=None):
             return {
                 "text": "structured ok",
                 "model_version": "gpt-4.1",

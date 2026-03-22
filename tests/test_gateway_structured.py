@@ -15,8 +15,8 @@ def test_build_prompt_includes_structured_repair_plan_schema():
     assert "Respond with STRICT JSON only" in prompt
     assert '"repair_plan"' in prompt
     assert '"parts_list"' in prompt
-    assert "Event JSON:" in prompt
-    assert "Context JSON:" in prompt
+    assert "Event:" in prompt
+    assert "Asset:" in prompt
 
 
 def test_parse_structured_fallback(monkeypatch):

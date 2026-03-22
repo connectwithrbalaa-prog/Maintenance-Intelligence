@@ -6,7 +6,7 @@ def test_agent_structured_mock(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "x")
 
     class FakeGW:
-        def call_rca(self, event, context):
+        def call_rca(self, event, context, iso_context=None):
             return {
                 "text": "ok",
                 "model_version": "gpt-4.1",
