@@ -1867,6 +1867,203 @@
 			}
 		}
 
+		.hierarchy-explorer {
+			margin-top: 20px;
+		}
+
+		.hierarchy-tabs {
+			display: flex;
+			gap: 4px;
+			margin-bottom: 16px;
+			border-bottom: 1px solid var(--line);
+			padding-bottom: 8px;
+		}
+
+		.hierarchy-tab {
+			padding: 8px 16px;
+			border: 1px solid var(--line);
+			border-bottom: none;
+			border-radius: var(--radius-md) var(--radius-md) 0 0;
+			background: transparent;
+			color: var(--muted);
+			font: inherit;
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: background var(--transition-fast), color var(--transition-fast);
+		}
+
+		.hierarchy-tab[aria-selected="true"] {
+			background: var(--panel-strong);
+			color: var(--text);
+			border-color: var(--line);
+		}
+
+		.hierarchy-tab:hover {
+			color: var(--text);
+		}
+
+		.hierarchy-breadcrumb {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 4px;
+			align-items: center;
+			margin-bottom: 14px;
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		.hierarchy-breadcrumb button {
+			border: none;
+			background: none;
+			color: var(--accent);
+			font: inherit;
+			cursor: pointer;
+			padding: 2px 4px;
+			border-radius: var(--radius-sm);
+			transition: background var(--transition-fast);
+		}
+
+		.hierarchy-breadcrumb button:hover {
+			background: var(--accent-soft);
+		}
+
+		.hierarchy-breadcrumb span {
+			color: var(--muted);
+		}
+
+		.hierarchy-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+			gap: 12px;
+		}
+
+		.hierarchy-node {
+			padding: 16px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-lg);
+			background: var(--panel-strong);
+			cursor: pointer;
+			transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+		}
+
+		.hierarchy-node:hover {
+			border-color: rgba(13, 147, 115, 0.24);
+			box-shadow: var(--shadow-sm);
+			transform: translateY(-1px);
+		}
+
+		.hierarchy-node-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: start;
+			gap: 8px;
+			margin-bottom: 8px;
+		}
+
+		.hierarchy-node-title {
+			font-family: var(--font-display);
+			font-weight: 600;
+			font-size: 1rem;
+			letter-spacing: -0.02em;
+		}
+
+		.hierarchy-node-type {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--muted);
+			padding: 4px 8px;
+			border-radius: 999px;
+			background: rgba(15, 23, 42, 0.04);
+			border: 1px solid var(--line);
+			white-space: nowrap;
+		}
+
+		.hierarchy-node-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+			margin-top: 8px;
+		}
+
+		.hierarchy-node-stat {
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.hierarchy-detail-card {
+			padding: 20px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-lg);
+			background: var(--panel-strong);
+		}
+
+		.hierarchy-detail-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+			gap: 10px;
+			margin-top: 14px;
+		}
+
+		.hierarchy-detail-field {
+			padding: 10px 12px;
+			border-radius: var(--radius-md);
+			background: rgba(15, 23, 42, 0.03);
+		}
+
+		.hierarchy-detail-label {
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--muted);
+			margin-bottom: 4px;
+		}
+
+		.hierarchy-detail-value {
+			font-size: 14px;
+			font-weight: 500;
+		}
+
+		.hierarchy-reliability {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			gap: 10px;
+			margin-top: 14px;
+			padding: 14px;
+			border-radius: var(--radius-lg);
+			background: linear-gradient(135deg, rgba(13, 147, 115, 0.06), rgba(13, 147, 115, 0.02));
+			border: 1px solid rgba(13, 147, 115, 0.12);
+		}
+
+		.hierarchy-reliability-stat {
+			text-align: center;
+		}
+
+		.hierarchy-reliability-value {
+			font-family: var(--font-display);
+			font-size: 1.3rem;
+			font-weight: 700;
+			letter-spacing: -0.03em;
+		}
+
+		.hierarchy-reliability-label {
+			font-size: 11px;
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			margin-top: 4px;
+		}
+
+		@media (max-width: 720px) {
+			.hierarchy-grid {
+				grid-template-columns: 1fr;
+			}
+			.hierarchy-reliability {
+				grid-template-columns: repeat(2, 1fr);
+			}
+		}
+
 		@media (max-width: 720px) {
 			main {
 				width: min(100vw - 20px, 100%);
@@ -2025,6 +2222,18 @@
 					</div>
 				</div>
 			</section>
+		</section>
+
+		<section class="hierarchy-explorer panel" id="hierarchyExplorer">
+			<div class="panel-header">
+				<div>
+					<div class="eyebrow">Asset hierarchy</div>
+					<h2 class="panel-title">Equipment explorer</h2>
+				</div>
+				<span class="muted tiny">ISO 14224 · Site → Facility → System → Equipment</span>
+			</div>
+			<div id="hierarchyBreadcrumb" class="hierarchy-breadcrumb"></div>
+			<div id="hierarchyContent" class="hierarchy-grid"></div>
 		</section>
 	</main>
 
@@ -7113,12 +7322,169 @@
 			await refreshIdentity();
 		});
 
+		// ── Hierarchy Explorer ──
+		const hierarchyState = { level: "sites", path: [], data: [] };
+		const hierarchyContent = document.getElementById("hierarchyContent");
+		const hierarchyBreadcrumb = document.getElementById("hierarchyBreadcrumb");
+
+		function hierarchyHeaders() {
+			return { ...portalIdentityHeaders(), Accept: "application/json" };
+		}
+
+		function renderHierarchyBreadcrumb() {
+			const crumbs = [{ label: "Sites", level: "sites", params: "" }];
+			for (const p of hierarchyState.path) {
+				crumbs.push(p);
+			}
+			hierarchyBreadcrumb.innerHTML = crumbs.map((c, i) => {
+				if (i === crumbs.length - 1) return `<strong>${escapeHtml(c.label)}</strong>`;
+				return `<button type="button" data-hier-nav="${i}">${escapeHtml(c.label)}</button><span>›</span>`;
+			}).join("");
+		}
+
+		function renderHierarchyNodes(nodes, level) {
+			if (!nodes.length) {
+				hierarchyContent.innerHTML = `<div class="empty-state" style="min-height:120px;grid-column:1/-1"><p class="muted">No ${level} found at this level.</p></div>`;
+				return;
+			}
+			const cards = {
+				sites: (n) => `<div class="hierarchy-node" data-hier-id="${escapeHtml(n.site_id)}" data-hier-type="site">
+					<div class="hierarchy-node-header"><div class="hierarchy-node-title">${escapeHtml(n.name)}</div><div class="hierarchy-node-type">${escapeHtml(n.onshore_offshore || "Site")}</div></div>
+					<div class="hierarchy-node-stat">${escapeHtml(n.basin_region || "")} ${n.country ? "· " + escapeHtml(n.country) : ""}</div>
+				</div>`,
+				facilities: (n) => `<div class="hierarchy-node" data-hier-id="${escapeHtml(n.facility_id)}" data-hier-type="facility">
+					<div class="hierarchy-node-header"><div class="hierarchy-node-title">${escapeHtml(n.name)}</div><div class="hierarchy-node-type">${escapeHtml((n.facility_type || "").replace(/_/g, " "))}</div></div>
+				</div>`,
+				systems: (n) => `<div class="hierarchy-node" data-hier-id="${escapeHtml(n.system_id)}" data-hier-type="system">
+					<div class="hierarchy-node-header"><div class="hierarchy-node-title">${escapeHtml(n.name)}</div><div class="hierarchy-node-type">${escapeHtml(n.system_group || "")}</div></div>
+					<div class="hierarchy-node-stat">${escapeHtml((n.system_type || "").replace(/_/g, " "))}</div>
+				</div>`,
+				equipment: (n) => `<div class="hierarchy-node" data-hier-id="${escapeHtml(n.equipment_unit_id)}" data-hier-type="equipment">
+					<div class="hierarchy-node-header"><div class="hierarchy-node-title">${escapeHtml(n.tag)}</div><div class="hierarchy-node-type">${escapeHtml(n.equipment_family || "")}</div></div>
+					<div class="hierarchy-node-stat">${escapeHtml((n.iso_equipment_class || "").replace(/_/g, " "))}</div>
+					<div class="hierarchy-node-meta">
+						${n.oem_name ? `<span class="chip">${escapeHtml(n.oem_name)}</span>` : ""}
+						${n.criticality ? `<span class="chip">${escapeHtml(n.criticality)}</span>` : ""}
+						${n.service_medium ? `<span class="chip">${escapeHtml(n.service_medium)}</span>` : ""}
+						${n.safety_critical ? '<span class="chip trend-rising">Safety critical</span>' : ""}
+					</div>
+				</div>`,
+			};
+			hierarchyContent.innerHTML = nodes.map(cards[level] || (() => "")).join("");
+		}
+
+		function renderEquipmentDetail(equip, reliability) {
+			const r = reliability || {};
+			const fields = [
+				["Tag", equip.tag], ["ISO class", (equip.iso_equipment_class || "").replace(/_/g, " ")],
+				["Family", equip.equipment_family], ["OEM", [equip.oem_name, equip.oem_model].filter(Boolean).join(" ")],
+				["Criticality", equip.criticality], ["Service medium", equip.service_medium],
+				["Duty", equip.duty_type], ["Safety critical", equip.safety_critical ? "Yes" : "No"],
+				["Power", equip.rated_power_kw ? equip.rated_power_kw + " kW" : null],
+				["Speed", equip.rated_speed_rpm ? equip.rated_speed_rpm + " rpm" : null],
+				["Design pressure", equip.design_pressure_bar ? equip.design_pressure_bar + " bar" : null],
+				["Design temp", equip.design_temperature_c ? equip.design_temperature_c + " °C" : null],
+			].filter(([, v]) => v);
+
+			const mtbf = r.mtbf_hours != null ? Math.round(r.mtbf_hours) + "h" : "—";
+			const mttr = r.mttr_hours != null ? Math.round(r.mttr_hours * 10) / 10 + "h" : "—";
+			const avail = r.availability != null ? (r.availability * 100).toFixed(1) + "%" : "—";
+			const failures = r.failure_count ?? "—";
+
+			hierarchyContent.innerHTML = `
+				<div class="hierarchy-detail-card" style="grid-column:1/-1">
+					<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:12px">
+						<div>
+							<div class="hierarchy-node-title" style="font-size:1.3rem">${escapeHtml(equip.tag)}</div>
+							<div class="hierarchy-node-stat" style="margin-top:4px">${escapeHtml((equip.iso_equipment_class || "").replace(/_/g, " "))}</div>
+						</div>
+						<div class="chips">
+							${equip.criticality ? `<span class="chip">${escapeHtml(equip.criticality)}</span>` : ""}
+							${equip.safety_critical ? '<span class="chip trend-rising">Safety critical</span>' : ""}
+						</div>
+					</div>
+					<div class="hierarchy-reliability">
+						<div class="hierarchy-reliability-stat"><div class="hierarchy-reliability-value">${escapeHtml(mtbf)}</div><div class="hierarchy-reliability-label">MTBF</div></div>
+						<div class="hierarchy-reliability-stat"><div class="hierarchy-reliability-value">${escapeHtml(mttr)}</div><div class="hierarchy-reliability-label">MTTR</div></div>
+						<div class="hierarchy-reliability-stat"><div class="hierarchy-reliability-value">${escapeHtml(avail)}</div><div class="hierarchy-reliability-label">Availability</div></div>
+						<div class="hierarchy-reliability-stat"><div class="hierarchy-reliability-value">${escapeHtml(failures)}</div><div class="hierarchy-reliability-label">Failures</div></div>
+					</div>
+					<div class="hierarchy-detail-grid">
+						${fields.map(([label, value]) => `<div class="hierarchy-detail-field"><div class="hierarchy-detail-label">${escapeHtml(label)}</div><div class="hierarchy-detail-value">${escapeHtml(value)}</div></div>`).join("")}
+					</div>
+				</div>`;
+		}
+
+		async function loadHierarchyLevel(level, params) {
+			hierarchyContent.innerHTML = '<div class="skeleton skeleton-chart" style="grid-column:1/-1;height:120px"></div>';
+			try {
+				const url = `/api/v1/hierarchy/${level}${params ? "?" + params : ""}`;
+				const data = await fetchJson(url, { headers: hierarchyHeaders() });
+				hierarchyState.level = level;
+				hierarchyState.data = Array.isArray(data) ? data : [];
+				renderHierarchyBreadcrumb();
+				renderHierarchyNodes(hierarchyState.data, level);
+			} catch (err) {
+				hierarchyContent.innerHTML = `<div class="empty-state" style="min-height:120px;grid-column:1/-1"><p class="muted">${escapeHtml(err.message || "Failed to load hierarchy")}</p></div>`;
+			}
+		}
+
+		async function loadEquipmentDetail(equipmentUnitId) {
+			hierarchyContent.innerHTML = '<div class="skeleton skeleton-chart" style="grid-column:1/-1;height:200px"></div>';
+			try {
+				const [equip, reliability] = await Promise.all([
+					fetchJson(`/api/v1/hierarchy/equipment/${encodeURIComponent(equipmentUnitId)}`, { headers: hierarchyHeaders() }),
+					fetchJson(`/api/v1/reliability/equipment/${encodeURIComponent(equipmentUnitId)}`, { headers: hierarchyHeaders() }),
+				]);
+				renderHierarchyBreadcrumb();
+				renderEquipmentDetail(equip, reliability);
+			} catch (err) {
+				hierarchyContent.innerHTML = `<div class="empty-state" style="min-height:120px;grid-column:1/-1"><p class="muted">${escapeHtml(err.message || "Failed to load equipment")}</p></div>`;
+			}
+		}
+
+		document.getElementById("hierarchyExplorer").addEventListener("click", (e) => {
+			const navBtn = e.target.closest("[data-hier-nav]");
+			if (navBtn) {
+				const idx = parseInt(navBtn.getAttribute("data-hier-nav"), 10);
+				hierarchyState.path = hierarchyState.path.slice(0, idx);
+				if (idx === 0) {
+					loadHierarchyLevel("sites", "");
+				} else {
+					const target = hierarchyState.path[idx - 1];
+					loadHierarchyLevel(target.nextLevel, target.params);
+				}
+				return;
+			}
+			const node = e.target.closest("[data-hier-id]");
+			if (!node) return;
+			const id = node.getAttribute("data-hier-id");
+			const type = node.getAttribute("data-hier-type");
+			const title = node.querySelector(".hierarchy-node-title");
+			const label = title ? title.textContent : id;
+
+			if (type === "site") {
+				hierarchyState.path.push({ label, nextLevel: "facilities", params: `site_id=${encodeURIComponent(id)}` });
+				loadHierarchyLevel("facilities", `site_id=${encodeURIComponent(id)}`);
+			} else if (type === "facility") {
+				hierarchyState.path.push({ label, nextLevel: "systems", params: `facility_id=${encodeURIComponent(id)}` });
+				loadHierarchyLevel("systems", `facility_id=${encodeURIComponent(id)}`);
+			} else if (type === "system") {
+				hierarchyState.path.push({ label, nextLevel: "equipment", params: `system_id=${encodeURIComponent(id)}` });
+				loadHierarchyLevel("equipment", `system_id=${encodeURIComponent(id)}`);
+			} else if (type === "equipment") {
+				hierarchyState.path.push({ label, nextLevel: "detail", params: "" });
+				loadEquipmentDetail(id);
+			}
+		});
+
 		state.session = readPortalIdentity();
 		applyHandoffQueuePreferences(readHandoffQueuePreferences(state.session));
 		renderIdentityPanel();
 		renderEdgeStatusCard();
 		refreshIdentity();
 		loadRuns();
+		loadHierarchyLevel("sites", "");
 	</script>
 </body>
 </html>
