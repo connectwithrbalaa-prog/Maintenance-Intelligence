@@ -20,6 +20,7 @@ from maintenance_intelligence.api.portal import router as portal_router, WEB_DIR
 from maintenance_intelligence.api.hierarchy import router as hierarchy_router
 from maintenance_intelligence.api.taxonomy import router as taxonomy_router
 from maintenance_intelligence.api.failure_events import router as failure_events_router
+from maintenance_intelligence.api.reliability import router as reliability_router
 from maintenance_intelligence.api.otel import init_tracing
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +43,7 @@ app.include_router(metrics_router)
 app.include_router(hierarchy_router)
 app.include_router(taxonomy_router)
 app.include_router(failure_events_router)
+app.include_router(reliability_router)
 app.include_router(portal_router)
 assets_dir = WEB_DIR / "assets"
 if assets_dir.exists():
