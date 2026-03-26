@@ -89,15 +89,57 @@ EOF
     exit 0
 fi
 
-# ── 6. Nginx config ──────────────────────────────────────────────────────────
+# ── 6. Nginx config — always start HTTP-only, certbot adds SSL after ─────────
 info "Configuring Nginx..."
 rm -f /etc/nginx/sites-enabled/default
 
 if [ -n "$DOMAIN" ] && [ "$SKIP_SSL" != "true" ]; then
-    # Domain mode: replace placeholder in the config
-    sed "s/YOUR_DOMAIN_HERE/$DOMAIN/g" \
-        "$REPO_DIR/deploy/nginx/maintenance-intelligence.conf" \
-        > /etc/nginx/sites-available/maintenance-intelligence
+    # HTTP-only first (no SSL directives) — certbot will upgrade this to HTTPS
+    cat > /etc/nginx/sites-available/maintenance-intelligence <<NGINXEOF
+server {
+    listen 80;
+    server_name $DOMAIN www.$DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    set \$cors_origin "";
+    if (\$http_origin ~* "^https://asset-wise-look\\.lovable\\.app\$") {
+        set \$cors_origin \$http_origin;
+    }
+
+    location / {
+        proxy_pass         http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 10s;
+        client_max_body_size 20M;
+
+        add_header Access-Control-Allow-Origin  "\$cors_origin" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-Dev-User" always;
+        add_header Access-Control-Max-Age       3600 always;
+
+        if (\$request_method = OPTIONS) {
+            return 204;
+        }
+    }
+
+    location /grafana/ {
+        proxy_pass         http://127.0.0.1:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+    }
+}
+NGINXEOF
 else
     # IP-only mode
     cp "$REPO_DIR/deploy/nginx/maintenance-intelligence-ip-only.conf" \
@@ -110,20 +152,24 @@ ln -sf \
 
 nginx -t
 systemctl reload nginx
-info "Nginx configured and reloaded."
+info "Nginx configured and reloaded (HTTP only)."
 
-# ── 7. SSL (Let's Encrypt) ───────────────────────────────────────────────────
+# ── 7. SSL (Let's Encrypt) — certbot modifies the nginx config above ─────────
 if [ -n "$DOMAIN" ] && [ "$SKIP_SSL" != "true" ]; then
     info "Obtaining SSL certificate for $DOMAIN..."
+    # certbot --nginx patches the existing HTTP config to add SSL + redirect
     certbot --nginx \
         --non-interactive \
         --agree-tos \
         --email "admin@$DOMAIN" \
         -d "$DOMAIN" \
-        -d "www.$DOMAIN" || warn "Certbot failed — check DNS is pointing to this server."
+        -d "www.$DOMAIN" \
+        --redirect \
+        && info "SSL certificate issued for $DOMAIN." \
+        || warn "Certbot failed — ensure DNS A record for $DOMAIN points to $(curl -sf https://api.ipify.org 2>/dev/null || echo 'this server') before re-running."
 
-    # Auto-renewal cron (certbot installs its own timer, but add as backup)
-    (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet") | crontab -
+    # Backup renewal cron
+    (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --nginx") | sort -u | crontab -
 fi
 
 # ── 8. Launch Docker Compose ─────────────────────────────────────────────────
