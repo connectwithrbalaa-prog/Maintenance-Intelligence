@@ -14,6 +14,8 @@ from fastapi import APIRouter, Query, Request
 
 from maintenance_intelligence.api.middleware.identity import (
     require_authenticated_identity,
+    get_identity,
+    get_identity_org_id,
 )
 from maintenance_intelligence.core.reliability.queries import (
     get_asset_reliability,
@@ -64,6 +66,13 @@ def fleet_reliability(
     require_authenticated_identity(
         request, detail="Reliability queries require an authenticated identity"
     )
+    identity = get_identity(request)
+    actor_org_id = get_identity_org_id(identity)
+    if actor_org_id and tenant_id and tenant_id != actor_org_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Cross-tenant access is not permitted")
+    if actor_org_id and not tenant_id:
+        tenant_id = actor_org_id
     fleet = get_fleet_reliability(
         tenant_id=tenant_id,
         iso_equipment_class=iso_equipment_class,

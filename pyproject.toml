@@ -16,6 +16,7 @@ dependencies = [
   "psycopg2-binary>=2.9",
   "prometheus-client>=0.20",
   "backoff>=2.2",
+  "PyJWT[cryptography]>=2.8",
 ]
 [project.optional-dependencies]
 dev = ["ruff>=0.3","black>=24.2","mypy>=1.8","pytest>=8.0","pytest-cov>=4.1","pytest-httpserver>=1.1","testcontainers>=4.8"]

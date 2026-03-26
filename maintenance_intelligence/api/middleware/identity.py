@@ -6,6 +6,11 @@ from fastapi import FastAPI, HTTPException, Request
 
 from maintenance_intelligence.runner.config import Settings
 
+# Module-level JWKS client cache keyed by JWKS URL.
+# PyJWKClient handles key rotation internally; we cache the client to avoid
+# re-instantiating on every request.
+_jwks_clients: Dict[str, Any] = {}
+
 APPROVAL_ROLES = frozenset({"planner", "maintainer", "admin"})
 ADMIN_ROLES = frozenset({"admin", "maintainer"})
 
@@ -113,6 +118,74 @@ def _dev_header_identity(request: Request, settings: Settings) -> Optional[Dict[
     }
 
 
+def _jwt_bearer_identity(request: Request, settings: Settings) -> Optional[Dict[str, Any]]:
+    """Validate a Bearer JWT token against the configured JWKS endpoint.
+
+    Returns a normalised identity dict with ``auth_source="jwt-bearer"`` on
+    success, or ``None`` when the header is absent, JWKS is not configured, or
+    token validation fails.
+    """
+    if not settings.auth_jwt_jwks_url:
+        return None
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header[7:].strip()
+    if not token:
+        return None
+    try:
+        import jwt  # PyJWT
+        from jwt import PyJWKClient
+
+        jwks_url = settings.auth_jwt_jwks_url
+        if jwks_url not in _jwks_clients:
+            _jwks_clients[jwks_url] = PyJWKClient(jwks_url, cache_keys=True, lifespan=300)
+        client = _jwks_clients[jwks_url]
+        signing_key = client.get_signing_key_from_jwt(token)
+        algorithms = [a.strip() for a in settings.auth_jwt_algorithms.split(",") if a.strip()]
+        decode_kwargs: Dict[str, Any] = {"algorithms": algorithms, "leeway": settings.auth_jwt_leeway_s}
+        if settings.auth_jwt_audience:
+            decode_kwargs["audience"] = settings.auth_jwt_audience
+        if settings.auth_jwt_issuer:
+            decode_kwargs["issuer"] = settings.auth_jwt_issuer
+        claims: Dict[str, Any] = jwt.decode(token, signing_key.key, **decode_kwargs)
+    except Exception:
+        # Any validation failure (expired, bad sig, wrong audience, etc.) is
+        # treated as unauthenticated rather than a hard error.
+        return None
+
+    subject = _as_text(claims.get("sub"))
+    if not subject:
+        return None
+
+    roles = _parse_csv_text(
+        claims.get(settings.auth_jwt_roles_claim) or claims.get("role")
+    )
+    org_id = _as_text(
+        claims.get(settings.auth_jwt_org_claim)
+        or claims.get("org")
+        or claims.get("tenant_id")
+    )
+    site_id = _as_text(claims.get("site_id") or claims.get("site"))
+    site_ids = _parse_csv_text(
+        claims.get(settings.auth_jwt_sites_claim) or claims.get("site_ids")
+    )
+    if site_id and site_id not in site_ids:
+        site_ids = [site_id, *site_ids]
+
+    identity: Dict[str, Any] = {
+        "subject": subject,
+        "auth_source": "jwt-bearer",
+        "org_id": org_id,
+        "site_id": site_id,
+        "site_ids": site_ids,
+    }
+    if roles:
+        identity["roles"] = [r.lower() for r in roles]
+        identity["role"] = identity["roles"][0]
+    return identity
+
+
 def resolve_identity(
     request: Request, settings: Optional[Settings] = None
 ) -> Optional[Dict[str, Any]]:
@@ -121,6 +194,11 @@ def resolve_identity(
     existing = _normalize_identity(getattr(request.state, "user", None))
     if existing:
         return existing
+
+    # JWT bearer takes priority over proxy-forwarded headers.
+    jwt_identity = _jwt_bearer_identity(request, settings)
+    if jwt_identity:
+        return _normalize_identity(jwt_identity)
 
     trusted = _trusted_header_identity(request, settings)
     if trusted:
@@ -207,17 +285,25 @@ def identity_matches_scope(
     settings = settings or Settings()
     actor_org_id = get_identity_org_id(normalized)
     actor_site_ids = get_identity_site_ids(normalized)
+    # The dev bypass is intentionally narrow: it only applies when the identity
+    # originates from a dev header (auth_source=="dev-header") AND the dev
+    # header mode is explicitly enabled.  Trusted-proxy and JWT identities must
+    # always carry org/site claims.
+    is_dev_source = (
+        settings.dev_allow_headers
+        and (normalized or {}).get("auth_source") == "dev-header"
+    )
     if org_id:
         if actor_org_id:
             if actor_org_id != org_id:
                 return False
-        elif not settings.dev_allow_headers:
+        elif not is_dev_source:
             return False
     if site_id:
         if actor_site_ids:
             if site_id not in actor_site_ids:
                 return False
-        elif not settings.dev_allow_headers:
+        elif not is_dev_source:
             return False
     return True
 

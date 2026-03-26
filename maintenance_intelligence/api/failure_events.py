@@ -21,6 +21,7 @@ from maintenance_intelligence.api.middleware.identity import (
     require_authenticated_identity,
     get_identity,
     get_identity_subject,
+    get_identity_org_id,
 )
 from maintenance_intelligence.runner.config import Settings
 
@@ -87,9 +88,21 @@ def list_failure_events(
     source_system: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ):
-    require_authenticated_identity(
+    identity = require_authenticated_identity(
         request, detail="Failure event queries require an authenticated identity"
     )
+    actor_org_id = get_identity_org_id(identity)
+    # Enforce tenant isolation: if the authenticated identity carries an org_id,
+    # the query may not cross into a different tenant's data.
+    if actor_org_id and tenant_id and tenant_id != actor_org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cross-tenant access is not permitted",
+        )
+    # Automatically scope the query to the actor's org when no explicit
+    # tenant_id filter was supplied by the caller.
+    if actor_org_id and not tenant_id:
+        tenant_id = actor_org_id
     conn = _pg()
     try:
         clauses, params = [], []
@@ -142,6 +155,16 @@ def create_failure_event(request: Request, payload: FailureEventPayload):
     identity = require_authenticated_identity(
         request, detail="Creating failure events requires an authenticated identity"
     )
+    actor_org_id = get_identity_org_id(identity)
+    # Block cross-tenant writes: if identity has an org_id, payload tenant_id
+    # must match (or be absent, in which case it inherits from the identity).
+    if actor_org_id and payload.tenant_id and payload.tenant_id != actor_org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cross-tenant write is not permitted",
+        )
+    if actor_org_id and not payload.tenant_id:
+        payload = payload.model_copy(update={"tenant_id": actor_org_id})
     conn = _pg()
     try:
         event_id = payload.event_id or f"FE-{uuid.uuid4().hex[:12]}"
