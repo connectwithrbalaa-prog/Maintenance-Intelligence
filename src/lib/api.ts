@@ -1,4 +1,9 @@
-const API_BASES = ["/backend", "http://72.62.231.202:8001"];
+// VITE_API_BASE_URL is set in Lovable's environment variable settings
+// (Project Settings → Environment Variables → VITE_API_BASE_URL=https://yourdomain.com)
+// For local dev it falls back to the dev proxy.
+const API_BASES: string[] = import.meta.env.VITE_API_BASE_URL
+  ? [import.meta.env.VITE_API_BASE_URL as string]
+  : ["/backend"];
 
 const headers: HeadersInit = {
   "x-dev-user": "admin",
