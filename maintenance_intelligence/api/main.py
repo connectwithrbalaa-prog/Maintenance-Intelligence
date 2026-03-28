@@ -1,3 +1,5 @@
+import os
+
 from maintenance_intelligence.api.reports import router as reports_router
 from maintenance_intelligence.api.repair_plan import router as repair_plan_router
 from maintenance_intelligence.api.health import router as health_router
@@ -25,6 +27,7 @@ from maintenance_intelligence.api.rag_context import router as rag_context_route
 from maintenance_intelligence.api.connectors import router as connectors_router
 from maintenance_intelligence.api.otel import init_tracing
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from maintenance_intelligence.runner.core import run
@@ -32,6 +35,19 @@ from maintenance_intelligence.runner.config import Settings
 from maintenance_intelligence.runner.logging import setup_logger
 
 app = FastAPI(title="Maintenance Intelligence API", version="0.1.0")
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("MI_CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 install_identity_middleware(app)
 app.include_router(health_router)
 app.include_router(repair_plan_router)
